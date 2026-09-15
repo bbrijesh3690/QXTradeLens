@@ -82,7 +82,13 @@
         if (v) return String(v);
       }
     } catch (e) {}
-    // Fallback: the active pair tab's visible label (hash-rotation-prone, hence second).
+    // Fallbacks: the active tab's `data-symbol` attribute (stable, same id as the store), then its
+    // visible label (hashed class, rotation-prone).
+    try {
+      var active = document.getElementById('tab-active');
+      var ds = active && active.getAttribute('data-symbol');
+      if (ds) return ds;
+    } catch (e) {}
     try {
       var tab = document.querySelector('#tab-active .WRocw, #tab-active .l5ftG, .tab-active .WRocw');
       if (tab && tab.textContent) return tab.textContent.trim();
@@ -143,14 +149,91 @@
     };
   }
 
+  // ── Store snapshot (v1.22.0) ──────────────────────────────────────────────────────────────────
+  // Plain values the panel otherwise scrapes from hashed CSS classes. Every path below was seen live on
+  // 2026-09-15 in `plot.store.getState()`. Same stealth contract: read-only, copies only, no writes.
+  var MAX_CLOSED_DEALS = 50;
+
+  function num(v) { var n = Number(v); return isFinite(n) ? n : null; }
+
+  function dealOut(d) {
+    return {
+      id: d.id != null ? String(d.id) : null,
+      asset: d.asset != null ? String(d.asset) : null,
+      amount: num(d.amount),
+      profit: num(d.profit),
+      command: num(d.command),
+      isDemo: num(d.isDemo),
+      openTimestamp: num(d.openTimestamp),
+      closeTimestamp: num(d.closeTimestamp)
+    };
+  }
+
+  // Newest first by close time (then open time), capped at `limit` when > 0. The order of the store's
+  // id arrays isn't relied on.
+  function dealList(byId, ids, limit) {
+    var out = [];
+    if (!byId || !ids || !ids.length) return out;
+    for (var i = 0; i < ids.length; i++) {
+      var d = byId[ids[i]];
+      if (d && typeof d === 'object') out.push(dealOut(d));
+    }
+    out.sort(function (a, b) {
+      return ((b.closeTimestamp || 0) - (a.closeTimestamp || 0)) || ((b.openTimestamp || 0) - (a.openTimestamp || 0));
+    });
+    return limit > 0 ? out.slice(0, limit) : out;
+  }
+
+  function stateSnapshot(withAssets) {
+    var plot = findPlot();
+    if (!plot || !plot.store || !plot.store.getState) return null;
+    var st = plot.store.getState();
+    if (!st) return null;
+    var cs = chartSettings(plot);
+    var cur = cs && cs.currentAsset;
+    var symbol = cur && typeof cur === 'object' && cur.symbol ? String(cur.symbol) : null;
+    var bySymbol = st.assets && st.assets.assetBySymbol;
+    var asset = symbol && bySymbol ? bySymbol[symbol] : null;
+    var g = st.global || {};
+    var deals = st.deals || {};
+    var out = {
+      v: 1,
+      symbol: symbol,
+      label: asset && asset.label ? String(asset.label) : null,
+      payout: asset ? num(asset.payout) : null,
+      dealValue: cs ? num(cs.dealValue) : null,
+      currency: g.currency != null ? String(g.currency) : null,
+      currencyCode: g.currencyCode != null ? String(g.currencyCode) : null,
+      timeZone: num(g.timeZone),
+      tabs: st.navigationSymbols && st.navigationSymbols.list ? st.navigationSymbols.list.map(String) : [],
+      openedDeals: dealList(deals.openedById, deals.openedIds, 0),
+      closedDeals: dealList(deals.closedById, deals.closedIds, MAX_CLOSED_DEALS),
+      assets: null
+    };
+    if (withAssets && bySymbol) {
+      out.assets = {};
+      var keys = Object.keys(bySymbol);
+      for (var i = 0; i < keys.length; i++) {
+        var a = bySymbol[keys[i]];
+        if (!a || typeof a !== 'object') continue;
+        out.assets[keys[i]] = { label: a.label != null ? String(a.label) : null, payout: num(a.payout), isOtc: num(a.is_otc), active: !!a.active };
+      }
+    }
+    return out;
+  }
+
   // ── Bridge (pull-only) ────────────────────────────────────────────────────────────────────────
-  // The isolated-world panel dispatches REQ_EVENT with {id, limit}; we answer once with RES_EVENT
-  // carrying plain JSON. `id` correlates concurrent asks. Nothing is emitted unprompted.
+  // The isolated-world panel dispatches REQ_EVENT with {id, limit} (candles) or {id, kind:'state',
+  // assets} (store snapshot); we answer once with RES_EVENT. `id` correlates concurrent asks. Nothing
+  // is emitted unprompted. The state answer is a JSON string so it crosses worlds as a primitive.
   document.addEventListener(REQ_EVENT, function (ev) {
-    var id = null, limit = 0;
-    try { if (ev && ev.detail) { id = ev.detail.id; limit = ev.detail.limit; } } catch (e) {}
+    var id = null, limit = 0, kind = null, withAssets = false;
+    try { if (ev && ev.detail) { id = ev.detail.id; limit = ev.detail.limit; kind = ev.detail.kind; withAssets = !!ev.detail.assets; } } catch (e) {}
     var data = null;
-    try { data = snapshot(limit); } catch (e) { data = null; }
+    try {
+      if (kind === 'state') { var s = stateSnapshot(withAssets); data = s ? JSON.stringify(s) : null; }
+      else data = snapshot(limit);
+    } catch (e) { data = null; }
     try {
       document.dispatchEvent(new CustomEvent(RES_EVENT, { detail: { id: id, data: data } }));
     } catch (e) {}

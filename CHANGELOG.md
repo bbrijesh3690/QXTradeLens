@@ -5,6 +5,30 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.22.0] - 2026-09-15
+
+### Added
+- **Quotex store bridge.** `chart_reader.js` answers a read-only `state` request with values from Quotex's
+  own Redux store: current asset and payout, all asset payouts and labels, open and closed deals, currency
+  and pair tabs. The stealth rules still apply: pull-only, no globals, no writes, no network.
+- **Self-repairing element lookup.** Each key element has a semantic finder: the account label, the
+  "Payout" text, `#trade-button`, the Investment `<legend>`, `#graph` and the active tab. When the hashed
+  classes fail and the finder succeeds, the element's current class is learned and stored, so later
+  lookups stay fast.
+- **Health check in the popup.** "Check Quotex compatibility" lists what the panel can read on the open
+  trade tab and how: ✅ direct · 🔁 fallback (Quotex changed something) · ❌ missing.
+
+### Changed
+- Payout % and pair-tab names/payouts fall back to the store when the page elements are missing. Pair tabs
+  are also found through `data-symbol`.
+- The max-open-trades cap counts the higher of store and page open trades.
+- Currency comes from the store.
+- **Loss streak works again (B7).** It counts newly closed deals from the store, because the page rows it
+  watched no longer exist. The 3-loss system lock still only applies if you switch the system lock on (off
+  by default).
+
+If the store can't be reached, every read falls back to the page, which is the v1.21.1 behavior.
+
 ## [1.21.1] - 2026-09-15
 
 ### Fixed

@@ -307,6 +307,82 @@
         return null;
       },
       selectorCache = {};
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // Self-repairing element lookup (v1.22.0)
+    // Order: last element (if still attached) → learned selector → SELECTORS (hashed classes) →
+    // semantic finder (ids, visible text, attributes). When only the semantic finder works, the
+    // element's current class is learned and stored, so the next lookup is a cheap querySelector again.
+    // `selectorVia[name]` records which strategy won, for the health report.
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    const KEY_LEARNED_SELECTORS = "__tradeCalc_learned_selectors";
+    let learnedSelectors = (() => {
+      try {
+        const v = JSON.parse(localStorage.getItem(KEY_LEARNED_SELECTORS) || "{}");
+        return v && typeof v == "object" ? v : {};
+      } catch (t) {
+        return {};
+      }
+    })();
+    const selectorVia = {};
+    const textOf = (el) => (el && el.textContent ? el.textContent.trim() : "");
+    const SEMANTIC_FINDERS = {
+      // The balance sits next to the "Live Account" / "Demo Account" label.
+      balance: () => {
+        const label = Array.from(document.querySelectorAll("div")).find(
+          (d) => d.children.length === 0 && /^(Live|Demo) Account$/.test(textOf(d)),
+        );
+        return label ? label.nextElementSibling : null;
+      },
+      // Payout % inside the active pair tab (e.g. "79 %").
+      returnPct: () => {
+        const tab = document.getElementById("tab-active");
+        if (!tab) {
+          return null;
+        }
+        return Array.from(tab.querySelectorAll("*")).find((el) => el.children.length === 0 && /^\d{1,3}\s*%$/.test(textOf(el))) || null;
+      },
+      // <p>Payout</p> … <b>3,580 ₹</b>
+      payoutTotal: () => {
+        const p = Array.from(document.querySelectorAll("p")).find((el) => textOf(el).toLowerCase() === "payout");
+        return (p && p.parentElement && p.parentElement.querySelector("b")) || null;
+      },
+      tradeButtons: () => document.querySelector("#trade-button button"),
+      amountInput: () => {
+        const legend = Array.from(document.querySelectorAll("legend")).find((el) => textOf(el).toLowerCase() === "investment");
+        const field = legend && legend.closest("fieldset");
+        return (field && field.querySelector("input")) || document.querySelector(".deal-amount-input input");
+      },
+      chartCanvas: () => document.querySelector("#graph canvas") || document.getElementById("graph"),
+    };
+    // A selector that finds `el` first in the document: its first class, or parent class + tag.
+    function selectorFor(el) {
+      const cssEscape = (s) => (window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/[^\w-]/g, "\\$&"));
+      const candidates = [];
+      if (el.classList && el.classList.length) {
+        candidates.push("." + cssEscape(el.classList[0]));
+      }
+      const parent = el.parentElement;
+      if (parent && parent.classList && parent.classList.length) {
+        candidates.push("." + cssEscape(parent.classList[0]) + " > " + el.tagName.toLowerCase());
+      }
+      return candidates.find((sel) => {
+        try {
+          return document.querySelector(sel) === el;
+        } catch (t) {
+          return false;
+        }
+      });
+    }
+    function learnSelector(name, el) {
+      const sel = selectorFor(el);
+      if (!sel || (learnedSelectors[name] && learnedSelectors[name].sel === sel)) {
+        return;
+      }
+      learnedSelectors[name] = { sel, at: new Date().toISOString() };
+      try {
+        localStorage.setItem(KEY_LEARNED_SELECTORS, JSON.stringify(learnedSelectors));
+      } catch (t) {}
+    }
     function findEl(e, o) {
       const r = !o || o.cache !== false;
       if (r) {
@@ -315,24 +391,131 @@
           return t;
         }
       }
-      const a = ((t) => {
-        for (let e = 0; e < t.length; e++) {
-          const n = document.querySelector(t[e]);
-          if (n) {
-            return n;
-          }
+      let via = "missing";
+      let a = null;
+      const learned = learnedSelectors[e];
+      if (learned) {
+        try {
+          a = document.querySelector(learned.sel);
+        } catch (t) {}
+        if (a) {
+          via = "learned";
         }
-        return null;
-      })(SELECTORS[e]);
+      }
+      if (!a) {
+        const list = SELECTORS[e] || [];
+        for (let i = 0; i < list.length && !a; i++) {
+          a = document.querySelector(list[i]);
+        }
+        if (a) {
+          via = "class";
+        }
+      }
+      if (!a && SEMANTIC_FINDERS[e]) {
+        try {
+          a = SEMANTIC_FINDERS[e]();
+        } catch (t) {
+          a = null;
+        }
+        if (a) {
+          via = "semantic";
+          learnSelector(e, a);
+        }
+      }
+      selectorVia[e] = via;
       if (r) {
         selectorCache[e] = a;
       }
       return a;
     }
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // Quotex data layer (v1.22.0): plain values from Quotex's own Redux store, answered by
+    // chart_reader.js in the page's MAIN world. The CustomEvent round trip is synchronous (DOM event
+    // dispatch runs listeners in every world before returning). Returns null when the bridge or chart
+    // isn't available; callers always keep a DOM fallback. Event names are literals here because the
+    // MTF constants are declared further down.
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    const STATE_TTL_MS = 250,
+      ASSETS_TTL_MS = 5000;
+    let quotexState = null,
+      quotexStateAt = 0,
+      quotexAssets = null,
+      quotexAssetsAt = 0,
+      quotexStateSeq = 0;
+    function requestQuotexState(withAssets) {
+      const id = "state-" + ++quotexStateSeq;
+      let raw = null;
+      const onRes = (ev) => {
+        try {
+          if (ev.detail && ev.detail.id === id) {
+            raw = ev.detail.data;
+          }
+        } catch (t) {}
+      };
+      document.addEventListener("__tcChartRes", onRes);
+      try {
+        document.dispatchEvent(new CustomEvent("__tcChartReq", { detail: { id, kind: "state", assets: !!withAssets } }));
+      } catch (t) {}
+      document.removeEventListener("__tcChartRes", onRes);
+      if (typeof raw !== "string") {
+        return null;
+      }
+      try {
+        const state = JSON.parse(raw);
+        return state && state.v === 1 ? state : null;
+      } catch (t) {
+        return null;
+      }
+    }
+    function readQuotexState() {
+      const now = Date.now();
+      if (now - quotexStateAt >= STATE_TTL_MS) {
+        quotexState = requestQuotexState(false);
+        quotexStateAt = now;
+      }
+      return quotexState;
+    }
+    // symbol -> { label, payout, isOtc, active }, refreshed every 5 s.
+    function readQuotexAssets() {
+      const now = Date.now();
+      if (now - quotexAssetsAt >= ASSETS_TTL_MS) {
+        const state = requestQuotexState(true);
+        quotexAssets = state && state.assets ? state.assets : null;
+        quotexAssetsAt = now;
+      }
+      return quotexAssets;
+    }
+    const isDemoPage = () => /\/demo-trade(\/|\?|$)/.test(location.pathname);
+    // Deals for the account this page shows (demo or live). Deals without an isDemo flag are kept.
+    function dealsForThisAccount(list) {
+      const mode = isDemoPage() ? 1 : 0;
+      return (list || []).filter((d) => d && (d.isDemo == null || d.isDemo === mode));
+    }
+    function storeOpenTradeCount() {
+      const state = readQuotexState();
+      return state ? dealsForThisAccount(state.openedDeals).length : NaN;
+    }
+    // Open trades for the max-trades cap: the higher of the page count and the store count, because
+    // for a cap over-counting is the safe side.
+    function openTradeCount() {
+      const dom = getOpenTradePnlEls().length;
+      const store = storeOpenTradeCount();
+      return isNaN(store) ? dom : Math.max(dom, store);
+    }
+    function storeAssetFor(tab) {
+      const symbol = tab && tab.getAttribute && tab.getAttribute("data-symbol");
+      const assets = symbol ? readQuotexAssets() : null;
+      return assets && assets[symbol] ? assets[symbol] : null;
+    }
     const NON_NUMERIC_RE = /[^\d.-]/g,
       TITLE_PREFIX_RE = /^(?:[🟢🔴]+\s*)?(?:⏱\d{1,2}:\d{2}(?::\d{2})?(?:\s*\(\d+\))?\s*)?/;
     let currencySymbol = "₹";
     function detectCurrency() {
+      const state = readQuotexState();
+      if (state && state.currency) {
+        currencySymbol = state.currency;
+        return currencySymbol;
+      }
       const t =
         balanceEl && balanceEl.isConnected
           ? balanceEl
@@ -432,11 +615,19 @@
       e._tcFired = true;
       t.dispatchEvent(e);
     };
+    let pairTabsVia = "missing";
     function getPairTabs() {
       let t = Array.from(document.querySelectorAll(".dJ15T, .pPomf"));
       if (t.length > 0) {
+        pairTabsVia = "class";
         return t;
       }
+      const bySymbol = getPairTabsBySymbol();
+      if (bySymbol.length) {
+        pairTabsVia = "semantic";
+        return bySymbol;
+      }
+      pairTabsVia = "heuristic";
       const e =
         document.getElementById("tab-active") ||
         document.querySelector('[id*="active"]') ||
@@ -477,7 +668,27 @@
           o = /\d+%/.test(e);
         return n && o && t.tagName !== "SPAN" && t.tagName !== "A";
       });
+      if (!t.length) {
+        pairTabsVia = "missing";
+      }
       return t;
+    }
+    // Pair tabs carry `data-symbol` (e.g. "USDDZD_otc"). Tabs may each sit in their own wrapper, so
+    // climb from the active tab and use the ancestor level that holds the most tabs.
+    function getPairTabsBySymbol() {
+      const active = document.getElementById("tab-active");
+      if (!active || !active.hasAttribute("data-symbol")) {
+        return [];
+      }
+      let best = [active];
+      let scope = active.parentElement;
+      for (let i = 0; i < 3 && scope; i++, scope = scope.parentElement) {
+        const found = Array.from(scope.querySelectorAll("[data-symbol]"));
+        if (found.length > best.length) {
+          best = found;
+        }
+      }
+      return best;
     }
     function getTabName(t) {
       if (!t) {
@@ -490,6 +701,10 @@
         t.querySelector('[class*="name"]');
       if (e && e.textContent.trim()) {
         return e.textContent.trim();
+      }
+      const asset = storeAssetFor(t);
+      if (asset && asset.label) {
+        return asset.label;
       }
       if (t.id && t.id !== "tab-active") {
         return t.id;
@@ -573,7 +788,13 @@
         payoutPctEl._tcClr = void 0;
       }
       payoutPctEl = t;
-      return payoutPctEl ? parsePct(payoutPctEl.textContent) : NaN;
+      const shown = payoutPctEl ? parsePct(payoutPctEl.textContent) : NaN;
+      if (!isNaN(shown)) {
+        return shown;
+      }
+      // The page is the source of truth for what the user sees; the store covers a missing element.
+      const state = readQuotexState();
+      return state && state.payout != null ? state.payout : NaN;
     }
     let payoutTotalEl = null,
       investmentEl = null;
@@ -2860,7 +3081,12 @@
             t.querySelector(".dkV9n span") ||
             t.querySelector("[class*='percent']") ||
             t.querySelector("[class*='payout']");
-          return e ? parsePct(e.textContent) : NaN;
+          const shown = e ? parsePct(e.textContent) : NaN;
+          if (!isNaN(shown)) {
+            return shown;
+          }
+          const asset = storeAssetFor(t);
+          return asset && asset.payout != null ? asset.payout : NaN;
         })(e);
         return !isNaN(n) && n < t && !tabHasOpenTrade(e);
       });
@@ -3443,7 +3669,7 @@
       // v1.21.0: the stop loss never blocks trading. The "trade would breach stop loss" block was
       // removed: after a breach it disabled Up/Down permanently, and the trailing SL pushed any new
       // SL back above the balance. Only payout-too-low and the max-open-trades cap block now.
-      const tradeCapReached = openPnlEls.length >= maxTrades,
+      const tradeCapReached = openTradeCount() >= maxTrades,
         shouldBlock = payoutTooLow || tradeCapReached;
       tradingBlocked = shouldBlock;
       setTradeButtonsDisabled(shouldBlock);
@@ -3795,7 +4021,7 @@
           t.preventDefault();
           return;
         }
-        if (getOpenTradePnlEls().length >= maxTrades) {
+        if (openTradeCount() >= maxTrades) {
           t.stopPropagation();
           t.preventDefault();
           scheduleRecalc();
@@ -3947,7 +4173,7 @@
           t.preventDefault();
           return;
         }
-        if (getOpenTradePnlEls().length >= maxTrades) {
+        if (openTradeCount() >= maxTrades) {
           t.preventDefault();
           scheduleRecalc();
           return;
@@ -4760,7 +4986,40 @@
     if (window.__tcSettleMonitor) {
       clearInterval(window.__tcSettleMonitor);
     }
+    // v1.22.0: settled trades come from the store's closed deals when the bridge is available. The page
+    // rows below (`.A7vDd` / `.Os2ep`) no longer exist on the current Quotex build, so the loss streak
+    // could never trigger (B7). Deals already closed when the panel starts are the baseline, not outcomes.
+    let storeClosedSeen = null;
+    let outcomesVia = "page";
+    function trackStoreOutcomes() {
+      const state = readQuotexState();
+      if (!state || !Array.isArray(state.closedDeals)) {
+        return false;
+      }
+      const deals = dealsForThisAccount(state.closedDeals);
+      if (storeClosedSeen === null) {
+        storeClosedSeen = new Set(deals.map((d) => d.id));
+        return true;
+      }
+      // Oldest first, so the streak counts in the order the trades closed.
+      for (const d of deals.slice().reverse()) {
+        if (!d.id || storeClosedSeen.has(d.id)) {
+          continue;
+        }
+        storeClosedSeen.add(d.id);
+        if (typeof window.__tcRegisterOutcome == "function") {
+          window.__tcRegisterOutcome(!(d.profit > 0));
+        }
+      }
+      return true;
+    }
     window.__tcSettleMonitor = setInterval(function () {
+      if (trackStoreOutcomes()) {
+        outcomesVia = "store";
+        settleTracker.clear();
+        return;
+      }
+      outcomesVia = "page";
       const t = document.getElementsByClassName("A7vDd"),
         e = new Set();
       for (let n = 0; n < t.length; n++) {
@@ -6835,6 +7094,55 @@
       panel.style.transform = `translate3d(${panelPos.x}px, ${panelPos.y}px, 0)`;
     }
     recalc();
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // Health report (v1.22.0): what the panel can read from the current Quotex build, and how.
+    // status: "ok" (hashed class or store works) · "fallback" (learned / semantic / heuristic) · "missing"
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    function buildHealthReport() {
+      const rows = [];
+      const add = (name, status, via, value) => rows.push({ name, status, via, value: value == null ? "" : String(value) });
+      const state = requestQuotexState(false);
+      add("Store bridge (chart_reader.js)", state ? "ok" : "missing", state ? "store" : "none", state ? state.symbol : "chart not found");
+      const elementTargets = [
+        ["balance", "Balance"],
+        ["returnPct", "Payout % element"],
+        ["payoutTotal", "Payout amount"],
+        ["tradeButtons", "Up/Down buttons"],
+        ["amountInput", "Investment field"],
+        ["chartCanvas", "Chart canvas"],
+      ];
+      for (const [key, label] of elementTargets) {
+        const el = findEl(key, { cache: false });
+        const via = selectorVia[key] || "missing";
+        const status = !el ? "missing" : via === "class" ? "ok" : "fallback";
+        add(label, status, via === "learned" ? "learned " + learnedSelectors[key].sel : via, el ? textOf(el).slice(0, 24) || el.tagName.toLowerCase() : "");
+      }
+      const balance = readAccountBalance();
+      add("Balance value", isNaN(balance) ? "missing" : "ok", "page", isNaN(balance) ? "" : balance);
+      const payoutEl = findEl("returnPct", { cache: false });
+      const payoutShown = payoutEl ? parsePct(payoutEl.textContent) : NaN;
+      const payoutStore = state && state.payout != null ? state.payout : NaN;
+      add(
+        "Payout % value",
+        !isNaN(payoutShown) ? "ok" : !isNaN(payoutStore) ? "fallback" : "missing",
+        !isNaN(payoutShown) ? "page" : "store",
+        (isNaN(payoutShown) ? "—" : payoutShown + "%") + " page · " + (isNaN(payoutStore) ? "—" : payoutStore + "%") + " store",
+      );
+      const stake = readInvestmentFromStakeInput();
+      add("Stake", isNaN(stake) ? "missing" : "ok", "page", isNaN(stake) ? "" : stake);
+      const tabs = getPairTabs();
+      add("Pair tabs", !tabs.length ? "missing" : pairTabsVia === "class" ? "ok" : "fallback", pairTabsVia, tabs.length + " open");
+      const closeBtns = tabs.filter((tab) => getTabCloseBtn(tab)).length;
+      add("Tab close buttons", tabs.length && closeBtns === tabs.length ? "ok" : closeBtns ? "fallback" : "missing", "page", closeBtns + " of " + tabs.length);
+      const domOpen = getOpenTradePnlEls().length;
+      const storeOpen = storeOpenTradeCount();
+      add("Open trades", isNaN(storeOpen) && !domOpen ? "fallback" : "ok", isNaN(storeOpen) ? "page" : "store + page", domOpen + " page · " + (isNaN(storeOpen) ? "—" : storeOpen) + " store");
+      add("Settled trades (loss streak)", outcomesVia === "store" ? "ok" : "fallback", outcomesVia, "streak " + lossStreak);
+      add("Currency", state && state.currency ? "ok" : "fallback", state && state.currency ? "store" : "page", detectCurrency());
+      const version =
+        typeof chrome != "undefined" && chrome.runtime && chrome.runtime.getManifest ? chrome.runtime.getManifest().version : "";
+      return { version, url: location.pathname, rows };
+    }
     if (typeof chrome != "undefined" && chrome.runtime && chrome.runtime.onMessage) {
       // Kept on window so cleanup can remove it (hotfix v1.20.1): otherwise a torn-down panel's
       // listener stays registered and answers the popup's GET_STATE with stale values after a relaunch.
@@ -6931,6 +7239,14 @@
             sysLockDisabled = !!t.disabled;
             setSysLockDisabledStored(sysLockDisabled);
           }
+        } else if (t.type === "GET_HEALTH") {
+          let report;
+          try {
+            report = buildHealthReport();
+          } catch (err) {
+            report = { error: String(err && err.message ? err.message : err), rows: [] };
+          }
+          n(report);
         } else if (t.type === "SET_SL_ENABLED") {
           if (t.enabled) {
             bootstrapSl(true);

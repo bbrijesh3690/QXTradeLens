@@ -27,7 +27,29 @@ const slStorage = (sl) => ({
   __tradeCalc_tp_manual_date: istToday(),
 });
 
-async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html = FIXTURE, sync = null } = {}) {
+const CHART_READER = fs.readFileSync(new URL("../qx-calc-updater/qx-calc-updater/chart_reader.js", import.meta.url), "utf8");
+
+// A Redux state shaped like Quotex's (paths seen live on 2026-09-15). Tests mutate it to simulate the app.
+function quotexStore({ payout = 91, opened = [], closed = [] } = {}) {
+  const byId = (list) => Object.fromEntries(list.map((d) => [d.id, d]));
+  return {
+    chartSettings: { chartById: { c1: { currentAsset: { symbol: "USDDZD_otc" }, dealValue: 2000 } } },
+    assets: {
+      assetBySymbol: {
+        USDDZD_otc: { symbol: "USDDZD_otc", label: "USD/DZD (OTC)", payout, is_otc: 1, active: true },
+        EURUSD_otc: { symbol: "EURUSD_otc", label: "EUR/USD (OTC)", payout: 70, is_otc: 1, active: true },
+      },
+    },
+    deals: { openedById: byId(opened), openedIds: opened.map((d) => d.id), closedById: byId(closed), closedIds: closed.map((d) => d.id) },
+    global: { currency: "₹", currencyCode: "INR", timeZone: 19800 },
+    navigationSymbols: { list: ["USDDZD_otc"] },
+  };
+}
+const deal = (id, { profit = 0, isDemo = 1, close = 1789464960 } = {}) => ({
+  id, asset: "USDDZD_otc", amount: 2000, profit, isDemo, command: 1, openTimestamp: close - 60, closeTimestamp: close,
+});
+
+async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html = FIXTURE, sync = null, store = null } = {}) {
   const errors = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on("jsdomError", (e) => {
@@ -89,6 +111,13 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
   }
   for (const [k, v] of Object.entries(storage)) window.localStorage.setItem(k, v);
 
+  // Optional Quotex store: attach a React fiber to the chart canvas and load the real chart_reader.js.
+  if (store) {
+    const canvas = window.document.querySelector("#graph canvas.layer.plot");
+    const plot = { chartId: "c1", pointsManager: { candles: [] }, store: { getState: () => store } };
+    canvas["__reactFiber$test"] = { stateNode: null, return: { stateNode: { plot }, return: null } };
+    window.eval(CHART_READER);
+  }
   window.eval(SOURCE);
   await sleep(1100); // the launcher starts the panel after 800 ms
 
@@ -107,6 +136,11 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
     async sendToPanel(msg) {
       for (const f of Array.from(listeners)) f(msg, {}, () => {});
       await sleep(80);
+    },
+    askPanel(msg) {
+      let response;
+      for (const f of Array.from(listeners)) f(msg, {}, (r) => (response = response ?? r));
+      return response;
     },
     close: () => {
       observers.forEach((o) => o.disconnect());
@@ -361,6 +395,139 @@ test("B10: switching SL off closes an open setup screen and its click blocker", 
     await qx.sendToPanel({ type: "SET_SL_ENABLED", enabled: false });
     assert.equal(slSetupOpen(qx), false);
     assert.equal(qx.window.__tcSLBlocker, undefined);
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.22.0: store bridge, self-repairing selectors, health report ─────────────────────────────────
+
+const healthRow = (qx, name) => qx.askPanel({ type: "GET_HEALTH" }).rows.find((r) => r.name === name);
+const overlayShown = (qx) => qx.panelRoot().getElementById("__tcDangerOverlay").classList.contains("tcPercentVisible");
+
+test("store: payout % falls back to the store when Quotex's payout elements are gone", async () => {
+  // Remove every payout % element the class selectors and the semantic finder could use.
+  const html = FIXTURE.replace('<span class="UI2Kh">91 %</span>', "").replace('<div class="ElyTP">91 %</div>', "");
+  const withStore = await boot({ html, store: quotexStore({ payout: 79 }) });
+  try {
+    assert.equal(overlayShown(withStore), true, "79% from the store is below the 89% minimum");
+  } finally {
+    withStore.close();
+  }
+  const withoutStore = await boot({ html });
+  try {
+    assert.equal(overlayShown(withoutStore), false, "no payout readable without the store");
+  } finally {
+    withoutStore.close();
+  }
+});
+
+test("store: open trades from the store enforce the max-trades cap", async () => {
+  const store = quotexStore({ opened: [deal("a"), deal("b")] });
+  const qx = await boot({ store });
+  try {
+    const buttons = Array.from(qx.window.document.querySelectorAll("#trade-button button"));
+    assert.ok(buttons.every((b) => b.disabled), "blocked at 2 open trades");
+    assert.match(qx.panelRoot().getElementById("__tcWarn").textContent, /Max 2 active trades/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("store: open trades on the other account don't count", async () => {
+  const store = quotexStore({ opened: [deal("a", { isDemo: 0 }), deal("b", { isDemo: 0 })] });
+  const qx = await boot({ store });
+  try {
+    const buttons = Array.from(qx.window.document.querySelectorAll("#trade-button button"));
+    assert.ok(buttons.every((b) => !b.disabled), "live-account deals ignored on the demo page");
+  } finally {
+    qx.close();
+  }
+});
+
+test("store: the loss streak counts newly closed deals, not history", async () => {
+  const store = quotexStore({ closed: [deal("old1"), deal("old2"), deal("old3")] });
+  const qx = await boot({ store });
+  try {
+    await sleep(600);
+    assert.equal(qx.window.localStorage.getItem("__tradeCalc_loss_streak"), "0", "history isn't counted");
+    const add = (d) => {
+      store.deals.closedById[d.id] = d;
+      store.deals.closedIds.push(d.id);
+    };
+    add(deal("l1", { close: 1789465000 }));
+    add(deal("l2", { close: 1789465060 }));
+    await sleep(900);
+    assert.equal(qx.window.localStorage.getItem("__tradeCalc_loss_streak"), "2");
+    add(deal("w1", { profit: 1700, close: 1789465120 }));
+    await sleep(900);
+    assert.equal(qx.window.localStorage.getItem("__tradeCalc_loss_streak"), "0", "a win resets the streak");
+    assert.equal(healthRow(qx, "Settled trades (loss streak)").via, "store");
+  } finally {
+    qx.close();
+  }
+});
+
+test("store: tab name comes from the store label when the name element is gone", async () => {
+  const html = FIXTURE.replace('<div class="WRocw">USD/DZD (OTC)</div>', "");
+  const qx = await boot({ html, store: quotexStore() });
+  try {
+    // X marks the active tab as monitored, saving its normalized name.
+    qx.window.document.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key: "x", code: "KeyX", bubbles: true }));
+    assert.deepEqual(JSON.parse(qx.window.localStorage.getItem("__tradeCalc_monitor_pairs")), ["usddzdotc"]);
+  } finally {
+    qx.close();
+  }
+});
+
+test("selectors: renamed payout-amount class is found by its text and the new class is learned", async () => {
+  const html = FIXTURE.replace('<div class="omlQ2">', '<div class="Zq9Xy">');
+  const qx = await boot({ html });
+  try {
+    assert.equal(qx.window.document.querySelector(".__tcProjBalWin").textContent, "↑ 16,808.00 ₹", "payout 3,580 still read");
+    const learned = JSON.parse(qx.window.localStorage.getItem("__tradeCalc_learned_selectors"));
+    assert.equal(learned.payoutTotal.sel, ".Zq9Xy > b");
+    const row = healthRow(qx, "Payout amount");
+    assert.equal(row.status, "fallback");
+    assert.match(row.via, /^learned /);
+  } finally {
+    qx.close();
+  }
+});
+
+test("selectors: renamed pair-tab classes are found through data-symbol", async () => {
+  const html = FIXTURE.replace('class="dJ15T vXMlv"', 'class="Qq1Aa vXMlv"');
+  const qx = await boot({ html });
+  try {
+    const row = healthRow(qx, "Pair tabs");
+    assert.equal(row.via, "semantic");
+    assert.equal(row.value, "1 open");
+  } finally {
+    qx.close();
+  }
+});
+
+test("health: report shows the store bridge and page reads", async () => {
+  const qx = await boot({ store: quotexStore({ payout: 91 }) });
+  try {
+    const report = qx.askPanel({ type: "GET_HEALTH" });
+    const byName = Object.fromEntries(report.rows.map((r) => [r.name, r]));
+    assert.equal(byName["Store bridge (chart_reader.js)"].status, "ok");
+    assert.equal(byName["Balance value"].value, "15228");
+    assert.equal(byName["Payout % value"].value, "91% page · 91% store");
+    assert.equal(byName["Stake"].value, "2000");
+    assert.equal(byName["Currency"].via, "store");
+    assert.equal(report.url, "/en/demo-trade");
+  } finally {
+    qx.close();
+  }
+});
+
+test("health: without the store the report says so instead of failing", async () => {
+  const qx = await boot();
+  try {
+    const row = healthRow(qx, "Store bridge (chart_reader.js)");
+    assert.equal(row.status, "missing");
   } finally {
     qx.close();
   }

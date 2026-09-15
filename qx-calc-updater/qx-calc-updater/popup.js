@@ -577,4 +577,51 @@ if (depositCancelBtn) depositCancelBtn.addEventListener('click', () => {
   qxSetChip('Stopping', 'warn');
 });
 
+/* =========================================================================
+ * Health check (v1.22.0)
+ * Asks the panel on the active trade tab what it can read from the current Quotex
+ * build and how (hashed class, learned/semantic fallback, Quotex's store, or missing).
+ * ========================================================================= */
+const healthCheckBtn = document.getElementById('healthCheckBtn');
+const healthStatusEl = document.getElementById('healthStatus');
+const healthResultEl = document.getElementById('healthResult');
+
+function healthEscape(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function runHealthCheck() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  let report = null;
+  try {
+    report = tab ? await chrome.tabs.sendMessage(tab.id, { type: 'GET_HEALTH' }) : null;
+  } catch (_) {
+    report = null;
+  }
+  if (!report || !Array.isArray(report.rows)) {
+    healthStatusEl.textContent = 'No panel';
+    healthStatusEl.className = 'chip warn';
+    healthResultEl.textContent = report && report.error
+      ? 'Check failed: ' + report.error
+      : 'Open a Quotex trade page with the panel running, then check again.';
+    return;
+  }
+  const icon = { ok: '✅', fallback: '🔁', missing: '❌' };
+  const missing = report.rows.filter((r) => r.status === 'missing').length;
+  const fallback = report.rows.filter((r) => r.status === 'fallback').length;
+  healthStatusEl.textContent = missing ? missing + ' missing' : fallback ? fallback + ' fallback' : 'All OK';
+  healthStatusEl.className = 'chip ' + (missing ? 'err' : fallback ? 'warn' : 'set');
+  healthResultEl.innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:3px;margin-top:6px;">' +
+    report.rows.map((r) =>
+      `<div style="display:grid;grid-template-columns:18px 1fr auto;gap:6px;align-items:baseline;font-size:11px;">
+         <span>${icon[r.status] || '•'}</span>
+         <span title="${healthEscape(r.via)}">${healthEscape(r.name)} <span style="opacity:0.55;font-size:10px;">${healthEscape(r.via)}</span></span>
+         <span style="font-family:'DM Mono',monospace;opacity:0.8;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${healthEscape(r.value)}</span>
+       </div>`).join('') +
+    `<div style="opacity:0.5;font-size:10px;margin-top:4px;">v${healthEscape(report.version)} · ${healthEscape(report.url)}</div></div>`;
+}
+
+if (healthCheckBtn) healthCheckBtn.addEventListener('click', runHealthCheck);
+
 init();
