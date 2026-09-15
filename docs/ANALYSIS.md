@@ -61,7 +61,7 @@ Theme, panel/journal font size, section visibility, chip position, SL on/off, po
 
 ### Other behavior to be aware of
 - **Account label spoof**: every "Live Account" label is rewritten to "Demo Account" with the academy icon, and the tab title "Live trading" becomes "Demo trading". On a real account the screen *looks* like demo. This is intentional (screen-share masking?), but it's risky if you forget it's on.
-- Welcome-bonus / rocket banners are removed.
+- (Removed in v1.24.1: the welcome-bonus / rocket banner remover.)
 - A second, unrelated extension, **"QX Assistant v1.4.62"**, is also injecting on the page.
 
 ## 2. Bugs found

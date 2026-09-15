@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.24.1] - 2026-09-15
+
+### Fixed
+- **Deposit scanner stopped after page 1 with 0 deposits.** Right after the Balance page loads, Quotex's store
+  holds an empty placeholder (`page 1, pages 1, [], "init"`), and the scanner took it as an empty last page.
+  It now only accepts the store's list once `transactionsStatus` is `"loaded"` for the requested page, waits up
+  to 2.5 s for that before falling back to the page, and stops at the store's page count instead of loading
+  one extra page.
+
+### Removed
+- The welcome-bonus / rocket promo banner remover (not needed).
+
 ## [1.24.0] - 2026-09-15
 
 ### Changed

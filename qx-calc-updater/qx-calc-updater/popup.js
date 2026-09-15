@@ -462,18 +462,24 @@ async function qxScrapeBalancePage(expectedPage) {
     } catch (e) {}
     return null;
   }
+  // Right after load the store holds a placeholder {page: 1, pages: 1, list: [], transactionsStatus: "init"},
+  // then "loading", then "loaded" (seen live 2026-09-15). Only a loaded list for the requested page counts;
+  // accepting the placeholder made page 1 look empty and ended the scan at once (fixed in v1.24.1).
+  let store = null;
   function storeRows() {
-    const store = findStore();
+    store = store || findStore();
     const tx = store && store.getState().transactions;
-    if (!tx || !Array.isArray(tx.list) || tx.page !== expectedPage) return null;
-    return tx.list.map((t) => ({
+    if (!tx || !Array.isArray(tx.list) || tx.transactionsStatus !== 'loaded') return null;
+    if (tx.pages > 0 && expectedPage > tx.pages) return { rows: [], pages: tx.pages }; // past the last page
+    if (tx.page !== expectedPage) return null;
+    return { pages: tx.pages, rows: tx.list.map((t) => ({
       id: t.id != null ? String(t.id) : '',
       status: String(t.orderState || ''),
       type: t.is_deposit ? 'deposit' : String(t.type || ''),
       isDeposit: t.is_deposit === true,
       payment: String(t.method || ''),
       amountRaw: String(t.currencySign || '') + String(t.amount || ''),
-    }));
+    })) };
   }
 
   // Both the store and the rows arrive after an async data fetch; poll for either.
@@ -481,12 +487,13 @@ async function qxScrapeBalancePage(expectedPage) {
   while (!storeRows() && !document.querySelector(ROW_SEL) && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 300));
   }
-  // Give the store a moment to catch up with the page rows before falling back.
-  for (let i = 0; i < 5 && !storeRows(); i++) await new Promise((r) => setTimeout(r, 200));
+  // The rows render ~1 s before the store reports "loaded" (seen live); give it up to 2.5 s before
+  // falling back to reading the page.
+  for (let i = 0; i < 25 && !storeRows(); i++) await new Promise((r) => setTimeout(r, 100));
   const fromStore = storeRows();
   if (fromStore) {
-    const rows = fromStore.filter((r) => r.id);
-    return { ok: true, rows, count: rows.length, url: location.href, source: 'store' };
+    const rows = fromStore.rows.filter((r) => r.id);
+    return { ok: true, rows, count: rows.length, pages: fromStore.pages, url: location.href, source: 'store' };
   }
 
   function getRows() {
@@ -621,6 +628,7 @@ async function qxRunDepositScan() {
         if (qxMatchesDeposit(tx)) matched.push(tx);
       }
       if (newRows === 0) break;        // no new IDs → last page clamped, stop
+      if (res.pages > 0 && page >= res.pages) break; // store knows the page count: don't load an extra page
     }
     qxRenderResults(matched, pagesScanned, qxScanCancel, sources);
   } catch (e) {

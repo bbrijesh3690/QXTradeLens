@@ -6963,25 +6963,6 @@
       }
     }
     function renderMobileBar() {
-      !(function () {
-        const t = document.querySelector('img[alt="welcome bonus"]');
-        if (t) {
-          const e = t.closest("div");
-          if (e) {
-            e.remove();
-            return;
-          }
-        }
-        const e = document.querySelector(".icon-rocket-banner");
-        if (e) {
-          for (let t = e.parentElement; t && t !== document.body; t = t.parentElement) {
-            if (t.querySelector('button[aria-label="Close"]')) {
-              t.remove();
-              return;
-            }
-          }
-        }
-      })();
       const t = byId("__tcMobileBar");
       if (!t) {
         return;

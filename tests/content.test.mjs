@@ -727,6 +727,21 @@ test("page head: no --tc-* tokens or id-tagged styles in <head>; tokens live in 
   }
 });
 
+test("Quotex's promo banners are left alone (remover removed in v1.24.1)", async () => {
+  const html = FIXTURE.replace(
+    '<div id="graph">',
+    '<div id="promo"><svg class="icon-rocket-banner"></svg><button aria-label="Close"></button></div><div id="bonus"><img alt="welcome bonus"></div><div id="graph">',
+  );
+  const qx = await boot({ html });
+  try {
+    await sleep(500);
+    assert.ok(qx.window.document.getElementById("promo"), "rocket banner still there");
+    assert.ok(qx.window.document.getElementById("bonus"), "welcome bonus still there");
+  } finally {
+    qx.close();
+  }
+});
+
 test("no uncaught errors while the panel runs", async () => {
   const qx = await boot();
   try {

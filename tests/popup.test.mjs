@@ -52,6 +52,43 @@ test("deposit scanner: store rows (language-independent) and page rows both matc
   }
 });
 
+function mountStore(w, getState) {
+  const root = w.document.createElement("div");
+  root.id = "root";
+  w.document.body.appendChild(root);
+  root["__reactContainer$test"] = { memoizedProps: null, child: { memoizedProps: { store: { getState } }, child: null, sibling: null }, sibling: null };
+}
+
+test("deposit scanner: the store's empty placeholder right after load isn't taken as an empty page (v1.24.1)", async () => {
+  const w = await loadPopup();
+  try {
+    // Live sequence: placeholder {page 1, pages 1, [], "init"} → "loading" → "loaded" with the real list.
+    const row = { id: 987654321, orderState: "success", is_deposit: true, method: "UPI", amount: "1000.00", currencySign: "₹" };
+    let tx = { page: 1, pages: 1, list: [], transactionsStatus: "init" };
+    mountStore(w, () => ({ transactions: tx }));
+    setTimeout(() => (tx = { page: 1, pages: 10, list: [row], transactionsStatus: "loading" }), 300);
+    setTimeout(() => (tx = { page: 1, pages: 10, list: [row], transactionsStatus: "loaded" }), 900);
+    const res = await w.qxScrapeBalancePage(1);
+    assert.equal(res.source, "store");
+    assert.equal(res.count, 1);
+    assert.equal(res.pages, 10);
+  } finally {
+    w.close();
+  }
+});
+
+test("deposit scanner: a page past the store's page count ends the scan", async () => {
+  const w = await loadPopup();
+  try {
+    mountStore(w, () => ({ transactions: { page: 10, pages: 10, list: [{ id: 1 }], transactionsStatus: "loaded" } }));
+    const res = await w.qxScrapeBalancePage(11);
+    assert.equal(res.source, "store");
+    assert.equal(res.count, 0);
+  } finally {
+    w.close();
+  }
+});
+
 test("deposit scanner: page scraper reads transactions from Quotex's store for the expected page", async () => {
   const w = await loadPopup();
   try {
@@ -63,6 +100,7 @@ test("deposit scanner: page scraper reads transactions from Quotex's store for t
         transactions: {
           page: 2,
           pages: 10,
+          transactionsStatus: "loaded",
           list: [
             { id: 123456789, orderState: "success", is_deposit: true, method: "UPI", amount: "70000.00", currencySign: "₹" },
             { id: 123456788, orderState: "close", is_deposit: true, method: "GPay", amount: "500.00", currencySign: "₹" },
