@@ -1,0 +1,64 @@
+<!doctype html>
+<!--
+  Minimal copy of the Quotex trade page structure, taken from the live DOM of
+  qxbroker.com/en/demo-trade on 2026-09-15. Class names are the hashed ones that were live
+  that day; the semantic hooks (ids, legend text, .deal-amount-input, data-symbol) are what the
+  fixes rely on.
+-->
+<html>
+  <head>
+    <title>Demo trading | Quotex</title>
+  </head>
+  <body>
+    <div id="root">
+      <div class="QE4Zb">
+        <div class="zfJUm">
+          <div class="v2KPX lTzTl">Demo Account</div>
+          <div class="Zt1hG">₹15,228.00</div>
+        </div>
+      </div>
+      <div class="OK1xf">
+        <div class="Q02Z1">
+          <div class="dJ15T vXMlv" id="tab-active" data-symbol="USDDZD_otc">
+            <div class="WRocw">USD/DZD (OTC)</div>
+            <div class="ElyTP">91 %</div>
+          </div>
+        </div>
+      </div>
+      <span class="UI2Kh">91 %</span>
+      <div class="NEJ1S" aria-expanded="false">
+        <fieldset class="DlURG">
+          <legend class="ji62t">Time</legend>
+          <div class="F7y_9">
+            <button class="VK9Nw"></button>
+            <input class="input-control__input opacity" type="text" value="18:14" />
+            <button class="VK9Nw"></button>
+          </div>
+        </fieldset>
+      </div>
+      <div class="fxU4a px1Bw">
+        <div class="deal-amount-input">
+          <fieldset class="DlURG">
+            <legend class="ji62t">Investment</legend>
+            <div class="F7y_9">
+              <button class="VK9Nw"></button>
+              <input class="input-control__input" type="text" value="2000" />
+              <button class="VK9Nw"></button>
+            </div>
+          </fieldset>
+        </div>
+      </div>
+      <div class="w7PIC">
+        <div class="omlQ2">
+          <p>Payout</p>
+          <b>3,580 ₹</b>
+        </div>
+        <div class="DSGsX" id="trade-button">
+          <button type="button"><span class="oQ4Z4">Up</span></button>
+          <button type="button"><span class="oQ4Z4">Down</span></button>
+        </div>
+      </div>
+      <div id="graph"><canvas class="layer plot"></canvas></div>
+    </div>
+  </body>
+</html>

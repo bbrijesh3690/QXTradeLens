@@ -34,6 +34,8 @@ npm install
 
 - `npm run build` rebuilds `content.js` from `src/content.js` (minified).
 - `npm run build:dev` builds an unminified `content.js`, which is easier to debug in DevTools.
+- `npm test` runs behavior tests in jsdom against `tests/fixtures/trade-page.html`, a copy of the
+  live Quotex DOM. `CONTENT_JS=path npm test` tests a different build.
 - `npm run verify` checks that the build is the same program as v1.19.0. It's only meaningful for
   refactors that shouldn't change behavior; once a fix lands, a difference is expected.
 

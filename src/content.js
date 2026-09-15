@@ -13,11 +13,10 @@
  */
 (function () {
   // ────────────────────────────────────────────────────────────────────────────────────────────────
-  // Only run on the trade pages (/en/trade, /en/demo-trade, …)
+  // The panel only runs on the trade pages (/en/trade, /en/demo-trade, …). Quotex is a single-page
+  // app, so the launcher at the bottom also follows in-app navigation to and from those pages.
   // ────────────────────────────────────────────────────────────────────────────────────────────────
-  if (!/\/(demo-)?trade(\/|\?|$)/.test(location.pathname)) {
-    return;
-  }
+  var TRADE_PATH_RE = /\/(demo-)?trade(\/|\?|$)/;
   // ────────────────────────────────────────────────────────────────────────────────────────────────
   // _tc(): builds the whole panel. Calling it again while it exists toggles it off (cleanup).
   // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -247,6 +246,12 @@
           t.remove();
         }
       } catch (t) {}
+      if (window.__tcMsgListener) {
+        try {
+          chrome.runtime.onMessage.removeListener(window.__tcMsgListener);
+        } catch (t) {}
+        delete window.__tcMsgListener;
+      }
       delete window.__tcCleanup;
     };
     document.addEventListener("__tcToggle", window.__tcCleanup);
@@ -576,10 +581,42 @@
     function readPayoutAndInvestment() {
       payoutTotalEl = findEl("payoutTotal");
       investmentEl = findEl("investment");
+      let investment = investmentEl ? parseMoney(investmentEl.textContent) : NaN;
+      if (isNaN(investment)) {
+        investment = readInvestmentFromStakeInput();
+      }
       return {
         payout: payoutTotalEl ? parseMoney(payoutTotalEl.textContent) : NaN,
-        investment: investmentEl ? parseMoney(investmentEl.textContent) : NaN,
+        investment,
       };
+    }
+    // Hotfix v1.20.1: Quotex no longer renders a separate investment label (`.GmATb` / `.EalHv` match
+    // nothing), which silently disabled the "trade would breach stop loss" guard and the win/loss
+    // projection. The stake now only lives in the Investment field, so read it from there. A percent
+    // stake ("2%") is converted to money using the account balance.
+    // Deliberately not readStake(): its last-resort fallback takes the first `input.input-control__input`
+    // on the page, which is the expiry Time field ("18:14" would read as 1814).
+    function readInvestmentFromStakeInput() {
+      let el = document.querySelector(".deal-amount-input input");
+      if (!el) {
+        const legend = Array.from(document.querySelectorAll("legend")).find(
+          (node) => (node.textContent || "").trim().toLowerCase() === "investment",
+        );
+        const field = legend && legend.closest("fieldset");
+        el = field && field.querySelector("input");
+      }
+      if (!el) {
+        return NaN;
+      }
+      const input = parseMoney(el.value);
+      if (isNaN(input) || input <= 0) {
+        return NaN;
+      }
+      if (!el.value.includes("%")) {
+        return input;
+      }
+      const balance = readAccountBalance();
+      return isNaN(balance) ? NaN : (balance * input) / 100;
     }
     let recalcQueued = false,
       tradingBlocked = false;
@@ -3775,10 +3812,13 @@
     // Keyboard shortcuts
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     window.__tcKeyDelegator = (t) => {
-      if (t.metaKey && (t.code === "ArrowUp" || t.code === "ArrowDown")) {
+      // Take-profit step: Cmd+↑/↓ on macOS, Ctrl+↑/↓ on Windows/Linux (hotfix v1.20.1: was metaKey
+      // only, which on Windows is the Win key). The TP field shows a formatted value like "12,500.00",
+      // so it's parsed with parsePlainNumber; plain parseFloat stopped at the comma and read 12.
+      if ((t.metaKey || t.ctrlKey) && !t.altKey && !t.shiftKey && (t.code === "ArrowUp" || t.code === "ArrowDown")) {
         t.preventDefault();
         const e = parseFloat(tpInput.step) || 1000;
-        let n = parseFloat(tpInput.value) || 0;
+        let n = parsePlainNumber(tpInput.value) || 0;
         n += t.code === "ArrowUp" ? e : -e;
         if (n < 0) {
           n = 0;
@@ -6793,7 +6833,9 @@
     }
     recalc();
     if (typeof chrome != "undefined" && chrome.runtime && chrome.runtime.onMessage) {
-      chrome.runtime.onMessage.addListener((t, e, n) => {
+      // Kept on window so cleanup can remove it (hotfix v1.20.1): otherwise a torn-down panel's
+      // listener stays registered and answers the popup's GET_STATE with stale values after a relaunch.
+      window.__tcMsgListener = (t, e, n) => {
         if (t.type === "GET_STATE") {
           n({
             theme: getTheme(),
@@ -6900,31 +6942,47 @@
         }
         var o;
         return true;
-      });
+      };
+      chrome.runtime.onMessage.addListener(window.__tcMsgListener);
     }
   };
   // ────────────────────────────────────────────────────────────────────────────────────────────────
   // Launcher: first start, SPA URL changes, popup TOGGLE_PANEL
   // ────────────────────────────────────────────────────────────────────────────────────────────────
+  //
+  // Hotfix v1.20.1: "is the panel running?" used to be `document.getElementById("__tradeCalc")`, but
+  // the panel lives in a CLOSED shadow root, so that was always null. Every in-app URL change then
+  // called _tc() while the panel existed, and _tc() toggles an existing panel OFF, silently removing
+  // the SL / payout / trade-cap guards (the next URL change toggled it back on). `window.__tcCleanup`
+  // (isolated world, set only while the panel exists) is the reliable signal.
+  function _tcIsTradePage() {
+    return TRADE_PATH_RE.test(location.pathname);
+  }
+  function _tcIsRunning() {
+    return typeof window.__tcCleanup === "function";
+  }
+  // Set when the user turns the panel off from the popup, so navigation doesn't bring it back.
+  var _tcUserClosed = false;
   function _tcLaunch() {
-    if (document.getElementById("__tradeCalc")) {
-      _tc();
-      return;
-    }
     if (!document.body) {
       setTimeout(_tcLaunch, 400);
       return;
     }
-    _tc();
+    if (_tcIsTradePage() && !_tcIsRunning() && !_tcUserClosed) {
+      _tc();
+    }
   }
   var _tcLastUrl = location.href;
   new MutationObserver(function () {
     var u = location.href;
-    if (u !== _tcLastUrl) {
-      _tcLastUrl = u;
-      if (/\/(demo-)?trade(\/|\?|$)/.test(location.pathname) && !document.getElementById("__tradeCalc")) {
-        _tcLaunch();
-      }
+    if (u === _tcLastUrl) {
+      return;
+    }
+    _tcLastUrl = u;
+    if (_tcIsTradePage()) {
+      _tcLaunch();
+    } else if (_tcIsRunning()) {
+      window.__tcCleanup();
     }
   }).observe(document, {
     subtree: true,
@@ -6933,6 +6991,10 @@
   if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener(function (msg) {
       if (msg.type === "TOGGLE_PANEL") {
+        if (!_tcIsTradePage() && !_tcIsRunning()) {
+          return;
+        }
+        _tcUserClosed = _tcIsRunning();
         _tc();
       }
     });
