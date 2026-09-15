@@ -57,7 +57,7 @@ Auto-close also runs every 5 s: tabs with payout below the minimum are closed au
 - **SYS_LOCK**: a declarativeNetRequest block of `qxbroker.com` (15 min for a 3-loss streak, 6 h for an SL breach). It also posts to a local lock daemon on `127.0.0.1:7343` and closes all Quotex tabs. The lock expires by alarm, and there's no unlock path by design. It's **disabled by default** (popup toggle).
 
 ### Popup
-Theme, panel/journal font size, section visibility, chip position, SL on/off, post-TP gap, system lock toggle, max trades, hotkey opt-ins, marquee, MTF timeframes and candle count, sheet URL, and a **UPI/PhonePe deposit scanner**. The scanner walks every page of `/en/balance`, sums successful UPI/PhonePe deposits, then returns the tab to its original URL.
+Theme, panel/journal font size, section visibility, chip position, SL on/off, post-TP gap, system lock toggle, max trades, hotkey opt-ins, marquee, MTF timeframes and candle count, sheet URL, and a **deposit scanner**. The scanner walks every Balance page, sums successful deposits of every payment method with a per-method breakdown (UPI/PhonePe only before v1.24.2), then returns the tab to its original URL.
 
 ### Other behavior to be aware of
 - **Account label spoof**: every "Live Account" label is rewritten to "Demo Account" with the academy icon, and the tab title "Live trading" becomes "Demo trading". On a real account the screen *looks* like demo. This is intentional (screen-share masking?), but it's risky if you forget it's on.

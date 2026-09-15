@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.24.2] - 2026-09-15
+
+### Changed
+- **Deposit scanner counts every successful deposit, of any payment method** (GPay, Binance, cards, …; it
+  was UPI and PhonePe only). The result shows a per-method breakdown (count and total, largest first) under
+  the grand total, and each listed deposit shows its method. Failed deposits and withdrawals still don't count.
+  The button is now "Scan Deposits".
+
 ## [1.24.1] - 2026-09-15
 
 ### Fixed

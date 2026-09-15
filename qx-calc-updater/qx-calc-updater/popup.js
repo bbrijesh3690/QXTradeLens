@@ -343,9 +343,10 @@ sheetClear.addEventListener('click', () => {
 });
 
 /* =========================================================================
- * UPI / PhonePe deposit scanner
+ * Deposit scanner
  * Walks every page of the QX Broker balance transaction history and sums all
- * Successed + Deposit + UPI/PhonePe rows. The table is client-rendered (a
+ * successful deposits, of any payment method, with a per-method breakdown
+ * (v1.24.2; UPI/PhonePe only before). The table is client-rendered (a
  * fetch of ?page=N returns only the SPA shell), so we drive the user's active
  * balance tab through each ?page=N, let it render, scrape the DOM via
  * chrome.scripting, then restore the tab to where it started. 100% read-only.
@@ -410,17 +411,34 @@ function qxDetectSymbol(raw) {
 }
 
 /**
- * A row qualifies only if successful + deposit + UPI/PhonePe (case/space tolerant).
- * Store rows (v1.24.0) carry language-independent values: orderState "success", isDeposit true.
- * Page rows carry the English labels "Successed" / "Deposit".
+ * A row qualifies if it's a successful deposit, whatever the payment method (UPI, PhonePe, GPay,
+ * Binance, cards, …). Store rows (v1.24.0) carry language-independent values: orderState "success",
+ * isDeposit true. Page rows carry the English labels "Successed" / "Deposit".
  */
 function qxMatchesDeposit(tx) {
   const status = (tx.status || '').trim().toLowerCase();
   const type = (tx.type || '').trim().toLowerCase();
-  const pay = (tx.payment || '').trim().toLowerCase().replace(/\s+/g, ''); // "Phone Pe" -> "phonepe"
   const ok = status === 'success' || status === 'successed';
   const deposit = tx.isDeposit === true || type === 'deposit';
-  return ok && deposit && (pay === 'upi' || pay === 'phonepe');
+  return ok && deposit;
+}
+
+/** Grouping key for a payment method: case and spaces ignored, so "Phone Pe" and "PhonePe" group together. */
+function qxMethodKey(payment) {
+  return String(payment || '').trim().toLowerCase().replace(/\s+/g, '') || 'other';
+}
+
+/** Per-method totals, largest first: [{ method, count, total }]. The label is the first spelling seen. */
+function qxBreakdownByMethod(matched) {
+  const groups = new Map();
+  for (const tx of matched) {
+    const key = qxMethodKey(tx.payment);
+    const g = groups.get(key) || { method: String(tx.payment || '').trim() || 'Other', count: 0, total: 0 };
+    g.count += 1;
+    g.total += qxParseAmount(tx.amountRaw);
+    groups.set(key, g);
+  }
+  return Array.from(groups.values()).sort((a, b) => b.total - a.total || a.method.localeCompare(b.method));
 }
 
 /** Format a number as currency, e.g. 1253.31 -> "$1,253.31". */
@@ -565,18 +583,28 @@ function qxRenderResults(matched, pagesScanned, cancelled, sources) {
 
   qxSetChip(cancelled ? 'Stopped' : 'Done', cancelled ? 'warn' : 'ok');
 
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const breakdownHtml = qxBreakdownByMethod(matched).map((g) =>
+    `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;">
+       <span>${esc(g.method)} <span style="opacity:0.55;">× ${g.count}</span></span>
+       <span style="font-family:'DM Mono',monospace;font-weight:600;">${qxFormatMoney(g.total, symbol)}</span>
+     </div>`).join('');
+
   const SHOW = 12;
   const listHtml = matched.slice(0, SHOW).map((tx) =>
     `<div style="display:flex;justify-content:space-between;gap:8px;">
-       <span style="font-family:'DM Mono',monospace;color:oklch(62% 0.016 257);font-size:10px;">${tx.id}</span>
+       <span style="font-family:'DM Mono',monospace;color:oklch(62% 0.016 257);font-size:10px;">${esc(tx.id)} <span style="opacity:0.8;">${esc(String(tx.payment || '').trim())}</span></span>
        <span style="font-family:'DM Mono',monospace;font-size:11px;">${qxFormatMoney(qxParseAmount(tx.amountRaw), symbol)}</span>
      </div>`).join('');
   const more = matched.length > SHOW ? `<div style="opacity:0.5;margin-top:2px;font-size:10px;">…and ${matched.length - SHOW} more</div>` : '';
 
   depositResultEl.innerHTML =
     `<div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:oklch(76% 0.16 145);margin:4px 0 3px;">${qxFormatMoney(total, symbol)}</div>
-     <div style="font-size:11px;color:oklch(62% 0.016 257);margin-bottom:4px;">${matched.length} deposit${matched.length === 1 ? '' : 's'} · ${pagesScanned} page${pagesScanned === 1 ? '' : 's'} scanned${via}</div>
-     ${matched.length ? `<div style="display:flex;flex-direction:column;gap:3px;">${listHtml}${more}</div>` : '<div style="opacity:0.5;margin-top:2px;font-size:11px;">No matching deposits found.</div>'}`;
+     <div style="font-size:11px;color:oklch(62% 0.016 257);margin-bottom:4px;">${matched.length} successful deposit${matched.length === 1 ? '' : 's'} · ${pagesScanned} page${pagesScanned === 1 ? '' : 's'} scanned${via}</div>
+     ${matched.length
+       ? `<div style="display:flex;flex-direction:column;gap:2px;padding:4px 0 6px;border-bottom:1px solid oklch(100% 0 0 / 0.08);margin-bottom:5px;">${breakdownHtml}</div>
+          <div style="display:flex;flex-direction:column;gap:3px;">${listHtml}${more}</div>`
+       : '<div style="opacity:0.5;margin-top:2px;font-size:11px;">No successful deposits found.</div>'}`;
 }
 
 async function qxRunDepositScan() {

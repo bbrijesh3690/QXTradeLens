@@ -36,17 +36,40 @@ test("deposit scanner: balance page is recognized in any site language and on su
   }
 });
 
-test("deposit scanner: store rows (language-independent) and page rows both match the same deposits", async () => {
+test("deposit scanner: every successful deposit counts, whatever the payment method (v1.24.2)", async () => {
   const w = await loadPopup();
   try {
     // Store row shape (orderState / isDeposit / method), as read live on 2026-09-15.
-    assert.equal(w.qxMatchesDeposit({ status: "success", type: "deposit", isDeposit: true, payment: "UPI" }), true);
-    assert.equal(w.qxMatchesDeposit({ status: "success", type: "deposit", isDeposit: true, payment: "PhonePe" }), true);
-    assert.equal(w.qxMatchesDeposit({ status: "close", type: "deposit", isDeposit: true, payment: "UPI" }), false, "failed");
-    assert.equal(w.qxMatchesDeposit({ status: "success", type: "deposit", isDeposit: true, payment: "GPay" }), false, "GPay isn't counted");
-    // Page row shape (English labels), unchanged.
+    for (const payment of ["UPI", "PhonePe", "GPay", "Binance", "Visa", ""]) {
+      assert.equal(w.qxMatchesDeposit({ status: "success", type: "deposit", isDeposit: true, payment }), true, payment || "no method");
+    }
+    assert.equal(w.qxMatchesDeposit({ status: "close", type: "deposit", isDeposit: true, payment: "GPay" }), false, "failed");
+    // Page row shape (English labels).
     assert.equal(w.qxMatchesDeposit({ status: "Successed", type: "Deposit", payment: "Phone Pe" }), true);
-    assert.equal(w.qxMatchesDeposit({ status: "Successed", type: "Withdrawal", payment: "UPI" }), false);
+    assert.equal(w.qxMatchesDeposit({ status: "Failed", type: "Deposit", payment: "Binance" }), false);
+    assert.equal(w.qxMatchesDeposit({ status: "Successed", type: "Withdrawal", payment: "UPI" }), false, "withdrawal");
+  } finally {
+    w.close();
+  }
+});
+
+test("deposit scanner: per-method breakdown groups spellings and sorts by total", async () => {
+  const w = await loadPopup();
+  try {
+    const rows = [
+      { payment: "UPI", amountRaw: "₹1000.00" },
+      { payment: "GPay", amountRaw: "₹5000.00" },
+      { payment: "Phone Pe", amountRaw: "₹300.00" },
+      { payment: "PhonePe", amountRaw: "₹200.00" },
+      { payment: "upi", amountRaw: "₹500.00" },
+      { payment: "", amountRaw: "₹50.00" },
+    ];
+    assert.deepEqual(JSON.parse(JSON.stringify(w.qxBreakdownByMethod(rows))), [
+      { method: "GPay", count: 1, total: 5000 },
+      { method: "UPI", count: 2, total: 1500 },
+      { method: "Phone Pe", count: 2, total: 500 },
+      { method: "Other", count: 1, total: 50 },
+    ]);
   } finally {
     w.close();
   }
