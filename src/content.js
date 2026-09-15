@@ -21,6 +21,8 @@
   // _tc(): builds the whole panel. Calling it again while it exists toggles it off (cleanup).
   // ────────────────────────────────────────────────────────────────────────────────────────────────
   var _tc = function () {
+    // <style> elements this panel adds to the page <head>, removed on cleanup.
+    const headStyleEls = [];
     if (window.__tcCleanup) {
       document.dispatchEvent(new CustomEvent("__tcToggle"));
       return;
@@ -134,10 +136,8 @@
         window.removeEventListener("resize", window.__tcMobileResize);
         delete window.__tcMobileResize;
       }
-      const c = document.getElementById(ids.tcPlatformStyles);
-      if (c) {
-        c.remove();
-      }
+      headStyleEls.forEach((el) => el.remove());
+      headStyleEls.length = 0;
       const s = byId(ids.tcTradeTimer);
       if (s) {
         const t = s.parentElement;
@@ -222,12 +222,6 @@
       try {
         if (shadowHost && shadowHost.parentNode) {
           shadowHost.remove();
-        }
-      } catch (t) {}
-      try {
-        const t = document.getElementById(ids.tcTokens);
-        if (t) {
-          t.remove();
         }
       } catch (t) {}
       if (window.__tcMsgListener) {
@@ -346,7 +340,20 @@
         const label = Array.from(document.querySelectorAll("div")).find(
           (d) => d.children.length === 0 && /^(Live|Demo) Account$/.test(textOf(d)),
         );
-        return label ? label.nextElementSibling : null;
+        if (label && label.nextElementSibling) {
+          return label.nextElementSibling;
+        }
+        // Any site language (v1.24.0): a money value ("₹15,228.00") right after a short text label
+        // near the top of the page, which is the account block's shape.
+        return (
+          Array.from(document.querySelectorAll("div")).find((d) => {
+            if (d.children.length !== 0 || !/^[^\d\s]{1,3}\s?\d[\d,.\s]*\d$/.test(textOf(d))) {
+              return false;
+            }
+            const prev = d.previousElementSibling;
+            return !!prev && prev.children.length === 0 && /\D/.test(textOf(prev)) && d.getBoundingClientRect().top < 100;
+          }) || null
+        );
       },
       // Payout % inside the active pair tab (e.g. "79 %").
       returnPct: () => {
@@ -359,7 +366,18 @@
       // <p>Payout</p> … <b>3,580 ₹</b>
       payoutTotal: () => {
         const p = Array.from(document.querySelectorAll("p")).find((el) => textOf(el).toLowerCase() === "payout");
-        return (p && p.parentElement && p.parentElement.querySelector("b")) || null;
+        if (p && p.parentElement && p.parentElement.querySelector("b")) {
+          return p.parentElement.querySelector("b");
+        }
+        // Any site language (v1.24.0): the <p>label</p> + <b>amount</b> block above the Up/Down buttons.
+        const trade = document.getElementById("trade-button");
+        for (let el = trade && trade.previousElementSibling; el; el = el.previousElementSibling) {
+          const b = el.querySelector(":scope > b");
+          if (b && el.querySelector(":scope > p") && /\d/.test(textOf(b))) {
+            return b;
+          }
+        }
+        return null;
       },
       tradeButtons: () => document.querySelector("#trade-button button"),
       amountInput: () => {
@@ -500,6 +518,30 @@
       }
       return quotexAssets;
     }
+    // Account timezone (v1.24.0): Quotex's `global.timeZone` is the UTC offset in seconds the account uses
+    // (19800 = UTC+5:30, seen live). The last known value is cached so the trading day doesn't jump if the
+    // store isn't reachable yet; IST is the fallback, matching every earlier version.
+    const KEY_TZ_OFFSET = "__tradeCalc_tz_offset_sec",
+      DEFAULT_TZ_OFFSET_SEC = 19800;
+    let cachedTzOffsetSec = (() => {
+      try {
+        const v = parseInt(localStorage.getItem(KEY_TZ_OFFSET), 10);
+        return Number.isFinite(v) && Math.abs(v) <= 14 * 3600 ? v : DEFAULT_TZ_OFFSET_SEC;
+      } catch (t) {
+        return DEFAULT_TZ_OFFSET_SEC;
+      }
+    })();
+    function accountTzOffsetMs() {
+      const state = readQuotexState();
+      const sec = state ? state.timeZone : null;
+      if (typeof sec == "number" && Number.isFinite(sec) && Math.abs(sec) <= 14 * 3600 && sec !== cachedTzOffsetSec) {
+        cachedTzOffsetSec = sec;
+        try {
+          localStorage.setItem(KEY_TZ_OFFSET, String(sec));
+        } catch (t) {}
+      }
+      return cachedTzOffsetSec * 1000;
+    }
     const isDemoPage = () => /\/demo-trade(\/|\?|$)/.test(location.pathname);
     // Deals for the account this page shows (demo or live). Deals without an isDemo flag are kept.
     function dealsForThisAccount(list) {
@@ -579,8 +621,6 @@
       })(),
       ids = {};
     [
-      "tcPlatformStyles",
-      "tcTokens",
       "tcProjBalRow",
       "tcTradeTimer",
       "tcProjChip",
@@ -1285,14 +1325,28 @@
       journalFontSize = parseInt(getJournalFontSizeStored(), 10) || 20,
       isLightTheme = getTheme() === "light";
     // ────────────────────────────────────────────────────────────────────────────────────────────────
-    // Styles: design tokens (document.head), panel CSS (shadow root), platform tweaks
+    // Styles: design tokens + panel CSS (shadow root), font import + Quotex tweaks (page head)
     // ────────────────────────────────────────────────────────────────────────────────────────────────
-    if (!document.getElementById(ids.tcTokens)) {
+    // v1.24.0 (B11): the design tokens used to be a `:root { --tc-* }` block in the page's <head>, readable by
+    // any page script (getComputedStyle(document.documentElement)). They now live on the shadow host
+    // (`:host`); the two chart chips outside the shadow root get them as inline custom properties. Only the
+    // font import stays in <head> (fonts can't be declared inside a shadow root), with no id.
+    const TOKEN_VARS_CSS =
+      ":host { --s-1: 0.25em; --s-2: 0.5em; --s-3: 0.75em; --s-4: 1em; --s-5: 1.25em; --s-6: 1.5em; --s-7: 1.75em; --s-8: 2em; --density: 1; --fz-label: 0.769em; --fz-body: 1em; --fz-value: 1.154em; --fz-value-lg: 1.385em; --fz-decimal: 0.833em; --fz-pl: 1.538em; --fz-currency: 1.692em; --fz-hero: 1.5em; --tc-grn: #7ddc8f; --tc-red: var(--color-red, oklch(64% 0.18 25)); --tc-amb: var(--color-yellow, oklch(80% 0.15 75)); --tc-ylw: var(--color-yellow, oklch(90% 0.17 95)); --tc-blu: var(--color-blue, oklch(72% 0.16 250)); --tc-pur: oklch(72% 0.14 285); --tc-cyn: oklch(80% 0.13 210); --tc-accent: #d0bcff; --m3-primary: #d0bcff; --m3-on-primary: #381e72; --m3-primary-cont: #4f378b; --m3-on-primary-cont: #eaddff; --m3-surface: #1c1b20; --m3-surface-2: #262529; --m3-surface-3: #302f34; --m3-on-surface: #e6e0e9; --m3-on-surface-var: #cac4d0; --m3-outline: #938f99; --m3-outline-var: #48464c; --m3-green: #7ddc8f; --m3-error: #f2b8b5; --m3-shape-xs: 0.25em; --m3-shape-sm: 0.5em; --m3-shape-md: 0.75em; --m3-shape-lg: 1em; --m3-shape-xl: 1.75em; --m3-shape-full: 999px; --m3-elev-1: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px 1px rgba(0,0,0,.15); --m3-elev-2: 0 1px 2px rgba(0,0,0,.3), 0 2px 6px 2px rgba(0,0,0,.15); --m3-elev-3: 0 1px 3px rgba(0,0,0,.3), 0 4px 8px 3px rgba(0,0,0,.15); --tc-bg: var(--m3-surface-2); --tc-sec-bg: transparent; --tc-sec-border: var(--m3-outline-var); --tc-text-pri: var(--m3-on-surface); --tc-text-dim: var(--m3-on-surface-var); --tc-text-mut: oklch(from var(--m3-on-surface-var) l c h / 0.78); --tc-btn-text: var(--m3-on-primary); --tc-input-bg: var(--m3-surface-3); --tc-input-border: var(--m3-outline-var); --tc-hover-bg: oklch(from var(--tc-accent) l c h / 0.08); --tc-hover-border: var(--m3-outline); --tc-panel-shadow: var(--m3-elev-2); }";
+    const TOKEN_VARS = Array.from(TOKEN_VARS_CSS.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)).map((m) => [m[1], m[2].trim()]);
+    function applyTokenVars(el) {
+      for (const [name, value] of TOKEN_VARS) {
+        el.style.setProperty(name, value);
+      }
+    }
+    {
       const t = document.createElement("style");
-      t.id = ids.tcTokens;
-      t.innerHTML =
-        " @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;0,600&family=DM+Sans:wght@400;500;600;700;800&display=swap'); :root { --s-1: 0.25em; --s-2: 0.5em; --s-3: 0.75em; --s-4: 1em; --s-5: 1.25em; --s-6: 1.5em; --s-7: 1.75em; --s-8: 2em; --density: 1; --fz-label: 0.769em; --fz-body: 1em; --fz-value: 1.154em; --fz-value-lg: 1.385em; --fz-decimal: 0.833em; --fz-pl: 1.538em; --fz-currency: 1.692em; --fz-hero: 1.5em; --tc-grn: #7ddc8f; --tc-red: var(--color-red, oklch(64% 0.18 25)); --tc-amb: var(--color-yellow, oklch(80% 0.15 75)); --tc-ylw: var(--color-yellow, oklch(90% 0.17 95)); --tc-blu: var(--color-blue, oklch(72% 0.16 250)); --tc-pur: oklch(72% 0.14 285); --tc-cyn: oklch(80% 0.13 210); --tc-accent: #d0bcff; --m3-primary: #d0bcff; --m3-on-primary: #381e72; --m3-primary-cont: #4f378b; --m3-on-primary-cont: #eaddff; --m3-surface: #1c1b20; --m3-surface-2: #262529; --m3-surface-3: #302f34; --m3-on-surface: #e6e0e9; --m3-on-surface-var: #cac4d0; --m3-outline: #938f99; --m3-outline-var: #48464c; --m3-green: #7ddc8f; --m3-error: #f2b8b5; --m3-shape-xs: 0.25em; --m3-shape-sm: 0.5em; --m3-shape-md: 0.75em; --m3-shape-lg: 1em; --m3-shape-xl: 1.75em; --m3-shape-full: 999px; --m3-elev-1: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px 1px rgba(0,0,0,.15); --m3-elev-2: 0 1px 2px rgba(0,0,0,.3), 0 2px 6px 2px rgba(0,0,0,.15); --m3-elev-3: 0 1px 3px rgba(0,0,0,.3), 0 4px 8px 3px rgba(0,0,0,.15); --tc-bg: var(--m3-surface-2); --tc-sec-bg: transparent; --tc-sec-border: var(--m3-outline-var); --tc-text-pri: var(--m3-on-surface); --tc-text-dim: var(--m3-on-surface-var); --tc-text-mut: oklch(from var(--m3-on-surface-var) l c h / 0.78); --tc-btn-text: var(--m3-on-primary); --tc-input-bg: var(--m3-surface-3); --tc-input-border: var(--m3-outline-var); --tc-hover-bg: oklch(from var(--tc-accent) l c h / 0.08); --tc-hover-border: var(--m3-outline); --tc-panel-shadow: var(--m3-elev-2); } ";
+      t.textContent = "@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;0,600&family=DM+Sans:wght@400;500;600;700;800&display=swap');";
       document.head.appendChild(t);
+      headStyleEls.push(t);
+      const tokens = document.createElement("style");
+      tokens.textContent = TOKEN_VARS_CSS;
+      shadow.appendChild(tokens);
     }
     if (!shadow.getElementById("__tcStyles")) {
       const t = document.createElement("style");
@@ -1301,11 +1355,12 @@
         " #__tradeCalc { position: fixed; top: 5px; right: 375px; width: max-content; min-height: 3.5em; max-width: 90em; border-radius: 999px; z-index: 2147483647; font-size: 13px; font-family: 'DM Sans', system-ui, sans-serif; background: var(--tc-bg); box-shadow: var(--tc-panel-shadow); display: flex; align-items: center; padding: 0.3em 1.5em; gap: 0; cursor: default; user-select: none; overflow: visible; transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); } #__tradeCalc.dragging { transition: none; cursor: grabbing; } .tcGrip { display: flex; align-items: center; flex-shrink: 0; pointer-events: none; width: 0.7em; height: 1.1em; color: var(--m3-on-surface-var); opacity: 0.4; } .tcGrip svg { width: 100%; height: 100%; } .tcGripLeft { margin-right: 0.7em; } .tcGripRight { margin-left: 0.7em; } #__tcContent { display: flex; align-items: stretch; flex: 1; gap: 0.75em; scrollbar-width: none; } #__tcContent::-webkit-scrollbar { display: none; } .tcSec { display: flex; flex-direction: row; align-items: stretch; background: transparent; border: none; flex:1; padding: 0; gap: 0; position: relative; flex-shrink: 0; } #__tcSecTargets { cursor: grab; } #__tcSecProtections { margin-left: auto; margin-right: auto; } #__tcSecProjections { } #__tcSecLog { } .tcSec:has([data-tc-tip]:hover) { z-index: 100; } [data-tc-tip] { position: relative; } [data-tc-tip]::after { content: attr(data-tc-tip); position: absolute; top: calc(100% + 0.46em); left: 50%; white-space: nowrap; pointer-events: none; background: oklch(16% 0.02 257 / 0.98); color: oklch(96% 0.01 240); font-size: max(11px, 0.72em); font-weight: 600; letter-spacing: 0.04em; text-transform: none; padding: 0.4em 0.7em; border-radius: 0.42em; border: 1px solid oklch(100% 0 0 / 0.14); box-shadow: 0 4px 12px oklch(0% 0 0 / 0.45); opacity: 0; transition: opacity 0.18s, transform 0.18s; transform: translateX(-50%) translateY(-0.31em); z-index: 2147483647; } [data-tc-tip]::before { content: ''; position: absolute; top: calc(100% + 0.15em); left: 50%; transform: translateX(-50%); border: 0.31em solid transparent; border-bottom-color: oklch(16% 0.02 257 / 0.98); pointer-events: none; opacity: 0; transition: opacity 0.18s; z-index: 2147483647; } [data-tc-tip]:hover, [data-tc-tip]:focus-visible { z-index: 2147483646; } [data-tc-tip]:hover::after, [data-tc-tip]:focus-visible::after { opacity: 1; transform: translateX(-50%) translateY(0); } [data-tc-tip]:hover::before, [data-tc-tip]:focus-visible::before { opacity: 1; } #__tcSecTargets [data-tc-tip]::after { left: 0; transform: translateY(-0.31em); } #__tcSecTargets [data-tc-tip]:hover::after, #__tcSecTargets [data-tc-tip]:focus-visible::after { transform: translateY(0); } #__tcSecTargets [data-tc-tip]::before { left: 0.7em; transform: none; } .tcSecFields { display: flex; align-items: stretch; gap: 0.6em; flex: 1; position: relative; } .tcFld { display: flex; flex-direction: column; gap: 0.25em; position: relative; flex:1;} .tcFld > .tcLbl { min-height: 0; display: flex; align-items: center; padding-bottom: 0; font-weight: bold; flex: 0 0 auto; } .tcFld > *:not(.tcLbl) { margin-top: auto; margin-bottom: auto; } .tcLbl { font-size: var(--fz-label); text-transform: uppercase; color: var(--tc-text-mut); font-weight: 500; letter-spacing: 0.16em; line-height: 1; white-space: nowrap; display: flex; align-items: center; gap: 0.3em; } .tcLbl svg { opacity: 0.75; } .tcLbl .tcDot { display: none; } .tcVal { font-family: 'DM Mono', monospace; font-size: var(--fz-value); color: var(--tc-text-pri); font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; transition: color 0.3s, text-shadow 0.3s; letter-spacing: 0.031em; white-space: nowrap; } .tcValLg { font-family: 'DM Mono', monospace; font-size: var(--fz-value-lg); font-weight: 400; color: var(--tc-text-pri); letter-spacing: 0.015em; line-height: 1; font-variant-numeric: tabular-nums; transition: text-shadow 0.3s; } .tcValLg .tcDec { color: var(--tc-text-mut); font-weight: 400; font-size: var(--fz-decimal); letter-spacing: 0.015em; margin-left: 0.05em; } .tcValLg[style*=\"--tc-grn\"] { text-shadow: 0 0 18px oklch(76% 0.16 145 / 0.4); } .tcValLg[style*=\"--tc-red\"] { text-shadow: 0 0 18px oklch(64% 0.18 25 / 0.4); } .tcProjMarks { display: none; } .tcProjMark { width: 1.077em; height: 0.154em; border-radius: 0.231em; background: oklch(76% 0.16 145 / 0.18); } .tcProjMark.tcProjMarkFill { background: var(--tc-grn); box-shadow: 0 0 6px oklch(76% 0.16 145 / 0.5); } .tcControlGroup { display: inline-flex; align-items: center; gap: 0.18em; background: var(--m3-surface-3); box-shadow: none; border: 1px solid var(--m3-outline-var); border-radius: var(--m3-shape-full); padding: 0.25em 0.8em; min-height: 1.3em; box-sizing: border-box; transition: border-color 0.2s, border-width 0.1s; overflow: visible; } .tcControlGroup:hover:not(:focus-within) { border-color: var(--m3-outline); } .tcControlGroup:focus-within { border: 1px solid var(--tc-accent); padding: calc(0.25em - 1px) calc(0.6em - 1px); } #__tcSLInputWrap, #__tcSLInputWrap:hover, #__tcSLInputWrap:focus-within { border-color: var(--m3-outline-var); padding: 0.25em 0.8em; } #__tcSLInput { cursor: default; } .tcInput { font-family: 'DM Mono', monospace; font-size: 1em; color: var(--m3-on-surface); background: transparent; border: none; outline: none; padding: 0; font-weight: 400; font-variant-numeric: tabular-nums; min-width: 0; letter-spacing: 0.031em; -moz-appearance: textfield; } .tcInput::-webkit-outer-spin-button, .tcInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; } .tcInput::placeholder { color: var(--m3-on-surface-var); opacity: 0.7; } .tcInput:-webkit-autofill, .tcInput:-webkit-autofill:hover, .tcInput:-webkit-autofill:focus, .tcInput:-webkit-autofill:active { -webkit-box-shadow: 0 0 0 100px transparent inset !important; box-shadow: 0 0 0 100px transparent inset !important; -webkit-text-fill-color: var(--m3-on-surface) !important; background-color: transparent !important; transition: background-color 99999s ease-in-out 0s; } .tcInput.tcUnsaved { border-bottom-color: var(--tc-ylw) !important; color: var(--tc-ylw) !important; } .tcControlGroup:has(.tcUnsaved)::after { content: \"↵ Enter\"; position: absolute; bottom: -1.35em; left: 0; font-size: max(8px, 0.5em); font-weight: 700; letter-spacing: 0.08em; color: var(--tc-ylw); white-space: nowrap; pointer-events: none; opacity: 0.9; } .tcPill { width: 2.308em; height: 2.308em; border-radius: 50%; background: transparent; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; min-width: 0; color: var(--m3-on-surface-var); transition: background 0.14s, color 0.15s, border-color 0.2s, box-shadow 0.2s; } .tcPill svg { width: 1.15em; height: 1.15em; } .tcPill:hover { background: oklch(from var(--tc-accent) l c h / 0.08); color: var(--m3-on-surface); } .tcPill:active { background: oklch(from var(--tc-accent) l c h / 0.12); transform: scale(0.94); } .tcPill:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcPill.on, #__tcMultiStatus.on { color: var(--tc-grn); border-color: oklch(from var(--tc-grn) l c h / 0.4); box-shadow: 0 0 10px oklch(from var(--tc-grn) l c h / 0.35); } .tcPill.tcPillSnap { animation: __tcPillSnap 0.22s cubic-bezier(0.16, 1, 0.3, 1); } .tcPillCircle::after { content: none !important; } .tcPillCircle, .tcLogBtn { border-radius: 50%; background: transparent; box-shadow: none; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--m3-on-surface-var); transition: background 0.14s, color 0.15s; } .tcPillCircle:hover, .tcLogBtn:hover { transform: none; background: oklch(from var(--tc-accent) l c h / 0.08); color: var(--m3-on-surface); } .tcPillCircle:active, .tcLogBtn:active { background: oklch(from var(--tc-accent) l c h / 0.12); box-shadow: none; } .tcPillCircle:focus-visible, .tcLogBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcPillCircle { width: 1.733em; height: 1.733em; min-width: 0; padding: 0; align-self: center; font-weight: 500; font-size: var(--fz-value); line-height: 1; font-family: 'DM Sans', system-ui, sans-serif; } .tcLogBtn { width: 2.308em; height: 2.308em; padding: 0; font-size: 1em; } .tcLogBtn svg { width: 1.077em; height: 1.077em; } .tcTPBtn { width: 1.6em; height: 1.6em; } .tcTPBtn svg { width: 0.85em; height: 0.85em; } #__tcTPSaveBtn { color: var(--tc-grn); } #__tcTPSaveBtn.tcTPLocked { color: var(--tc-accent); } .tcLogBtn.tcRefreshSpin svg { animation: tcSpin 0.6s cubic-bezier(0.16, 1, 0.3, 1); } .tcLogBtn.tcRefreshSpin { color: var(--tc-accent); } .tcCloseBtn { position: absolute; right: -0.4em; top: 50%; transform: translateY(-50%); width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--m3-surface-3); border: 1px solid var(--m3-outline-var); color: var(--m3-on-surface-var); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; box-shadow: none; transition: color 0.2s, opacity 0.2s, background 0.2s; opacity: 0; } .tcCloseBtn::before { content: \"\"; position: absolute; inset: 50% 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); border-radius: 50%; } #__tradeCalc:hover .tcCloseBtn, .tcCloseBtn:focus-visible { opacity: 1; } .tcCloseBtn:hover { background: var(--tc-red); color: oklch(98% 0 0); border-color: transparent; box-shadow: 0 3px 10px oklch(64% 0.18 25 / 0.4); transform: translateY(-50%); } .tcCloseBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; opacity: 1; } .tcCloseBtn:focus-visible:hover { transform: translateY(-50%) rotate(90deg); transition: background 0.25s, color 0.25s, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1); } .tcSparklineBg { position: absolute; inset: 0; opacity: 0.22; pointer-events: none; border-radius: inherit; overflow: hidden; z-index: 0; mask-image: linear-gradient(to bottom, black 20%, transparent); -webkit-mask-image: linear-gradient(to bottom, black 20%, transparent); } @keyframes __tcDataFlash { 0% { color: var(--tc-accent); transform: translateY(-1px); } 100% { color: inherit; transform: translateY(0); } } .tcFlashData { animation: __tcDataFlash 0.55s cubic-bezier(0.16, 1, 0.3, 1); display: inline-block; } @keyframes tcSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes __tcEntrance { 0% { opacity: 0; transform: scale(0.92) translateY(16px); filter: blur(8px); } 100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); } } #__tradeCalc.tcLightMode { --tc-grn: #146c2e; --tc-red: oklch(44% 0.18 25); --tc-amb: oklch(44% 0.16 60); --tc-ylw: oklch(52% 0.17 70); --tc-pur: oklch(42% 0.16 285); --tc-cyn: oklch(40% 0.13 210); --tc-accent: #6750a4; --m3-surface: #fef7ff; --m3-surface-2: #f4eefa; --m3-surface-3: #ece6f0; --m3-on-surface: #1d1b20; --m3-on-surface-var: #49454f; --m3-outline: #79747e; --m3-outline-var: #cac4d0; --m3-primary: #6750a4; --m3-on-primary: #ffffff; --tc-text-pri: var(--m3-on-surface); --tc-text-dim: var(--m3-on-surface-var); --tc-text-mut: oklch(from var(--m3-on-surface-var) l c h / 0.78); --tc-input-bg: var(--m3-surface-3); --tc-input-border: var(--m3-outline-var); --tc-bg: var(--m3-surface-2); --tc-panel-shadow: var(--m3-elev-2); background: var(--tc-bg); } #__tradeCalc.tcLightMode .tcControlGroup { background: var(--m3-surface-3); border-color: var(--m3-outline-var); } #__tradeCalc.tcLightMode .tcPillCircle, #__tradeCalc.tcLightMode .tcLogBtn, #__tradeCalc.tcLightMode .tcPill { background: transparent; border-color: transparent; } #__tcDangerOverlay { position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; background: radial-gradient(circle at center, transparent 0%, oklch(0% 0 0 / 0.88) 100%); opacity: 0; transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1); } .tcLockContent { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; padding: var(--s-6); border-radius: 1.4em; background: var(--tc-bg); border: 1px solid var(--tc-sec-border); box-shadow: 0 48px 120px oklch(0% 0 0 / 0.8), inset 0 1px 1px oklch(100% 0 0 / 0.2); } .tcLockLabel { display: block; font-size: 0.78em; font-weight: 900; text-transform: uppercase; letter-spacing: 0.28em; color: var(--tc-text-mut); margin-bottom: var(--s-5); opacity: 1; } .tcLockTimer { display: block; font-family: 'DM Mono', monospace; font-size: 7.5em; font-weight: 800; color: var(--tc-text-pri); letter-spacing: -0.04em; line-height: 1; } .tcLockMeta { display: block; font-size: 0.85em; font-weight: 600; color: var(--tc-text-dim); margin-top: var(--s-5); letter-spacing: 0.05em; } #__tradeCalc.tcDangerMode { box-shadow: var(--tc-panel-shadow), 0 0 0 2px oklch(64% 0.18 25 / 0.55); } #__tradeCalc.tcDangerMode.tcActive { box-shadow: var(--tc-panel-shadow), 0 0 0 2px oklch(64% 0.18 25 / 0.5); } #__tcDangerOverlay.tcPercentVisible { opacity: 1; background: radial-gradient(circle at center, transparent 0%, oklch(64% 0.18 25 / 0.15) 100%); } #__tcDangerOverlay.tcPercentVisible .tcLockCard { display: block; } #__tcDangerOverlay.tcPercentVisible .tcLockContent { box-shadow: 0 0 0 1px oklch(64% 0.18 25 / 0.5), 0 32px 100px -16px oklch(0% 0 0 / 0.9); background: radial-gradient(circle at top, oklch(64% 0.18 25 / 0.15) 0%, transparent 100%), var(--tc-bg); } #__tcJournalModal { position: fixed; inset: 0; z-index: 2147483648; background: oklch(7% 0.018 257 / 0.78); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1); } #__tcJournalModal.tcJournalOpen { opacity: 1; pointer-events: auto; } #__tcJournalModal.tcJournalOpen .tcJournalInner { transform: scale(1); opacity: 1; filter: blur(0); } .tcJournalInner { background: oklch(15% 0.02 257 / 0.98); border-radius: 1.4em; border: 1px solid oklch(100% 0 0 / 0.15); box-shadow: 0 32px 80px -12px oklch(0% 0 0 / 0.9), 0 10px 28px -6px oklch(0% 0 0 / 0.6), inset 0 1px 0 oklch(100% 0 0 / 0.12); width: min(78.5em, 96vw); max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; transform: scale(0.97); opacity: 0; filter: blur(4px); transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), filter 0.22s cubic-bezier(0.16, 1, 0.3, 1); } .tcJournalHeader { display: flex; align-items: center; gap: 0.5em; padding: 0.85em 1.1em 0.85em 1.25em; border-bottom: 1px solid oklch(100% 0 0 / 0.08); flex-shrink: 0; background: oklch(100% 0 0 / 0.02); } .tcJournalHeader h2 { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; font-size: max(9px, 0.62em); font-weight: 800; text-transform: uppercase; letter-spacing: 0.18em; color: var(--tc-text-pri); flex: 1; opacity: 0.9; } .tcJournalLastFetched { font-family: 'DM Mono', monospace; font-size: 0.6em; color: var(--tc-text-mut); letter-spacing: 0.04em; opacity: 0.7; } .tcJournalIconBtn { background: none; border: none; cursor: pointer; color: var(--tc-text-mut); border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: color 0.15s cubic-bezier(0.16, 1, 0.3, 1), background 0.15s cubic-bezier(0.16, 1, 0.3, 1); position: relative; width: 1.4em; height: 1.4em; } .tcJournalIconBtn::before { content: ''; position: absolute; inset: -0.4em; border-radius: 50%; } .tcJournalIconBtn:hover { color: var(--tc-text-pri); background: oklch(from var(--tc-accent) l c h / 0.08); } .tcJournalIconBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcJournalIconBtn.tcJournalSpinning svg { animation: __tcJournalSpin 0.65s linear infinite; } .tcJournalIconBtn.tcJournalSpinning { color: var(--tc-accent); } @keyframes __tcJournalSpin { to { transform: rotate(360deg); } } #__tcJournalClose:hover { transform: rotate(90deg); color: var(--tc-text-pri); } .tcJournalTableWrap { overflow: auto; flex: 1; } #__tcJournalTable { width: 100%; border-collapse: collapse; font-family: 'DM Mono', monospace; font-size: 0.76em; font-variant-numeric: tabular-nums; } #__tcJournalTable thead th { position: sticky; top: 0; z-index: 2; background: oklch(11% 0.015 257); color: oklch(62% 0.014 257); font-family: 'DM Sans', system-ui, sans-serif; font-size: max(7px, 0.75em); font-weight: 800; text-transform: uppercase; letter-spacing: 0.14em; padding: 0.6em 0.8em; border-bottom: 1px solid oklch(100% 0 0 / 0.14); white-space: nowrap; text-align: right; } #__tcJournalTable thead th:nth-child(1), #__tcJournalTable thead th:nth-child(2) { text-align: left; } @keyframes __tcRowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } } #__tcJournalTable tbody tr.tcJournalRowIn { animation: __tcRowIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; } #__tcJournalTable tbody tr { transition: background 0.1s; } #__tcJournalTable tbody td { padding: 0.48em 0.8em; border-bottom: 1px solid oklch(100% 0 0 / 0.055); color: var(--tc-text-dim); text-align: right; white-space: nowrap; } #__tcJournalTable tbody td:nth-child(1) { color: var(--tc-text-mut); font-size: 0.85em; } #__tcJournalTable tbody td:nth-child(2) { color: var(--tc-text-pri); font-family: 'DM Sans', system-ui, sans-serif; font-size: 0.82em; } #__tcJournalTable tbody td:nth-child(1), #__tcJournalTable tbody td:nth-child(2) { text-align: left; } #__tcJournalTable tbody tr:hover td { background: oklch(100% 0 0 / 0.04); } #__tcJournalTable tbody tr.tcJournalProfit td { background: oklch(42% 0.12 145 / 0.1); } #__tcJournalTable tbody tr.tcJournalProfit:hover td { background: oklch(42% 0.12 145 / 0.16); } #__tcJournalTable tbody tr.tcJournalLoss td { background: oklch(38% 0.1 25 / 0.14); } #__tcJournalTable tbody tr.tcJournalLoss:hover td { background: oklch(38% 0.1 25 / 0.22); } #__tcJournalTable tbody tr.tcJournalToday td { background: oklch(72% 0.16 80 / 0.13); border-bottom-color: oklch(72% 0.16 80 / 0.2); } #__tcJournalTable tbody tr.tcJournalToday:hover td { background: oklch(72% 0.16 80 / 0.2); } #__tcJournalTable tbody tr.tcJournalToday td:first-child { box-shadow: inset 3px 0 0 oklch(72% 0.16 80 / 0.7); } .tcJournalPlus { color: oklch(74% 0.17 145); font-weight: 700; } .tcJournalMinus { color: oklch(66% 0.18 25); font-weight: 700; } .tcJournalEditable { cursor: text; } .tcJournalEditable span { position: relative; } .tcJournalEditable span::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 0; height: 1px; background: var(--tc-text-mut); border-radius: 1px; transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1); } .tcJournalEditable:hover span::after { width: 100%; } .tcJournalCellInput { background: oklch(0% 0 0 / 0.3); color: var(--tc-text-pri); border: 1px solid var(--tc-accent); border-radius: var(--m3-shape-lg); padding: 0.14em 0.35em; font-size: 1em; font-family: 'DM Mono', monospace; font-variant-numeric: tabular-nums; width: 100%; box-sizing: border-box; text-align: right; outline: none; box-shadow: 0 0 0 3px oklch(from var(--tc-accent) l c h / 0.15); } .tcJournalCellInput.tcJournalCellError { border-color: var(--tc-red); box-shadow: 0 0 0 3px oklch(from var(--tc-red) l c h / 0.15); } .tcJournalFooter { padding: 0.55em 1.25em; border-top: 1px solid oklch(100% 0 0 / 0.07); font-family: 'DM Sans', system-ui, sans-serif; font-size: max(7px, 0.6em); font-weight: 600; color: var(--tc-text-mut); flex-shrink: 0; letter-spacing: 0.06em; opacity: 0.6; } .tcJournalEmpty { padding: 3em 2em; text-align: center; color: var(--tc-text-mut); font-family: 'DM Sans', system-ui, sans-serif; font-size: 0.78em; letter-spacing: 0.08em; opacity: 0.6; } .tcJournalSkeleton { padding: 0.6em 0; } .tcJournalSkRow { display: flex; gap: 0.8em; padding: 0.52em 1.1em; border-bottom: 1px solid oklch(100% 0 0 / 0.04); align-items: center; } .tcJournalSkCell { height: 0.7em; border-radius: 3px; background: oklch(100% 0 0 / 0.06); position: relative; overflow: hidden; flex-shrink: 0; } @keyframes __tcSkShimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } } .tcJournalSkCell::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 0%, oklch(100% 0 0 / 0.09) 50%, transparent 100%); animation: __tcSkShimmer 1.4s ease-in-out infinite; } @keyframes __tcCellSaved { 0% { background: oklch(72% 0.16 145 / 0); } 30% { background: oklch(72% 0.16 145 / 0.22); } 100% { background: oklch(72% 0.16 145 / 0); } } .tcJournalCellSaved { animation: __tcCellSaved 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards; } @keyframes __tcTodayPulse { 0% { background: oklch(72% 0.16 80 / 0.13); } 45% { background: oklch(72% 0.16 80 / 0.32); } 100% { background: oklch(72% 0.16 80 / 0.13); } } #__tcJournalTable tbody tr.tcJournalTodayPulse td { animation: __tcTodayPulse 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards; } #__tcRestoreBtn { position: fixed; bottom: 24px; right: 24px; z-index: 2147483647; background: oklch(from var(--tc-bg) l c h / 0.85); color: var(--tc-text-pri); border: 1px solid oklch(from var(--tc-accent) l c h / 0.3); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: 0.6em 1.2em; border-radius: 99px; font-family: 'DM Sans', system-ui, sans-serif; font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 16px oklch(0% 0 0 / 0.28); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s, border-color 0.2s; display: flex; align-items: center; gap: 8px; transform-origin: center; } #__tcRestoreBtn svg { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); color: var(--tc-accent); width: 14px; height: 14px; } #__tcRestoreBtn:hover { transform: translateY(-3px) scale(1.02); background: oklch(from var(--tc-bg) l c h / 0.95); box-shadow: 0 8px 24px oklch(from var(--tc-accent) l c h / 0.2); border-color: var(--tc-accent); } #__tcRestoreBtn:hover svg { transform: rotate(90deg) scale(1.1); } #__tcRestoreBtn:active { transform: translateY(1px) scale(0.97); box-shadow: 0 2px 8px oklch(0% 0 0 / 0.2); transition: transform 0.1s; } #__tcRestoreBtn.tcLightMode { background: oklch(96% 0.02 88 / 0.92); box-shadow: 0 8px 24px -14px oklch(37% 0.06 78 / 0.45); } #__tcRestoreBtn.tcLightMode:hover { background: oklch(99% 0.016 88 / 0.98); box-shadow: 0 8px 24px oklch(48% 0.18 245 / 0.15); } #__tcImToggle.tcImToggleOff { opacity: 0.5; color: var(--m3-on-surface-var); } @keyframes __tcPillSnap { 0% { transform: scale(1); } 40% { transform: scale(0.88); } 100% { transform: scale(1); } } .tcPill.tcPillSnap { animation: __tcPillSnap 0.22s cubic-bezier(0.16, 1, 0.3, 1); } @keyframes __tcInputCommit { 0% { border-color: oklch(76% 0.16 145 / 0.9); box-shadow: 0 0 0 2px oklch(76% 0.16 145 / 0.18), inset 0 1px 2px oklch(0% 0 0 / 0.18); } 100% { border-color: var(--tc-input-border); box-shadow: inset 0 1px 2px oklch(0% 0 0 / 0.18); } } .tcControlGroup.tcCommit { animation: __tcInputCommit 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; } .tcReqWrap { display: flex; align-items: baseline; gap: 0.12em; } .tcReqFrom { font-size: 0.78em; font-weight: 600; color: var(--tc-text-dim); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; } .tcValLg.tcTradeCritical { color: var(--tc-ylw) !important; text-shadow: 0 0 24px oklch(90% 0.17 95 / 0.6), 0 0 48px oklch(90% 0.17 95 / 0.25); } .tcSecHdr .tcDot.tcDotLive { opacity: 1; box-shadow: 0 0 5px currentColor; } @keyframes __tcBtnReveal { 0% { transform: scale(0.96); box-shadow: 0 0 0 0 oklch(76% 0.16 145 / 0.5); } 55% { transform: scale(1.02); box-shadow: 0 0 0 8px oklch(76% 0.16 145 / 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 oklch(76% 0.16 145 / 0); } } .tcSLBtnReveal { animation: __tcBtnReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; } @keyframes __tcWarnIn { 0% { opacity: 0; transform: translateY(4px); } 100% { opacity: 1; transform: translateY(0); } } #__tcWarn.tcWarnVisible { animation: __tcWarnIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; } @keyframes __tcLiveResolve { 0% { opacity: 0.72; transform: scale(1); } 45% { opacity: 1; transform: scale(1.06); } 100% { opacity: 0; transform: scale(0.96) translateY(2px); } } .tcLiveResolving { animation: __tcLiveResolve 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; } @keyframes __tcValPop { 0% { transform: scale(1); } 45% { transform: scale(1.12) translateY(-1px); } 100% { transform: scale(1) translateY(0); } } .tcValLg.tcValPop { animation: __tcValPop 0.28s cubic-bezier(0.16, 1, 0.3, 1); } @media (prefers-reduced-motion: reduce) { #__tradeCalc, #__tradeCalc *, #__tcRestoreBtn, #__tcDangerOverlay { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } #__tradeCalc.tcDangerMode.tcActive { animation: none !important; } .tcFlashData { animation: none !important; } .tcCloseBtn:focus-visible:hover { transform: none; } .tcLogBtn:hover { transform: none; } #__tcRestoreBtn:hover { transform: none; } #__tcRestoreBtn:hover svg { transform: none; } .tcPill.tcPillSnap { animation: none !important; } .tcControlGroup.tcCommit { animation: none !important; } .tcSecHdr .tcDot.tcDotLive { animation: none !important; } .tcSLBtnReveal { animation: none !important; } #__tcWarn.tcWarnVisible { animation: none !important; } .tcLiveResolving { animation: none !important; opacity: 0 !important; } .tcValLg.tcValPop { animation: none !important; } #__tcJournalTable tbody tr.tcJournalRowIn { animation: none !important; opacity: 1 !important; transform: none !important; } .tcJournalCellSaved { animation: none !important; } #__tcJournalTable tbody tr.tcJournalTodayPulse td { animation: none !important; } .tcJournalSkCell::after { animation: none !important; } .tcJournalInner { filter: none !important; } #__tcJournalClose { transition: none !important; } .tcPill { transition: none !important; } } .tcControlGroup.tcTPGroup { gap:0.05em; background:transparent; border-color:transparent; box-shadow:none; align-items:baseline; } .tcControlGroup.tcTPGroup:hover, .tcControlGroup.tcTPGroup:focus-within { background: var(--m3-surface-3); border-color: var(--m3-outline-var); box-shadow: none; } .tcTPCur { font-size:var(--fz-currency); font-weight:700; color:var(--tc-text-dim); font-family:'DM Mono',monospace; letter-spacing:0.015em; } .tcTPInput { font-size:var(--fz-hero) !important; font-weight:700 !important; letter-spacing:0.02em !important; } @keyframes __tcTimerIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } } @keyframes __tcEdgeFlash { 0% { opacity:0; } 25% { opacity:1; } 100% { opacity:0; } } @media (prefers-reduced-motion: reduce) { #__tcEdgeFlash { animation: none !important; opacity: 0 !important; } } #__tcMarquee { position: fixed; top: 0; left: 0; width: 100%; z-index: 2147483640; pointer-events: none; overflow: hidden; white-space: nowrap; box-sizing: border-box; background: transparent; color: var(--tc-text-pri); font: 500 13px/1.8 'DM Sans', system-ui, sans-serif; letter-spacing: 0.06em; text-shadow: 0 1px 3px oklch(0% 0 0 / 0.6); } #__tcMarquee .tcMarqueeTrack { display: inline-block; padding-left: 100%; will-change: transform; animation: __tcMarqueeScroll linear infinite var(--tc-marquee-dur, 18s); } @keyframes __tcMarqueeScroll { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-100%, 0, 0); } } @media (prefers-reduced-motion: reduce) { #__tcMarquee .tcMarqueeTrack { animation: none; padding-left: 0.8em; } } #__tcInvestMult { position: fixed; top: 220px; right: 220px; z-index: 2147483000; display: flex; flex-direction: column; gap: 5px; width: 64px; padding: 6px; border-radius: var(--m3-shape-lg); background: var(--tc-bg); box-shadow: var(--m3-elev-2); border: 1px solid var(--m3-outline-var); font-family: 'DM Mono', monospace; user-select: none; } #__tcInvestMult .tcImBtn { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; height: 32px; border-radius: var(--m3-shape-sm); cursor: pointer; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--tc-text-pri); background: transparent; transition: background 0.12s; } #__tcInvestMult .tcImBtn:hover { background: oklch(from var(--tc-accent) l c h / 0.12); } #__tcInvestMult .tcImBtn:active { background: oklch(from var(--tc-accent) l c h / 0.18); } #__tcInvestMult .tcImUp { color: var(--tc-grn); } #__tcInvestMult .tcImDown { color: var(--tc-red); } #__tcInvestMult .tcImFactor { height: 26px; font-size: 12px; letter-spacing: 0.02em; color: var(--tc-text-dim); background: var(--m3-surface-3); border-radius: var(--m3-shape-sm); } #__tcInvestMult .tcImFactor:hover { background: oklch(from var(--tc-accent) l c h / 0.1); color: var(--tc-accent); } #__tcMTF { position: fixed; top: 96px; right: 220px; z-index: 2147483000; display: flex; flex-direction: column; gap: 10px; width: 268px; padding: 10px; box-sizing: border-box; border-radius: var(--m3-shape-lg); background: var(--tc-bg); box-shadow: var(--m3-elev-2); border: 1px solid var(--m3-outline-var); font-family: 'DM Mono', monospace; user-select: none; -webkit-user-select: none; touch-action: none; } #__tcMTF .tcMtfBar { display: flex; align-items: center; gap: 6px; cursor: grab; padding-bottom: 2px; } #__tcMTF .tcMtfBar:active { cursor: grabbing; } #__tcMTF .tcMtfPair { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: var(--tc-text-pri); } #__tcMTF .tcMtfSync { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: var(--m3-shape-full); cursor: pointer; color: var(--tc-text-dim); transition: background 0.12s, color 0.12s; } #__tcMTF .tcMtfSync:hover { background: oklch(from var(--tc-accent) l c h / 0.12); color: var(--tc-accent); } #__tcMTF .tcMtfSync:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 1px; } #__tcMTF .tcMtfGrip { width: 16px; height: 3px; border-radius: 2px; background: var(--m3-outline-var); } #__tcMTF .tcMtfCell { display: flex; flex-direction: column; gap: 1px; } #__tcMTF .tcMtfHd { display: flex; align-items: baseline; justify-content: space-between; } #__tcMTF .tcMtfTf { font-size: 10px; font-weight: 700; color: var(--tc-text-dim); text-transform: uppercase; letter-spacing: 0.06em; } #__tcMTF .tcMtfPct { font-size: 10px; font-variant-numeric: tabular-nums; color: var(--tc-text-dim); } #__tcMTF .tcMtfCv { display: block; width: 100%; height: var(--tc-mtf-cvh, 88px); cursor: grab; touch-action: none; border-radius: var(--m3-shape-xs); background: var(--m3-surface-3); } #__tcMTF .tcMtfRz { position: absolute; z-index: 2; background: transparent; touch-action: none; } #__tcMTF .tcMtfRz[data-rz=\"e\"] { top: 8px; bottom: 8px; right: -3px; width: 8px; cursor: ew-resize; } #__tcMTF .tcMtfRz[data-rz=\"w\"] { top: 8px; bottom: 8px; left: -3px; width: 8px; cursor: ew-resize; } #__tcMTF .tcMtfRz[data-rz=\"s\"] { left: 8px; right: 8px; bottom: -3px; height: 8px; cursor: ns-resize; } #__tcMTF .tcMtfRz[data-rz=\"n\"] { left: 8px; right: 8px; top: -3px; height: 8px; cursor: ns-resize; } #__tcMTF .tcMtfRz[data-rz=\"se\"] { right: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nwse-resize; } #__tcMTF .tcMtfRz[data-rz=\"sw\"] { left: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nesw-resize; } #__tcMTF .tcMtfRz[data-rz=\"ne\"] { right: -3px; top: -3px; width: 14px; height: 14px; cursor: nesw-resize; } #__tcMTF .tcMtfRz[data-rz=\"nw\"] { left: -3px; top: -3px; width: 14px; height: 14px; cursor: nwse-resize; } #__tcMTF .tcMtfRz[data-rz=\"se\"]::after { content: ''; position: absolute; right: 4px; bottom: 4px; width: 6px; height: 6px; border-right: 2px solid var(--m3-outline-var); border-bottom: 2px solid var(--m3-outline-var); } #__tcMTF.tcMtfResizing { user-select: none; } #__tcMTF .tcMtfCv:active { cursor: grabbing; } #__tcMTF .tcMtfPanned .tcMtfCv { box-shadow: inset 0 0 0 1px oklch(from var(--tc-accent) l c h / 0.55); } #__tcMTF .tcMtfPanned .tcMtfCap { color: var(--tc-accent); } #__tcMTF .tcMtfCap { font-size: 10px; letter-spacing: 0.03em; color: var(--tc-text-dim); text-align: right; } #__tcMTF .tcMtfStale .tcMtfCv { opacity: 0.45; } #__tcMTF .tcMtfStale .tcMtfCap { color: var(--tc-amb); } #__tcMTF .tcMtfEmpty .tcMtfCv { background: transparent; border: 1px dashed var(--m3-outline-var); } #__tcMTF .tcMtfEmpty .tcMtfCap { color: var(--tc-accent); } #__tcMTF.tcMtfBusy { opacity: 0.7; } #__tcMTF.tcMtfBusy .tcMtfSync { color: var(--tc-accent); } #__tcMobileBar { position: fixed; bottom: 210px; right: 3px; left: auto; top: auto; transform: none; z-index: 2147483600; display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 6px 5px; width: 92px; max-height: calc(100vh - 16px); background: color-mix(in oklab, var(--tc-bg) 94%, transparent); border: 1px solid var(--m3-outline-var); border-radius: 14px; box-shadow: var(--m3-elev-2); font-family: 'DM Sans', system-ui, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; animation: __tcMbIn 0.22s cubic-bezier(0.16, 1, 0.3, 1); } @keyframes __tcMbIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } } #__tcMobileBar .tcMbHandle { display: flex; flex-direction: row; justify-content: center; align-items: center; padding: 0 0 2px; cursor: grab; width: 100%; } #__tcMobileBar .tcMbHandle:active { cursor: grabbing; } #__tcMobileBar .tcMbGrip { display: block; width: 17px; height: 3px; border-radius: 999px; background: var(--m3-on-surface-var); opacity: 0.4; } #__tcMobileBar .tcMbRow { display: flex; flex-direction: column; gap: 3px; width: 100%; } #__tcMobileBar .tcMbLbl { font-size: 8px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: oklch(from var(--tc-text-pri) l c h / 0.85); text-align: center; white-space: nowrap; } #__tcMobileBar .tcMbCtl { display: flex; align-items: stretch; gap: 3px; width: 100%; } #__tcMobileBar .tcMbBtn, #__tcMobileBar .tcMbVal { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; height: 22px; cursor: pointer; color: #ffffff; background: var(--m3-surface-3); border-radius: 9px; transition: background 0.12s cubic-bezier(0.16, 1, 0.3, 1); } #__tcMobileBar .tcMbBtn { flex: 0 0 auto; min-width: 22px; padding: 0 3px; font-size: 11px; font-weight: 700; line-height: 1; } #__tcMobileBar .tcMbBtn svg { width: 10px; height: 10px; stroke: currentColor; fill: none; } #__tcMobileBar .tcMbVal { flex: 1; min-width: 0; padding: 0 4px; } #__tcMobileBar .tcMbVal b { font-size: 9px; font-weight: 800; color: #ffffff; font-variant-numeric: tabular-nums; white-space: nowrap; } #__tcMobileBar .tcMbValGrn b { color: var(--tc-grn); } #__tcMobileBar.tcMbRpLow .tcMbValGrn b { color: var(--tc-red); } #__tcMobileBar.tcMbRpLow .tcMbValGrn { background: oklch(from var(--tc-red) l c h / 0.16); } #__tcMobileBar.tcMbRpLow #__tcMbRpLbl { color: var(--tc-red); } #__tcMobileBar .tcMbQuick { display: flex; justify-content: space-between; gap: 3px; width: 100%; } #__tcMobileBar .tcMbQuickBtn { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex: 0 0 16px; cursor: pointer; background: var(--m3-surface-3); border-radius: 6px; font-size: 8px; font-weight: 800; line-height: 1; color: #ffffff; font-variant-numeric: tabular-nums; transition: background 0.12s cubic-bezier(0.16, 1, 0.3, 1); } #__tcMobileBar .tcMbQuickBtn.tcMbQuickOn { background: var(--tc-accent); color: var(--tc-bg); } #__tcMobileBar .tcMbQuickBtn:active { background: oklch(from var(--tc-accent) l c h / 0.35); } #__tcMobileBar .tcMbQuickBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } #__tcMobileBar .tcMbBtn:active, #__tcMobileBar .tcMbVal:active { background: oklch(from var(--tc-accent) l c h / 0.2); } #__tcMobileBar .tcMbBtn:focus-visible, #__tcMobileBar .tcMbVal:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } @media (hover: hover) { #__tcMobileBar .tcMbBtn:hover, #__tcMobileBar .tcMbVal:hover { background: oklch(from var(--tc-accent) l c h / 0.1); } } @media (prefers-reduced-motion: reduce) { #__tcMobileBar { animation: none; } #__tcMobileBar .tcMbBtn, #__tcMobileBar .tcMbVal { transition: none; } } @media (max-width: 900px) { #__tradeCalc input, #__tcJournalModal input { font-size: 16px !important; } } ";
       shadow.appendChild(t);
     }
-    if (!document.getElementById(ids.tcPlatformStyles)) {
+    {
+      // Quotex-element tweaks must live in the page <head> to apply; no id (v1.24.0, B11), tracked for cleanup.
       const t = document.createElement("style");
-      t.id = ids.tcPlatformStyles;
-      t.innerHTML = ` .UI2Kh, .bvdd_ { font-size: 1.1em !important; font-weight: 800 !important; color: oklch(76% 0.16 145) !important; text-shadow: 0 0 10px oklch(76% 0.16 145 / 0.35) !important; transition: color 0.3s, text-shadow 0.3s !important; } .omlQ2, .MYMK0 { border-radius: 8px !important; transition: box-shadow 0.4s !important; } .EalHv span { font-size: 1.08em !important; font-weight: 700 !important; color: oklch(80% 0.15 75) !important; transition: color 0.3s !important; } .lCITV, .Pdqth { font-weight: 700 !important; transition: color 0.25s, transform 0.25s !important; } .Pdqth[class*="win"], .Pdqth:not(:empty) { transform: scale(1.04) !important; transform-origin: left center !important; } .jHgax { font-size: 1.4em !important; font-weight: 800 !important; } .dJ15T.${ids.tcMonitored} { box-shadow: inset 0 0 0 1px var(--tc-accent, #d0bcff) !important; } `;
+      t.innerHTML = ` .UI2Kh, .bvdd_ { font-size: 1.1em !important; font-weight: 800 !important; color: oklch(76% 0.16 145) !important; text-shadow: 0 0 10px oklch(76% 0.16 145 / 0.35) !important; transition: color 0.3s, text-shadow 0.3s !important; } .omlQ2, .MYMK0 { border-radius: 8px !important; transition: box-shadow 0.4s !important; } .EalHv span { font-size: 1.08em !important; font-weight: 700 !important; color: oklch(80% 0.15 75) !important; transition: color 0.3s !important; } .lCITV, .Pdqth { font-weight: 700 !important; transition: color 0.25s, transform 0.25s !important; } .Pdqth[class*="win"], .Pdqth:not(:empty) { transform: scale(1.04) !important; transform-origin: left center !important; } .jHgax { font-size: 1.4em !important; font-weight: 800 !important; } .dJ15T.${ids.tcMonitored} { box-shadow: inset 0 0 0 1px #d0bcff !important; } `;
       document.head.appendChild(t);
+      headStyleEls.push(t);
     }
     let panelPos = {
         x: 0,
@@ -1534,13 +1589,11 @@
         goal: readJson(KEY_JOURNAL_GOAL_CACHE, null),
       },
       isSheetErrorValue = (t) => typeof t == "string" && t.startsWith("#");
-    const fmtJournalInr = new Intl.NumberFormat("en-IN", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-      getIstDayLabel = () => {
+    // Journal day label, e.g. "15 Sep, Tue". It rolls over when the UTC date changes (5:30 AM for an
+    // IST account), as before; the wall-clock offset now follows the account timezone.
+    const getDayLabel = () => {
         const t = Date.now(),
-          e = new Date(t + 19800000),
+          e = new Date(t + accountTzOffsetMs()),
           n = Date.UTC(e.getUTCFullYear(), e.getUTCMonth(), e.getUTCDate()),
           o = t >= n ? e : new Date(n - 1);
         return `${String(o.getUTCDate()).padStart(2, "0")} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][o.getUTCMonth()]}, ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][o.getUTCDay()]}`;
@@ -1562,7 +1615,8 @@
               : String(i)
             : ((t) => {
                 const e = parseFloat(t);
-                return isNaN(e) || isSheetErrorValue(t) ? "—" : "₹" + fmtJournalInr.format(e);
+                // v1.24.0: account currency and matching number format (was always ₹ / en-IN).
+                return isNaN(e) || isSheetErrorValue(t) ? "—" : detectCurrency() + fmtMoney(e);
               })(i);
       const s = n === "PL" || n === "% PL",
         l = parseFloat(i);
@@ -1686,7 +1740,7 @@
           "Deposit",
           "Notes",
         ],
-        i = getIstDayLabel(),
+        i = getDayLabel(),
         c = document.createElement("table");
       c.id = "__tcJournalTable";
       const s = document.createElement("thead"),
@@ -1796,7 +1850,7 @@
       if (void 0 !== journal._tpToday) {
         return journal._tpToday;
       }
-      const t = getIstDayLabel().split(",")[0],
+      const t = getDayLabel().split(",")[0],
         e = journal.rows.find((e) => String(e.Date || "").includes(t));
       let n = null;
       if (e) {
@@ -1814,7 +1868,7 @@
       return n;
     }
     function applySheetTp() {
-      if (getTpManualDate() === getIstDateKey()) {
+      if (getTpManualDate() === getDayKey()) {
         return;
       }
       const t = getTodayTpFromSheet();
@@ -1835,7 +1889,7 @@
       if (!todayPlEl) {
         return;
       }
-      const t = getIstDayLabel().split(",")[0],
+      const t = getDayLabel().split(",")[0],
         e = journal.rows.find((e) => String(e.Date || "").includes(t)),
         n = e ? e["% PL"] : null,
         o = parseFloat(n);
@@ -2020,7 +2074,7 @@
       const t = tpInput.value.replace(/[^0-9.-]/g, "");
       setTpStored(t);
       reformatMoneyInput(tpInput);
-      const e = getIstDateKey();
+      const e = getDayKey();
       setTpManualDate(e);
       if (typeof chrome != "undefined" && chrome.storage && chrome.storage.sync) {
         chrome.storage.sync.set({
@@ -2096,7 +2150,7 @@
             return;
           }
           const e = t[KEY_TP_MANUAL_DATE];
-          if (e === getIstDateKey() && t[KEY_TP] && getTpManualDate() !== e) {
+          if (e === getDayKey() && t[KEY_TP] && getTpManualDate() !== e) {
             setTpStored(String(t[KEY_TP]));
             setTpManualDate(e);
             tpInput.value = fmtInputMoney(getTpStored());
@@ -2110,12 +2164,13 @@
     if (slInput) {
       slInput.setAttribute("readonly", "readonly");
     }
-    const IST_OFFSET_MS = 19800000;
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Stop loss: daily setup modal, persistence, trailing SL
     // ────────────────────────────────────────────────────────────────────────────────────────────────
-    function getIstDateKey() {
-      return new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+    // Trading-day key "YYYY-MM-DD" in the account timezone (v1.24.0; was fixed at IST). Resets SL, TP
+    // lock and the loss streak at local midnight.
+    function getDayKey() {
+      return new Date(Date.now() + accountTzOffsetMs()).toISOString().slice(0, 10);
     }
     function applySl(t) {
       const e = parseFloat(t);
@@ -2141,6 +2196,47 @@
       }
       scheduleRecalc();
     }
+    // Daily stop-loss setup (v1.24.0: editable). Suggests 85% of the balance; the amount can be typed or
+    // picked with the % buttons. Confirming stores today's SL and the trail distance it implies, so a
+    // lower SL isn't immediately pulled back up by the trailing SL (see slPreTpTrail).
+    const SL_SETUP_PRESETS = [70, 75, 80, 85, 90];
+    const SL_SETUP_DEFAULT_PCT = 85;
+    function closeSlSetup() {
+      const t = byId("__tcSLSetup");
+      if (!t) {
+        return;
+      }
+      if (window.__tcSLBlocker) {
+        document.removeEventListener("click", window.__tcSLBlocker, { capture: true });
+        document.removeEventListener("keydown", window.__tcSLBlocker, { capture: true });
+        delete window.__tcSLBlocker;
+      }
+      const card = t.firstElementChild;
+      if (card) {
+        card.style.transition = "transform 0.3s cubic-bezier(0.16,1,0.3,1),opacity 0.25s";
+        card.style.transform = "scale(0.94) translateY(-8px)";
+        card.style.opacity = "0";
+      }
+      setTimeout(() => t.remove(), 320);
+    }
+    function confirmSl(balance, sl) {
+      const today = getDayKey();
+      const trail = slTrailFor(balance, sl);
+      if (hasSyncStorage()) {
+        chrome.storage.sync.set({
+          [KEY_SL_VALUE]: sl,
+          [KEY_SL_DATE]: today,
+          [KEY_SL_INIT_BAL]: balance,
+          [KEY_SL_TRAIL]: trail,
+        });
+      }
+      writeSlLocalBackup(sl, today, balance, trail);
+      slPeak = balance;
+      slPreTpTrail = trail;
+      slArmed = true;
+      applySl(sl);
+      closeSlSetup();
+    }
     function showSlSetup() {
       if (byId("__tcSLSetup")) {
         return;
@@ -2151,15 +2247,34 @@
         'position:fixed;inset:0;z-index:2147483647;background:oklch(0% 0 0/0.82);backdrop-filter:blur(24px);display:flex;align-items:center;justify-content:center;font-family:"DM Sans",system-ui,sans-serif;font-size:' +
         journalFontSize +
         "px;";
+      const presetBtn = (pct) =>
+        `<button type="button" data-sl-pct="${pct}" style="flex:1;background:oklch(100% 0 0/0.06);color:oklch(90% 0.01 257);border:1px solid oklch(100% 0 0/0.12);border-radius:10px;padding:0.45em 0;font-size:0.8em;font-weight:700;cursor:pointer;">${pct}%</button>`;
       t.innerHTML =
-        ' <div style="background:var(--tc-bg,oklch(13.5% 0.018 257/0.97));border:1px solid oklch(100% 0 0/0.1);border-radius:20px;padding:2.4em 2.8em;text-align:center;box-shadow:0 48px 120px oklch(0% 0 0/0.8),inset 0 1px 0 oklch(100% 0 0/0.15);max-width:380px;width:90%;"> <div style="font-size:0.62em;font-weight:900;text-transform:uppercase;letter-spacing:0.28em;color:oklch(67% 0.018 257);margin-bottom:1.2em;">Daily Risk Setup</div> <div style="font-size:1.7em;font-weight:800;color:oklch(97% 0.005 257);letter-spacing:-0.02em;line-height:1.15;margin-bottom:0.45em;">Set Stop Loss</div> <div style="font-size:0.82em;color:oklch(67% 0.018 257);margin-bottom:2em;line-height:1.5;">Auto-calculated at 85% of your current balance.<br>Trading is blocked until confirmed.</div> <button id="__tcSLConfirmBtn" disabled style="background:var(--tc-grn,oklch(76% 0.16 145));color:oklch(12% 0 0);border:none;border-radius:12px;padding:0.82em 2em;font-size:1em;font-weight:800;cursor:pointer;width:100%;letter-spacing:0.02em;opacity:0.5;transition:opacity 0.2s,filter 0.2s;">Calculating…</button> <div id="__tcSLSetupMeta" style="font-size:0.68em;color:oklch(55% 0.015 257);margin-top:1em;letter-spacing:0.04em;">Reading balance…</div> </div>';
+        ' <div style="background:var(--tc-bg,oklch(13.5% 0.018 257/0.97));border:1px solid oklch(100% 0 0/0.1);border-radius:20px;padding:2.4em 2.8em;text-align:center;box-shadow:0 48px 120px oklch(0% 0 0/0.8),inset 0 1px 0 oklch(100% 0 0/0.15);max-width:380px;width:90%;">' +
+        ' <div style="font-size:0.62em;font-weight:900;text-transform:uppercase;letter-spacing:0.28em;color:oklch(67% 0.018 257);margin-bottom:1.2em;">Daily Risk Setup</div>' +
+        ' <div style="font-size:1.7em;font-weight:800;color:oklch(97% 0.005 257);letter-spacing:-0.02em;line-height:1.15;margin-bottom:0.45em;">Set Stop Loss</div>' +
+        ' <div style="font-size:0.82em;color:oklch(67% 0.018 257);margin-bottom:1.4em;line-height:1.5;">Suggested at 85% of your balance. Type an amount or pick a %.</div>' +
+        ' <div style="display:flex;align-items:center;gap:0.4em;background:oklch(100% 0 0/0.05);border:1px solid oklch(100% 0 0/0.14);border-radius:12px;padding:0.55em 0.9em;margin-bottom:0.7em;">' +
+        '   <span id="__tcSLSetupCur" style="font-weight:800;color:oklch(75% 0.015 257);">₹</span>' +
+        '   <input id="__tcSLSetupInput" type="text" inputmode="decimal" autocomplete="off" aria-label="Stop loss amount" placeholder="Reading balance…" disabled style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:oklch(97% 0.005 257);font-family:\'DM Mono\',monospace;font-size:1.25em;font-weight:700;text-align:right;" />' +
+        '   <span id="__tcSLSetupPct" style="font-family:\'DM Mono\',monospace;font-size:0.8em;color:oklch(67% 0.018 257);min-width:3.2em;text-align:right;"></span>' +
+        " </div>" +
+        ' <div style="display:flex;gap:0.35em;margin-bottom:1.3em;">' +
+        SL_SETUP_PRESETS.map(presetBtn).join("") +
+        " </div>" +
+        ' <button id="__tcSLConfirmBtn" type="button" disabled style="background:var(--tc-grn,oklch(76% 0.16 145));color:oklch(12% 0 0);border:none;border-radius:12px;padding:0.82em 2em;font-size:1em;font-weight:800;cursor:pointer;width:100%;letter-spacing:0.02em;opacity:0.5;transition:opacity 0.2s,filter 0.2s;">Calculating…</button>' +
+        ' <div id="__tcSLSetupMeta" style="font-size:0.68em;color:oklch(55% 0.015 257);margin-top:1em;letter-spacing:0.04em;">Reading balance…</div>' +
+        " </div>";
       shadow.appendChild(t);
+      // Blocks page clicks/keys until the SL is confirmed; anything coming from the panel's own shadow tree
+      // (the setup form) passes. Checks the whole event path, so it works for open and closed roots alike.
       window.__tcSLBlocker = (e) => {
         if (!t.isConnected) {
           return;
         }
-        const n = ((t) => (t && t.composedPath && t.composedPath()[0]) || (t && t.target) || null)(e);
-        if (!(n === shadowHost || shadowHost.contains(n))) {
+        const path = e.composedPath ? e.composedPath() : [];
+        const fromPanel = path.includes(shadowHost) || e.target === shadowHost || shadowHost.contains(e.target);
+        if (!fromPanel) {
           e.stopPropagation();
           e.preventDefault();
         }
@@ -2179,68 +2294,74 @@
           e.style.opacity = "1";
         });
       });
-      let e = 0;
-      setTimeout(function t() {
-        const n = readAccountBalance(),
-          o = byId("__tcSLConfirmBtn"),
-          r = byId("__tcSLSetupMeta");
-        if (o) {
-          if (!isNaN(n) && n > 0) {
-            const t = detectCurrency(),
-              e = Math.floor(0.85 * n);
-            o.textContent = `Set SL: ${t}${fmtInputMoney(e)}`;
-            o.disabled = false;
-            o.style.opacity = "1";
-            o.classList.remove("tcSLBtnReveal");
-            requestAnimationFrame(() => o.classList.add("tcSLBtnReveal"));
-            o.addEventListener("animationend", () => o.classList.remove("tcSLBtnReveal"), {
-              once: true,
-            });
-            if (r) {
-              r.textContent = `Balance: ${t}${fmtInputMoney(n)} · SL = 85%`;
-            }
-            o.onclick = () =>
-              (function (t, e) {
-                const n = getIstDateKey();
-                if (typeof chrome != "undefined" && chrome.storage && chrome.storage.sync) {
-                  chrome.storage.sync.set({
-                    [KEY_SL_VALUE]: e,
-                    [KEY_SL_DATE]: n,
-                    [KEY_SL_INIT_BAL]: t,
-                  });
-                }
-                writeSlLocalBackup(e, n, t);
-                slPeak = t;
-                slArmed = true;
-                applySl(e);
-                (function () {
-                  const t = byId("__tcSLSetup");
-                  if (!t) {
-                    return;
-                  }
-                  if (window.__tcSLBlocker) {
-                    document.removeEventListener("click", window.__tcSLBlocker, {
-                      capture: true,
-                    });
-                    document.removeEventListener("keydown", window.__tcSLBlocker, {
-                      capture: true,
-                    });
-                    delete window.__tcSLBlocker;
-                  }
-                  const e = t.firstElementChild;
-                  if (e) {
-                    e.style.transition = "transform 0.3s cubic-bezier(0.16,1,0.3,1),opacity 0.25s";
-                    e.style.transform = "scale(0.94) translateY(-8px)";
-                    e.style.opacity = "0";
-                  }
-                  setTimeout(() => t.remove(), 320);
-                })();
-              })(n, e);
-          } else if (++e < 20) {
-            setTimeout(t, 1000);
-          } else if (r) {
-            r.textContent = "Balance not found. Reload and try again.";
+      const input = t.querySelector("#__tcSLSetupInput"),
+        pctEl = t.querySelector("#__tcSLSetupPct"),
+        confirmBtn = t.querySelector("#__tcSLConfirmBtn"),
+        meta = t.querySelector("#__tcSLSetupMeta");
+      let balance = NaN;
+      const cur = () => detectCurrency();
+      // Valid SL: a positive amount below the current balance.
+      const update = () => {
+        const sl = parsePlainNumber(input.value);
+        const valid = !isNaN(balance) && sl > 0 && sl < balance;
+        pctEl.textContent = !isNaN(balance) && sl > 0 ? Math.round((sl / balance) * 100) + "%" : "";
+        confirmBtn.disabled = !valid;
+        confirmBtn.style.opacity = valid ? "1" : "0.5";
+        confirmBtn.textContent = valid ? `Set SL: ${cur()}${fmtInputMoney(Math.floor(sl))}` : isNaN(balance) ? "Calculating…" : "Enter an amount below your balance";
+        t.querySelectorAll("[data-sl-pct]").forEach((b) => {
+          const on = valid && Math.floor((balance * parseInt(b.getAttribute("data-sl-pct"), 10)) / 100) === Math.floor(sl);
+          b.style.background = on ? "var(--tc-grn,oklch(76% 0.16 145))" : "oklch(100% 0 0/0.06)";
+          b.style.color = on ? "oklch(12% 0 0)" : "oklch(90% 0.01 257)";
+        });
+        return valid ? Math.floor(sl) : NaN;
+      };
+      const setPct = (pct) => {
+        input.value = String(Math.floor((balance * pct) / 100));
+        update();
+      };
+      input.addEventListener("input", update);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          const sl = update();
+          if (!isNaN(sl)) {
+            confirmSl(balance, sl);
           }
+        }
+      });
+      t.addEventListener("click", (e) => {
+        const b = e.target.closest && e.target.closest("[data-sl-pct]");
+        if (b && !isNaN(balance)) {
+          setPct(parseInt(b.getAttribute("data-sl-pct"), 10));
+        }
+      });
+      confirmBtn.onclick = () => {
+        const sl = update();
+        if (!isNaN(sl)) {
+          confirmSl(balance, sl);
+        }
+      };
+      let attempts = 0;
+      setTimeout(function waitForBalance() {
+        if (!t.isConnected) {
+          return;
+        }
+        const n = readAccountBalance();
+        if (!isNaN(n) && n > 0) {
+          balance = n;
+          t.querySelector("#__tcSLSetupCur").textContent = cur();
+          input.disabled = false;
+          input.placeholder = "";
+          meta.textContent = `Balance: ${cur()}${fmtInputMoney(n)}`;
+          setPct(SL_SETUP_DEFAULT_PCT);
+          confirmBtn.classList.remove("tcSLBtnReveal");
+          requestAnimationFrame(() => confirmBtn.classList.add("tcSLBtnReveal"));
+          confirmBtn.addEventListener("animationend", () => confirmBtn.classList.remove("tcSLBtnReveal"), {
+            once: true,
+          });
+        } else if (++attempts < 20) {
+          setTimeout(waitForBalance, 1000);
+        } else {
+          meta.textContent = "Balance not found. Reload and try again.";
         }
       }, 800);
     }
@@ -2250,7 +2371,10 @@
       KEY_SL_TP_LOCK = "__tradeCalc_sl_tp_lock",
       KEY_SL_TP_LOCK_DATE = "__tradeCalc_sl_tp_lock_date",
       KEY_SL_LS_TP_LOCK = "__tradeCalc_sl_ls_tp_lock",
-      KEY_SL_LS_TP_LOCK_DATE = "__tradeCalc_sl_ls_tp_lock_date";
+      KEY_SL_LS_TP_LOCK_DATE = "__tradeCalc_sl_ls_tp_lock_date",
+      // v1.24.0: pre-TP trail distance for today (fraction below the peak), set by the SL setup screen.
+      KEY_SL_TRAIL = "__tradeCalc_sl_trail",
+      KEY_SL_LS_TRAIL = "__tradeCalc_sl_ls_trail";
     function readSlLocalBackup() {
       try {
         return {
@@ -2259,17 +2383,21 @@
           [KEY_SL_INIT_BAL]: localStorage.getItem(KEY_SL_LS_INIT_BAL),
           [KEY_SL_TP_LOCK]: localStorage.getItem(KEY_SL_LS_TP_LOCK),
           [KEY_SL_TP_LOCK_DATE]: localStorage.getItem(KEY_SL_LS_TP_LOCK_DATE),
+          [KEY_SL_TRAIL]: localStorage.getItem(KEY_SL_LS_TRAIL),
         };
       } catch (t) {
         return {};
       }
     }
-    function writeSlLocalBackup(t, e, n) {
+    function writeSlLocalBackup(t, e, n, trail) {
       try {
         localStorage.setItem(KEY_SL_LS_DATE, e);
         localStorage.setItem(KEY_SL_LS_VALUE, String(t));
         if (!(n == null || isNaN(n))) {
           localStorage.setItem(KEY_SL_LS_INIT_BAL, String(n));
+        }
+        if (typeof trail == "number" && !isNaN(trail)) {
+          localStorage.setItem(KEY_SL_LS_TRAIL, String(trail));
         }
       } catch (t) {}
     }
@@ -2297,6 +2425,13 @@
     const SL_PRE_TP_TRAIL = 0.2,
       SL_POST_TP_GAP_DEFAULT = 0.05,
       SL_POST_TP_GAP_MAX = 0.15;
+    // Pre-TP trail distance for today. 20% by default; a lower SL chosen in the setup screen widens it
+    // so the trailing SL doesn't immediately lift the SL back to 80% of the balance (v1.24.0).
+    let slPreTpTrail = SL_PRE_TP_TRAIL;
+    function slTrailFor(balance, sl) {
+      const gap = 1 - sl / balance;
+      return isFinite(gap) ? Math.min(0.95, Math.max(SL_PRE_TP_TRAIL, Math.round(gap * 10000) / 10000)) : SL_PRE_TP_TRAIL;
+    }
     function updateTrailingSl(t, e) {
       if (!slArmed) {
         return;
@@ -2310,7 +2445,7 @@
           s = !isNaN(n) && n > 0,
           l = !isNaN(o) || (s && e >= n),
           d = isNaN(o) ? (l ? n : NaN) : o,
-          u = l ? Math.max(Math.floor(d), Math.floor(c * (1 - i))) : Math.floor(c * (1 - SL_PRE_TP_TRAIL));
+          u = l ? Math.max(Math.floor(d), Math.floor(c * (1 - i))) : Math.floor(c * (1 - slPreTpTrail));
         return {
           newPeak: c,
           tpLock: d,
@@ -2320,7 +2455,7 @@
       if (!n) {
         return;
       }
-      const o = getIstDateKey(),
+      const o = getDayKey(),
         r = isNaN(slPeak) || n.newPeak > slPeak,
         a = isNaN(slTpLock) && !isNaN(n.tpLock);
       slPeak = n.newPeak;
@@ -2370,7 +2505,7 @@
     // quotas) the setup screen reappeared even though today's SL was saved locally. Both stores are
     // written together and the trailing SL only moves up, so if both have today's SL the higher one wins.
     function pickTodaysSl(syncData) {
-      const today = getIstDateKey();
+      const today = getDayKey();
       const candidates = [syncData, readSlLocalBackup()].filter(
         (s) => s && s[KEY_SL_DATE] === today && parseFloat(s[KEY_SL_VALUE]) > 0,
       );
@@ -2379,9 +2514,11 @@
       }
       const best = candidates.reduce((a, b) => (parseFloat(b[KEY_SL_VALUE]) > parseFloat(a[KEY_SL_VALUE]) ? b : a));
       const tpLockSource = candidates.find((s) => s[KEY_SL_TP_LOCK_DATE] === today && parseFloat(s[KEY_SL_TP_LOCK]) > 0);
+      const trail = parseFloat(best[KEY_SL_TRAIL]);
       return {
         value: parseFloat(best[KEY_SL_VALUE]),
         peak: parseFloat(best[KEY_SL_INIT_BAL]),
+        trail: trail > 0 && trail < 1 ? trail : SL_PRE_TP_TRAIL,
         tpLock: tpLockSource ? parseFloat(tpLockSource[KEY_SL_TP_LOCK]) : NaN,
         fromSync: best === syncData,
       };
@@ -2406,14 +2543,16 @@
       }
       slPeak = isNaN(sl.peak) ? sl.value / 0.85 : sl.peak;
       slTpLock = sl.tpLock;
+      slPreTpTrail = sl.trail;
       slArmed = true;
       applySl(sl.value);
       if (!sl.fromSync && hasSyncStorage()) {
         // Repair sync so other tabs and devices see today's SL too.
         chrome.storage.sync.set({
           [KEY_SL_VALUE]: sl.value,
-          [KEY_SL_DATE]: getIstDateKey(),
+          [KEY_SL_DATE]: getDayKey(),
           [KEY_SL_INIT_BAL]: slPeak,
+          [KEY_SL_TRAIL]: slPreTpTrail,
         });
       }
     }
@@ -2441,6 +2580,7 @@
           KEY_SL_INIT_BAL,
           KEY_SL_TP_LOCK,
           KEY_SL_TP_LOCK_DATE,
+          KEY_SL_TRAIL,
           KEY_POST_TP_GAP,
           KEY_SYS_LOCK_DISABLED,
         ],
@@ -2456,6 +2596,7 @@
       slArmed = false;
       slPeak = NaN;
       slTpLock = NaN;
+      slPreTpTrail = SL_PRE_TP_TRAIL;
       if (slInput) {
         slInput.value = "";
       }
@@ -2684,8 +2825,8 @@
             action: "log_balance",
             balance: t,
             timestamp: new Date().toISOString(),
-            sessionDate: getIstDateKey(),
-            sessionDay: getIstDayLabel(),
+            sessionDate: getDayKey(),
+            sessionDay: getDayLabel(),
           }),
         })
           .then(() => {
@@ -2693,7 +2834,7 @@
               try {
                 localStorage.setItem(KEY_BAL_LOGGED_DATE, t);
               } catch (t) {}
-            })(getIstDateKey());
+            })(getDayKey());
             logBtn.innerHTML = LOG_BTN_ICONS.success;
             logBtn.setAttribute("aria-label", "Logged");
             logBtn.style.background = "var(--tc-grn)";
@@ -3182,7 +3323,7 @@
       }
     }
     !(function () {
-      const t = getIstDateKey();
+      const t = getDayKey();
       if (
         (() => {
           try {
@@ -5320,6 +5461,7 @@
           "position:absolute; transform:translate(-50%, -50%); z-index:30; pointer-events:none; font-family:inherit; display:none; font-size:" +
           o +
           "px;";
+        applyTokenVars(e); // outside the shadow root, so it needs the --tc-* tokens inline
         if (getComputedStyle(n).position === "static") {
           n.style.position = "relative";
           n._tcWasStatic = true;
@@ -5422,6 +5564,7 @@
           "position:absolute; transform:translate(-50%, -50%); z-index:30; pointer-events:none; font-family:inherit; display:none; font-size:" +
           e +
           "px;";
+        applyTokenVars(s); // outside the shadow root, so it needs the --tc-* tokens inline
         n.appendChild(s);
       }
       positionChip(s, n);

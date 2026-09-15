@@ -355,18 +355,25 @@ const depositCancelBtn = document.getElementById('depositCancelBtn');
 const depositStatusEl = document.getElementById('depositStatus');
 const depositResultEl = document.getElementById('depositResult');
 
-const QX_BALANCE_URL = 'https://qxbroker.com/en/balance';
 const QX_MAX_PAGES = 100;              // hard safety cap so a bug can't loop forever
 const QX_PAGE_TIMEOUT_MS = 15000;      // per-page navigation/load timeout
 
 let qxScanning = false;
 let qxScanCancel = false;
 
-/** True when a URL points at the balance page (any ?page / #hash variant). */
+// Balance page in any site language and on subdomains (v1.24.0; was qxbroker.com/en/balance only).
+const QX_BALANCE_URL_RE = /^(https?:\/\/(?:[a-z0-9-]+\.)?qxbroker\.com\/[a-z]{2}(?:-[a-z]{2,4})?\/balance)(?:\/|\?|$)/i;
+
+/** True when a URL points at the balance page (any language, ?page / #hash variant). */
 function qxIsBalanceUrl(url) {
   if (typeof url !== 'string') return false;
-  const base = url.split('#')[0];
-  return /^https?:\/\/qxbroker\.com\/en\/balance(?:\/|\?|$)/i.test(base);
+  return QX_BALANCE_URL_RE.test(url.split('#')[0]);
+}
+
+/** The balance page URL without query/hash, keeping the tab's language, e.g. https://qxbroker.com/hi/balance. */
+function qxBalanceBase(url) {
+  const m = String(url || '').split('#')[0].match(QX_BALANCE_URL_RE);
+  return m ? m[1] : null;
 }
 
 /** Short state chip (Idle / Scanning / Done / Error / Stopped). */
@@ -402,12 +409,18 @@ function qxDetectSymbol(raw) {
   return m ? m[0] : '';
 }
 
-/** A row qualifies only if Successed + Deposit + UPI/PhonePe (case/space tolerant). */
+/**
+ * A row qualifies only if successful + deposit + UPI/PhonePe (case/space tolerant).
+ * Store rows (v1.24.0) carry language-independent values: orderState "success", isDeposit true.
+ * Page rows carry the English labels "Successed" / "Deposit".
+ */
 function qxMatchesDeposit(tx) {
   const status = (tx.status || '').trim().toLowerCase();
   const type = (tx.type || '').trim().toLowerCase();
   const pay = (tx.payment || '').trim().toLowerCase().replace(/\s+/g, ''); // "Phone Pe" -> "phonepe"
-  return status === 'successed' && type === 'deposit' && (pay === 'upi' || pay === 'phonepe');
+  const ok = status === 'success' || status === 'successed';
+  const deposit = tx.isDeposit === true || type === 'deposit';
+  return ok && deposit && (pay === 'upi' || pay === 'phonepe');
 }
 
 /** Format a number as currency, e.g. 1253.31 -> "$1,253.31". */
@@ -416,23 +429,64 @@ function qxFormatMoney(n, symbol) {
 }
 
 /**
- * INJECTED into the balance tab (runs in the page, isolated world). Waits for the
- * client-rendered rows, then parses each `.vDMA1` row. Self-contained: cannot
- * reference popup scope. Returns { ok, rows:[{id,status,type,payment,amountRaw}], count }.
+ * INJECTED into the balance tab (runs in the page's MAIN world since v1.24.0). Reads
+ * the page's transactions from Quotex's store when it holds `expectedPage`; otherwise
+ * waits for the client-rendered rows and parses each `.vDMA1` row. Self-contained:
+ * cannot reference popup scope.
+ * Returns { ok, rows:[{id,status,type,isDeposit?,payment,amountRaw}], count, source }.
  *
- * Selector strategy — primary = the page's column classes (as given in the spec);
+ * Page fallback selector strategy — primary = the page's column classes;
  * fallback = column position within the row (0 id, 1 date, 2 status, 3 type,
  * 4 payment, 5 amount). The row container also has the semantic `.transactions-list`
  * parent, used as a fallback row selector if the hashed `.vDMA1` ever rotates.
  */
-async function qxScrapeBalancePage() {
+async function qxScrapeBalancePage(expectedPage) {
   const ROW_SEL = '.vDMA1';
   const txt = (el) => (el && el.textContent ? el.textContent.trim() : '');
 
-  // The list is rendered after an async data fetch — poll until rows appear.
+  // v1.24.0: first choice is Quotex's own Redux store (runs in the page's MAIN world). Its transaction
+  // fields are language-independent (orderState "success", is_deposit, method), unlike the page text.
+  // Read-only: the store is found through the React root and only getState() is called.
+  function findStore() {
+    try {
+      const root = document.getElementById('root');
+      const key = root && Object.keys(root).find((k) => k.indexOf('__reactContainer$') === 0);
+      const queue = key ? [root[key]] : [];
+      for (let visited = 0; queue.length && visited < 5000; visited++) {
+        const fiber = queue.shift();
+        const props = fiber && fiber.memoizedProps;
+        if (props && props.store && typeof props.store.getState === 'function') return props.store;
+        if (fiber && fiber.child) queue.push(fiber.child);
+        if (fiber && fiber.sibling) queue.push(fiber.sibling);
+      }
+    } catch (e) {}
+    return null;
+  }
+  function storeRows() {
+    const store = findStore();
+    const tx = store && store.getState().transactions;
+    if (!tx || !Array.isArray(tx.list) || tx.page !== expectedPage) return null;
+    return tx.list.map((t) => ({
+      id: t.id != null ? String(t.id) : '',
+      status: String(t.orderState || ''),
+      type: t.is_deposit ? 'deposit' : String(t.type || ''),
+      isDeposit: t.is_deposit === true,
+      payment: String(t.method || ''),
+      amountRaw: String(t.currencySign || '') + String(t.amount || ''),
+    }));
+  }
+
+  // Both the store and the rows arrive after an async data fetch; poll for either.
   const deadline = Date.now() + 13000;
-  while (!document.querySelector(ROW_SEL) && Date.now() < deadline) {
+  while (!storeRows() && !document.querySelector(ROW_SEL) && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 300));
+  }
+  // Give the store a moment to catch up with the page rows before falling back.
+  for (let i = 0; i < 5 && !storeRows(); i++) await new Promise((r) => setTimeout(r, 200));
+  const fromStore = storeRows();
+  if (fromStore) {
+    const rows = fromStore.filter((r) => r.id);
+    return { ok: true, rows, count: rows.length, url: location.href, source: 'store' };
   }
 
   function getRows() {
@@ -459,7 +513,7 @@ async function qxScrapeBalancePage() {
   }
 
   const rows = getRows().map(parseRow).filter((r) => r.id);
-  return { ok: true, rows: rows, count: rows.length, url: location.href };
+  return { ok: true, rows: rows, count: rows.length, url: location.href, source: 'page' };
 }
 
 /** Navigate a tab to `url` and resolve once it reports status 'complete'. */
@@ -482,12 +536,17 @@ function qxNavigate(tabId, url) {
   });
 }
 
-async function qxScrapeTab(tabId) {
-  const results = await chrome.scripting.executeScript({ target: { tabId }, func: qxScrapeBalancePage });
+async function qxScrapeTab(tabId, page) {
+  // MAIN world so the scraper can reach Quotex's store (React internals aren't visible from the
+  // isolated world). It only reads and returns plain JSON.
+  const results = await chrome.scripting.executeScript({ target: { tabId }, func: qxScrapeBalancePage, args: [page], world: 'MAIN' });
   return results && results[0] && results[0].result;
 }
 
-function qxRenderResults(matched, pagesScanned, cancelled) {
+function qxRenderResults(matched, pagesScanned, cancelled, sources) {
+  const via = sources && sources.size
+    ? ' · read from ' + Array.from(sources).map((s) => (s === 'store' ? 'Quotex data' : 'page')).join(' + ')
+    : '';
   let total = 0;
   const symCount = {};
   matched.forEach((tx) => {
@@ -509,7 +568,7 @@ function qxRenderResults(matched, pagesScanned, cancelled) {
 
   depositResultEl.innerHTML =
     `<div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:oklch(76% 0.16 145);margin:4px 0 3px;">${qxFormatMoney(total, symbol)}</div>
-     <div style="font-size:11px;color:oklch(62% 0.016 257);margin-bottom:4px;">${matched.length} deposit${matched.length === 1 ? '' : 's'} · ${pagesScanned} page${pagesScanned === 1 ? '' : 's'} scanned</div>
+     <div style="font-size:11px;color:oklch(62% 0.016 257);margin-bottom:4px;">${matched.length} deposit${matched.length === 1 ? '' : 's'} · ${pagesScanned} page${pagesScanned === 1 ? '' : 's'} scanned${via}</div>
      ${matched.length ? `<div style="display:flex;flex-direction:column;gap:3px;">${listHtml}${more}</div>` : '<div style="opacity:0.5;margin-top:2px;font-size:11px;">No matching deposits found.</div>'}`;
 }
 
@@ -532,33 +591,38 @@ async function qxRunDepositScan() {
 
   const tabId = active.id;
   const originalUrl = active.url;       // restored when finished
+  const balanceBase = qxBalanceBase(active.url); // keeps the tab's language, e.g. /hi/balance
   const seen = new Set();              // dedupe transactions by ID across pages
   const matched = [];
+  const sources = new Set();
   let pagesScanned = 0;
 
   try {
     for (let page = 1; page <= QX_MAX_PAGES; page++) {
       if (qxScanCancel) break;
       depositResultEl.textContent = `Scanning page ${page}…`;
-      const url = page === 1 ? QX_BALANCE_URL : `${QX_BALANCE_URL}?page=${page}`;
+      const url = page === 1 ? balanceBase : `${balanceBase}?page=${page}`;
       await qxNavigate(tabId, url);
       if (qxScanCancel) break;
 
-      const res = await qxScrapeTab(tabId);
+      const res = await qxScrapeTab(tabId, page);
       pagesScanned = page;
       if (!res || !res.ok) throw new Error(`Couldn't read page ${page}`);
+      if (res.source) sources.add(res.source);
       if (!res.rows.length) break;     // empty page → end of history
 
       let newRows = 0;
       for (const tx of res.rows) {
-        if (!tx.id || seen.has(tx.id)) continue; // dedupe across pages
-        seen.add(tx.id);
+        // Store ids are numbers, page ids are text; compare digits so a mixed scan can't double count.
+        const key = String(tx.id).replace(/\D/g, '') || String(tx.id);
+        if (!tx.id || seen.has(key)) continue; // dedupe across pages
+        seen.add(key);
         newRows++;
         if (qxMatchesDeposit(tx)) matched.push(tx);
       }
       if (newRows === 0) break;        // no new IDs → last page clamped, stop
     }
-    qxRenderResults(matched, pagesScanned, qxScanCancel);
+    qxRenderResults(matched, pagesScanned, qxScanCancel, sources);
   } catch (e) {
     qxSetChip('Error', 'err');
     depositResultEl.textContent = 'Scan failed: ' + (e && e.message ? e.message : String(e)) +

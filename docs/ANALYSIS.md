@@ -133,4 +133,4 @@ A single `resolve(name)` registry where each target has an ordered strategy list
 | 2b | Remaining quick fixes: B10, B12, B13, B14 | **v1.21.1** ✅ |
 | 3 | Store bridge (Layer 1) + selector resolver (Layers 2–3) + Health panel | **v1.22.0** ✅ (live check pending) |
 | 4 | Performance: one scheduler instead of 5 timers and 4 observers, drop dead `gi()` | **v1.23.0** ✅ |
-| 5 | Cleanup: currency/timezone from store, i18n-safe URLs, deposit scanner via store, decide on account-label spoof as an explicit opt-in toggle | v1.24.0 |
+| 5 | Cleanup: editable SL setup, currency/timezone from store, any-language deposit scanner via store, head fingerprint (B11). Account-label spoof kept as is (owner decision) | **v1.24.0** ✅ |

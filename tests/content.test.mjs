@@ -30,7 +30,7 @@ const slStorage = (sl) => ({
 const CHART_READER = fs.readFileSync(new URL("../qx-calc-updater/qx-calc-updater/chart_reader.js", import.meta.url), "utf8");
 
 // A Redux state shaped like Quotex's (paths seen live on 2026-09-15). Tests mutate it to simulate the app.
-function quotexStore({ payout = 91, opened = [], closed = [] } = {}) {
+function quotexStore({ payout = 91, opened = [], closed = [], timeZone = 19800 } = {}) {
   const byId = (list) => Object.fromEntries(list.map((d) => [d.id, d]));
   return {
     chartSettings: { chartById: { c1: { currentAsset: { symbol: "USDDZD_otc" }, dealValue: 2000 } } },
@@ -41,7 +41,7 @@ function quotexStore({ payout = 91, opened = [], closed = [] } = {}) {
       },
     },
     deals: { openedById: byId(opened), openedIds: opened.map((d) => d.id), closedById: byId(closed), closedIds: closed.map((d) => d.id) },
-    global: { currency: "₹", currencyCode: "INR", timeZone: 19800 },
+    global: { currency: "₹", currencyCode: "INR", timeZone },
     navigationSymbols: { list: ["USDDZD_otc"] },
   };
 }
@@ -578,6 +578,150 @@ test("perf: the scheduler still runs periodic work (loss streak tracking at 500 
     store.deals.closedIds.push(l.id);
     await sleep(800);
     assert.equal(qx.window.localStorage.getItem("__tradeCalc_loss_streak"), "1");
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.24.0: editable SL setup, account timezone, any-language fallbacks, clean page head ──────────
+
+const noSl = { __tradeCalc_tb: "20000" };
+async function openSetup(opts = {}) {
+  const qx = await boot({ storage: noSl, ...opts });
+  await sleep(900); // the panel starts at 800 ms, and the setup screen reads the balance 800 ms after that
+  const root = qx.panelRoot();
+  return { qx, root, input: root.getElementById("__tcSLSetupInput"), confirm: root.getElementById("__tcSLConfirmBtn") };
+}
+const typeInto = (qx, input, value) => {
+  input.value = value;
+  input.dispatchEvent(new qx.window.Event("input", { bubbles: true }));
+};
+
+test("SL setup: suggests 85% of the balance in an editable field", async () => {
+  const { qx, input, confirm } = await openSetup();
+  try {
+    assert.equal(input.disabled, false);
+    assert.equal(input.value, "12943"); // floor(15,228 × 0.85)
+    assert.equal(confirm.disabled, false);
+    assert.match(confirm.textContent, /Set SL: ₹12,943\.00/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL setup: a typed amount is saved and not pulled back up by the trailing SL", async () => {
+  const { qx, root, input, confirm } = await openSetup();
+  try {
+    typeInto(qx, input, "10,500");
+    assert.equal(root.getElementById("__tcSLSetupPct").textContent, "69%");
+    confirm.click();
+    await sleep(900); // close animation + a few recalc ticks (trailing SL runs on recalc)
+    assert.equal(root.getElementById("__tcSLSetup"), null, "setup closed");
+    assert.equal(root.getElementById("__tcSLInput").value, "10,500.00", "SL kept at the typed value");
+    const ls = qx.window.localStorage;
+    assert.equal(ls.getItem("__tradeCalc_sl_ls_value"), "10500");
+    assert.equal(ls.getItem("__tradeCalc_sl_ls_trail"), String(Math.round((1 - 10500 / 15228) * 10000) / 10000));
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL setup: % buttons fill the amount, and an amount at or above the balance can't be confirmed", async () => {
+  const { qx, root, input, confirm } = await openSetup();
+  try {
+    root.querySelector('[data-sl-pct="75"]').click();
+    assert.equal(input.value, "11421"); // floor(15,228 × 0.75)
+    typeInto(qx, input, "15228");
+    assert.equal(confirm.disabled, true);
+    assert.match(confirm.textContent, /below your balance/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL setup: Enter in the field confirms", async () => {
+  const { qx, root, input } = await openSetup();
+  try {
+    typeInto(qx, input, "12000");
+    input.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await sleep(400);
+    assert.equal(root.getElementById("__tcSLInput").value, "12,000.00");
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL setup: page clicks stay blocked while the setup screen is open", async () => {
+  const { qx } = await openSetup();
+  try {
+    let clicked = false;
+    const up = qx.window.document.querySelector("#trade-button button");
+    up.addEventListener("click", () => (clicked = true));
+    up.dispatchEvent(new qx.window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    assert.equal(clicked, false);
+  } finally {
+    qx.close();
+  }
+});
+
+// Offsets 24 h apart (UTC+14 vs UTC−10) always give different calendar dates.
+const dayKeyAt = (offsetSec) => new Date(Date.now() + offsetSec * 1000).toISOString().slice(0, 10);
+const slForDay = (day) => ({ ...slStorage(10000), __tradeCalc_sl_ls_date: day });
+
+test("timezone: the trading day follows the account timezone from the store and is cached", async () => {
+  const qx = await boot({ storage: slForDay(dayKeyAt(50400)), store: quotexStore({ timeZone: 50400 }) });
+  try {
+    assert.equal(qx.panelRoot().getElementById("__tcSLSetup"), null, "today's SL (UTC+14 day) recognized");
+    assert.equal(qx.window.localStorage.getItem("__tradeCalc_tz_offset_sec"), "50400");
+  } finally {
+    qx.close();
+  }
+  const other = await boot({ storage: slForDay(dayKeyAt(50400)), store: quotexStore({ timeZone: -36000 }) });
+  try {
+    await sleep(300);
+    assert.ok(other.panelRoot().getElementById("__tcSLSetup"), "a different day in UTC−10 asks for a new SL");
+  } finally {
+    other.close();
+  }
+});
+
+test("timezone: without the store the cached timezone is used", async () => {
+  const storage = { ...slForDay(dayKeyAt(50400)), __tradeCalc_tz_offset_sec: "50400" };
+  const qx = await boot({ storage });
+  try {
+    assert.equal(qx.panelRoot().getElementById("__tcSLSetup"), null);
+  } finally {
+    qx.close();
+  }
+});
+
+test("any language: balance and payout amount are found without English labels or known classes", async () => {
+  const html = FIXTURE.replace(">Demo Account<", ">Cuenta demo<")
+    .replace('class="Zt1hG"', 'class="Kk2Jj"')
+    .replace('<div class="omlQ2">', '<div class="Pp0Oo">')
+    .replace("<p>Payout</p>", "<p>Pago</p>");
+  const qx = await boot({ html });
+  try {
+    const doc = qx.window.document;
+    assert.equal(doc.querySelector(".__tcProjBalWin").textContent, "↑ 16,808.00 ₹");
+    assert.equal(doc.querySelector(".__tcProjBalLoss").textContent, "↓ 13,228.00 ₹");
+  } finally {
+    qx.close();
+  }
+});
+
+test("page head: no --tc-* tokens or id-tagged styles in <head>; tokens live in the shadow root", async () => {
+  const qx = await boot();
+  try {
+    await sleep(1500); // let a trade-less panel settle
+    const head = qx.window.document.head;
+    const headCss = Array.from(head.querySelectorAll("style")).map((s) => s.textContent).join("\n");
+    assert.doesNotMatch(headCss, /--tc-/, "no design tokens in the page head");
+    assert.equal(head.querySelectorAll("style[id]").length, 0, "no id-tagged style elements");
+    const shadowCss = Array.from(qx.panelRoot().querySelectorAll("style")).map((s) => s.textContent).join("\n");
+    assert.match(shadowCss, /:host \{ --s-1/);
+    await qx.sendToPanel({ type: "TOGGLE_PANEL" });
+    assert.equal(head.querySelectorAll("style").length, 0, "cleanup removes the head styles");
   } finally {
     qx.close();
   }

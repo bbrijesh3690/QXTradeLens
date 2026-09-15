@@ -5,6 +5,35 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.24.0] - 2026-09-15
+
+### Changed
+- **Daily SL setup screen is editable.** It suggests 85% of the balance; type any amount below the
+  balance or pick 70 / 75 / 80 / 85 / 90%. Enter confirms. A lower SL also widens that day's trailing
+  distance, so the trailing SL no longer pulls it straight back up to 80% of the balance. The default 85%
+  trails exactly as before.
+- **Trading day follows the Quotex account timezone** (`global.timeZone`), cached for when the store isn't
+  ready yet. IST is the fallback. Nothing changes for a UTC+5:30 account.
+- **Journal amounts use the account currency** and its number format (were always ₹ / en-IN).
+- **Deposit scanner works in any site language** (`/hi/balance`, `/pt-br/balance`, subdomains). It reads
+  each page's transactions from Quotex's store (`orderState`, `is_deposit`, `method`), with the old page
+  scraping as fallback, and says which source it used. It still counts successful UPI and PhonePe deposits
+  only.
+- **Non-English Quotex:** the balance and payout-amount lookups fall back to page layout instead of the
+  English labels.
+- **Less visible to the page (B11).**
+  - The `--tc-*` design tokens moved from a `:root` block in the page `<head>` into the panel's shadow root.
+    The two chart chips outside it get the tokens inline.
+  - The remaining `<head>` styles (font import, Quotex tweaks) no longer carry ids or `--tc-*` references,
+    and cleanup removes them.
+
+### Fixed
+- The SL setup screen's page blocker checks the whole event path, so clicks inside the form work in open
+  and closed shadow roots alike. Page clicks are still blocked while it's open.
+
+### Tests
+- Added `tests/popup.test.mjs` for the deposit scanner helpers. 44 tests in total.
+
 ## [1.23.0] - 2026-09-15
 
 ### Performance (no change to what the panel does)
