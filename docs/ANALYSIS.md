@@ -9,11 +9,11 @@ Date: 2026-09-15. Based on a full read of the source and a live check on `qxbrok
 |---|---|
 | **TP (take profit)** | Daily target. Can be pulled from the Google Sheet (`TP …` column for today) or typed and locked for the day (IST day) |
 | **SL (stop loss)** | Forced setup modal on first load each day (blocks all page clicks until set). Default SL is 85% of balance. A trailing SL ratchets up: 20% under the peak, or after TP is reached, `post-TP gap` % (1–15, default 5) under the peak and never below TP |
-| **SL breach** | When balance ≤ SL with no open trades: fires `__tcSLBreach`, locks the native "Set limit" button for the day, and (if the system lock is enabled) asks the service worker to lock the site for 6 h |
+| **SL breach** | Informational only since v1.21.0 (fires `__tcSLBreach`). It used to lock the native "Set limit" button and trigger a 6 h system lock |
 | **Payout guard** | If payout % is below the minimum (default 89%), shows the "Payout too low" overlay and disables Up/Down |
 | **Max open trades** | 1–4 (default 2). Extra trade clicks are blocked |
 | **Double-click guard** | Ignores a second trade click within 1.5 s unless "multi" mode is on |
-| **Investment vs SL guard** | Blocks a trade if balance − investment ≤ SL (**currently broken**, see §2) |
+| **Investment vs SL guard** | Removed in v1.21.0 (the stop loss no longer blocks trading) |
 | **REQ** | Winning trades needed to reach TP at the current stake and payout (compound formula) |
 | **RISK** | Stake as a % of balance, colored green / amber / red at 2% and 5% |
 | **Today P/L %** | From the sheet row for today |
@@ -88,7 +88,9 @@ Theme, panel/journal font size, section visibility, chip position, SL on/off, po
 | B13 | `README.md` inside the extension describes an old bookmark updater. `bookmarklet.js` (163 KB) is unused | Confusing |
 | B14 | The daily SL setup trusts `chrome.storage.sync` over the local backup. On 2026-09-15 (v1.19.0 running), today's SL (14,466) and a recorded breach were in localStorage, but the setup modal reappeared offering a new SL at 85% of the *lower* balance. A possible cause is missing or rate-limited sync writes (`storage.sync` has per-minute and per-hour write quotas, and the trade log also writes to it) | After an SL breach, trading can resume by accepting a lower SL, which defeats the stop loss |
 
-Status: B1, B2 and B4 were fixed in v1.20.1.
+Status: B1, B2 and B4 were fixed in v1.20.1. In v1.21.0 the stop loss stopped blocking trading at the
+owner's request: the SL-breach trade block, the "Set limit" lock and the SL system lock are gone. B14
+still makes the daily SL setup screen reappear, but it no longer leads to a lockout.
 
 ### Maintainability
 - **There's no real source.** `content.js` and `bookmarklet.js` are minified build output (a single 164 KB line). Comments refer to a `calculator.js`, "part 01/06" and `build-bookmarklet.sh` that aren't in the folder. Git diffs on a one-line file are useless, and every fix means editing minified code.

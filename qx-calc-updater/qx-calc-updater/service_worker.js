@@ -94,11 +94,12 @@ chrome.alarms.onAlarm.addListener((a) => { if (a.name === SYS_LOCK_ALARM) clearD
 // already connected). No unlock path here by design — both layers self-clear at expiry.
 const LOCK_DAEMON_URL = "http://127.0.0.1:7343/lock";
 const LOCK_HOSTS = ["qxbroker.com", "www.qxbroker.com"];
+// v1.21.0: only the 3-loss streak locks. An SL breach no longer locks anything, so mode 'sl' (sent by
+// a tab still running an older content script) is ignored.
 chrome.runtime.onMessage.addListener((message) => {
   if (!message || message.type !== "SYS_LOCK") return false;
-  const until = message.mode === "streak"
-    ? Date.now() + 15 * 60000
-    : Date.now() + 6 * 3600000; // sl breach → flat 6h, independent of the 5:30 AM IST day boundary
+  if (message.mode !== "streak") return false;
+  const until = Date.now() + 15 * 60000;
   applyDnrLock(until);
   fetch(LOCK_DAEMON_URL, {
     method: "POST",

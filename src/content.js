@@ -293,7 +293,6 @@
         tabClose: [".LtauB", ".rGA6o"],
         chartClose: ["#graph canvas", "canvas.layer.plot", "#graph"],
         chartCanvas: ["#graph canvas.layer.plot", "#graph canvas", "#graph"],
-        nativeLimitBtn: [".s3gwg"],
       },
       queryFirstWithin = (t, e) => {
         if (!t) {
@@ -954,11 +953,6 @@
     })();
     const KEY_BAL_LOGGED_DATE = "__tradeCalc_bal_logged_date",
       KEY_NATIVE_LIMIT_LOCK_DATE = "__tradeCalc_native_limit_lock_date",
-      setNativeLimitLockDate = (t) => {
-        try {
-          localStorage.setItem(KEY_NATIVE_LIMIT_LOCK_DATE, t);
-        } catch (t) {}
-      },
       KEY_STEP_MULT = "__tradeCalc_step_mult",
       getStepMult = () => {
         try {
@@ -2984,39 +2978,12 @@
       edgeFlashEl.offsetWidth;
       edgeFlashEl.style.animation = "__tcEdgeFlash 0.25s ease-out";
     }
-    function enforceNativeLimitLock() {
-      const e =
-        (() => {
-          try {
-            return localStorage.getItem(KEY_NATIVE_LIMIT_LOCK_DATE) || "";
-          } catch (t) {
-            return "";
-          }
-        })() === getIstDateKey();
-      (function () {
-        let e = Array.from(document.querySelectorAll(SELECTORS.nativeLimitBtn[0]));
-        if (!e.length) {
-          e = Array.from(document.querySelectorAll("button")).filter((t) =>
-            /^set limit$/i.test((t.textContent || "").trim()),
-          );
-        }
-        return e;
-      })().forEach((t) => {
-        if (e) {
-          if (!t.disabled) {
-            t.disabled = true;
-            t.title = "Locked by QXTradeLens — SL was hit today, resets at 5:30 AM IST";
-            t.style.cursor = "not-allowed";
-          }
-        } else if (t.disabled && -1 !== t.title.indexOf("QXTradeLens")) {
-          t.disabled = false;
-          t.title = "";
-          t.style.cursor = "";
-        }
-      });
-    }
+    // v1.21.0: the SL-breach lock on Quotex's "Set limit" button was removed (it ran every 200 ms).
+    // Clear the lock date an earlier version may have stored.
+    try {
+      localStorage.removeItem(KEY_NATIVE_LIMIT_LOCK_DATE);
+    } catch (t) {}
     window.__tcTriggerEdgeFlash = triggerEdgeFlash;
-    window.__tcEnforceNativeLimitLock = enforceNativeLimitLock;
     let lastPayoutPct = NaN,
       balanceMissingSince = 0;
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -3027,16 +2994,14 @@
         ? t.maxTrades <= 1
           ? "Single-trade mode — wait for the trade to settle"
           : `Max ${t.maxTrades} active trades — wait for one to settle`
-        : t.isInvestmentBreachingSL
-          ? `Trade would breach stop loss (${t.slText})`
-          : isNaN(t.projSb)
-            ? "Balance unreadable"
-            : isNaN(t.tp)
-              ? "Trade amount not set"
-              : isNaN(t.rp)
-                ? "Payout % unreadable"
-                : !isNaN(t.rp) && t.rp < t.minRp
-                  ? `Payout ${t.rp}% below minimum ${t.minRp}%`
+        : isNaN(t.projSb)
+          ? "Balance unreadable"
+          : isNaN(t.tp)
+            ? "Trade amount not set"
+            : isNaN(t.rp)
+              ? "Payout % unreadable"
+              : !isNaN(t.rp) && t.rp < t.minRp
+                ? `Payout ${t.rp}% below minimum ${t.minRp}%`
                   : !t.tbValue || isNaN(t.tb)
                     ? "Set a target balance"
                     : t.tb <= t.projSb
@@ -3331,28 +3296,13 @@
                 }),
               );
             } catch (t) {}
-            setNativeLimitLockDate(getIstDateKey());
-            if (
-              typeof chrome != "undefined" &&
-              chrome.runtime &&
-              chrome.runtime.sendMessage &&
-              !isSysLockDisabled()
-            ) {
-              try {
-                chrome.runtime.sendMessage({
-                  type: "SYS_LOCK",
-                  mode: "sl",
-                });
-              } catch (t) {}
-            }
+            // v1.21.0: an SL breach no longer locks anything. It used to lock Quotex's "Set limit"
+            // button for the day and send SYS_LOCK "sl" (6 h site block + close tabs).
           }
         } else if (window.__tcSLBreachNotified) {
           window.__tcSLBreachNotified = false;
         }
       }
-      const openInvestment = isNaN(payoutInfo.investment) ? 0 : payoutInfo.investment,
-        balanceAfterInvestment = hasBalance ? balance - openInvestment : NaN,
-        investmentBreachesSl = hasSl && !isNaN(balanceAfterInvestment) && balanceAfterInvestment <= slValue;
       setText(riskEl, isNaN(riskPct) ? "—" : riskPct.toFixed(2) + "%");
       const riskColor = (function (t) {
         return isNaN(t) ? "" : t > 5 ? "var(--tc-red)" : t > 2 ? "var(--tc-amb)" : "var(--tc-grn)";
@@ -3437,15 +3387,16 @@
       } else {
         renderProjectedBalances(NaN, NaN);
       }
+      // v1.21.0: the stop loss never blocks trading. The "trade would breach stop loss" block was
+      // removed: after a breach it disabled Up/Down permanently, and the trailing SL pushed any new
+      // SL back above the balance. Only payout-too-low and the max-open-trades cap block now.
       const tradeCapReached = openPnlEls.length >= maxTrades,
-        shouldBlock = investmentBreachesSl || payoutTooLow || tradeCapReached;
+        shouldBlock = payoutTooLow || tradeCapReached;
       tradingBlocked = shouldBlock;
       setTradeButtonsDisabled(shouldBlock);
       const blockContext = {
           tradeCapReached: tradeCapReached,
           maxTrades: maxTrades,
-          isInvestmentBreachingSL: investmentBreachesSl,
-          slText: `${detectCurrency()}${fmtMoney0(slValue)}`,
           projSb: projectionBase,
           tp: riskPct,
           rp: payoutPct,
@@ -6373,7 +6324,6 @@
         }
         renderMtf(t);
       })();
-      enforceNativeLimitLock();
       if (byId("__tcMobileBar")) {
         renderMobileBar();
       }

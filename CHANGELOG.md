@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.21.0] - 2026-09-15
+
+### Changed
+- **The stop loss no longer blocks trading.** SL is still set, trailed and shown, but it is informational only.
+  - Removed the "Trade would breach stop loss" block. After a breach it disabled Up/Down permanently, and the
+    trailing SL moved any newly set SL back above the balance, so even reloading and setting a new SL didn't help.
+  - Removed the SL-breach lock on Quotex's "Set limit" button, including the 200 ms button scan. A lock date saved
+    by an older version is cleared on load.
+  - Removed the SL-breach system lock (6 h site block + closing Quotex tabs). The service worker ignores SL-mode
+    lock requests.
+- Blocking that remains: payout below minimum, max open trades, and the opt-in 3-loss streak lock (off by default).
+- Popup: the "Disable System Lock" tooltip now says it only applies to the loss streak.
+
 ## [1.20.1] - 2026-09-15
 
 ### Fixed

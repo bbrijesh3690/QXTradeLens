@@ -62,10 +62,11 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
   window.HTMLCanvasElement.prototype.getContext = () => null;
 
   const listeners = new Set();
+  const sentMessages = [];
   window.chrome = {
     runtime: {
       onMessage: { addListener: (f) => listeners.add(f), removeListener: (f) => listeners.delete(f) },
-      sendMessage() {},
+      sendMessage: (msg) => sentMessages.push(msg),
     },
   };
   for (const [k, v] of Object.entries(storage)) window.localStorage.setItem(k, v);
@@ -77,6 +78,7 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
     window,
     errors,
     listeners,
+    sentMessages,
     isRunning: () => typeof window.__tcCleanup === "function",
     panelRoot: () => shadowRoots.filter((r) => r.host.isConnected).at(-1),
     async navigate(p) {
@@ -174,14 +176,44 @@ test("bug 1: a relaunched panel leaves exactly one popup message listener", asyn
 
 // ── Bug 2: investment not read, so the SL-breach guard and projections were dead ───────────────────
 
-test("bug 2: a stake that would push balance below the stop loss is blocked", async () => {
+// ── v1.21.0: the stop loss never blocks trading ───────────────────────────────────────────────────
+
+const tradeButtonsEnabled = (qx) =>
+  Array.from(qx.window.document.querySelectorAll("#trade-button button")).every((b) => !b.disabled);
+
+test("SL: a stake that would take balance below the stop loss is not blocked", async () => {
   // balance 15,228 − stake 2,000 = 13,228, which is ≤ SL 14,000
   const qx = await boot({ storage: slStorage(14000) });
   try {
-    const warn = qx.panelRoot().getElementById("__tcWarn");
-    assert.match(warn.textContent, /breach stop loss/i);
-    const buttons = qx.window.document.querySelectorAll("#trade-button button");
-    assert.ok(Array.from(buttons).every((b) => b.disabled), "Up/Down disabled");
+    assert.equal(tradeButtonsEnabled(qx), true, "Up/Down stay enabled");
+    assert.doesNotMatch(qx.panelRoot().getElementById("__tcWarn").textContent, /stop loss/i);
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL: a breach (balance at or below SL) doesn't block, lock Set limit, or lock the site", async () => {
+  // balance 15,228 is already below SL 16,000; system lock explicitly enabled
+  const storage = { ...slStorage(16000), __tradeCalc_sl_ls_init_bal: "20000", __tradeCalc_sys_lock_disabled: "0" };
+  const html = FIXTURE.replace('<div id="graph">', '<button type="button">Set limit</button><div id="graph">');
+  const qx = await boot({ storage, html });
+  try {
+    await sleep(2200); // breach handling waits ~1.8 s after the last open trade
+    assert.equal(tradeButtonsEnabled(qx), true, "Up/Down stay enabled");
+    const setLimit = Array.from(qx.window.document.querySelectorAll("button")).find((b) => b.textContent === "Set limit");
+    assert.equal(setLimit.disabled, false, "Quotex Set limit button not locked");
+    assert.equal(qx.window.localStorage.getItem("__tradeCalc_native_limit_lock_date"), null);
+    assert.deepEqual(qx.sentMessages.filter((m) => m.type === "SYS_LOCK"), [], "no SYS_LOCK sent");
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL: a lock date stored by an older version is cleared", async () => {
+  const storage = { ...slStorage(10000), __tradeCalc_native_limit_lock_date: istToday() };
+  const qx = await boot({ storage });
+  try {
+    assert.equal(qx.window.localStorage.getItem("__tradeCalc_native_limit_lock_date"), null);
   } finally {
     qx.close();
   }
