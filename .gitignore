@@ -1,0 +1,18 @@
+# macOS archive junk
+__MACOSX/
+.DS_Store
+._*
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# Build / tooling
+node_modules/
+dist/
+*.zip
+*.crx
+*.pem
+*.log

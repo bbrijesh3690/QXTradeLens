@@ -1,0 +1,651 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>QXTradeLens</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;0,600&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --bg:           oklch(10% 0.015 257);
+        --surface:      oklch(14% 0.018 257);
+        --border:       oklch(100% 0 0 / 0.08);
+        --border-hi:    oklch(100% 0 0 / 0.14);
+        /* Accent + success are the same Material 3 hexes as the panel + AI-signal dropdown
+           (2026-07-11 design sync across panel/floating panels/popup). Danger red/amber unchanged —
+           see the matching note in 02_ui_templates.js. */
+        --accent:       #d0bcff;
+        --accent-glow:  oklch(from #d0bcff l c h / 0.14);
+        --text-pri:     oklch(97% 0.005 257);
+        --text-dim:     oklch(82% 0.012 257);
+        --text-mut:     oklch(62% 0.016 257);
+        --text-btn:     oklch(11% 0.01 257);
+        --input-bg:     oklch(0% 0 0 / 0.28);
+        --grn:          #7ddc8f;
+        --red:          oklch(64% 0.18 25);
+        --amb:          oklch(80% 0.15 75);
+      }
+
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        width: 268px;
+        background: var(--bg);
+        color: var(--text-pri);
+        font-family: 'DM Sans', system-ui, sans-serif;
+        font-size: 12px;
+        line-height: 1.4;
+        user-select: none;
+        padding-bottom: 10px;
+      }
+
+      /* ── Header ── */
+      .popup-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 14px 9px;
+      }
+      .popup-logo {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        color: var(--accent);
+      }
+      .popup-title {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        color: var(--text-pri);
+      }
+      .popup-header-actions {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .icon-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--text-mut);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 999px; /* M3 standard icon button is circular */
+        transition: color 0.15s, background 0.15s;
+        flex-shrink: 0;
+      }
+      .icon-btn:hover { color: var(--text-pri); background: oklch(from var(--accent) l c h / 0.08); }
+      .icon-btn svg { width: 14px; height: 14px; pointer-events: none; }
+
+      /* ── Primary CTA ── */
+      .cta-btn {
+        display: block;
+        width: calc(100% - 28px);
+        margin: 0 14px 2px;
+        padding: 9px 0;
+        background: var(--accent);
+        color: var(--text-btn);
+        border: none;
+        border-radius: 999px; /* M3 filled button = full/stadium shape */
+        font-family: 'DM Sans', system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: filter 0.15s, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .cta-btn:hover  { filter: brightness(1.1); transform: translateY(-1px); }
+      .cta-btn:active { transform: translateY(0); filter: brightness(0.94); }
+
+      /* ── Sections ── */
+      .section {
+        padding: 0 14px;
+      }
+      .section-hdr {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 9px 0 5px;
+        border-top: 1px solid var(--border);
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--text-mut);
+      }
+      .section-hdr .chip {
+        margin-left: auto;
+      }
+
+      /* ── Control row ── */
+      .ctrl-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 32px;
+        gap: 8px;
+      }
+      .ctrl-row + .ctrl-row { border-top: 1px solid var(--border); }
+      .ctrl-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-dim);
+        flex: 1;
+        min-width: 0;
+      }
+      .ctrl-val {
+        font-family: 'DM Mono', monospace;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--accent);
+        min-width: 32px;
+        text-align: right;
+        flex-shrink: 0;
+      }
+
+      /* ── Toggle switch ── */
+      .switch {
+        position: relative;
+        display: inline-block;
+        width: 32px;
+        height: 18px;
+        flex-shrink: 0;
+      }
+      .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+        position: absolute;
+      }
+      .sw-track {
+        position: absolute;
+        inset: 0;
+        background: oklch(100% 0 0 / 0.09);
+        border: 1px solid oklch(100% 0 0 / 0.11);
+        border-radius: 9px;
+        cursor: pointer;
+        transition: background 0.18s, border-color 0.18s;
+      }
+      .sw-track::before {
+        content: '';
+        position: absolute;
+        width: 13px;
+        height: 13px;
+        left: 2px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: var(--text-mut);
+        border-radius: 50%;
+        transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background 0.18s;
+      }
+      .switch input:checked + .sw-track {
+        background: var(--accent);
+        border-color: transparent;
+      }
+      .switch input:checked + .sw-track::before {
+        transform: translateX(14px) translateY(-50%);
+        background: oklch(10% 0.015 257);
+      }
+      .switch input:focus-visible + .sw-track {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+
+      /* ── Slider row ── */
+      .slider-block {
+        padding: 5px 0 8px;
+        border-top: 1px solid var(--border);
+      }
+      .slider-block:first-child { border-top: none; }
+      .slider-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 5px;
+      }
+      input[type="range"] {
+        width: 100%;
+        height: 3px;
+        appearance: none;
+        background: oklch(100% 0 0 / 0.1);
+        border-radius: 2px;
+        outline: none;
+        cursor: pointer;
+        display: block;
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        appearance: none;
+        width: 13px;
+        height: 13px;
+        background: var(--accent);
+        border-radius: 50%;
+        cursor: pointer;
+        border: 2px solid var(--bg);
+        box-shadow: 0 0 0 1px var(--accent);
+        transition: transform 0.12s;
+      }
+      input[type="range"]:active::-webkit-slider-thumb {
+        transform: scale(1.2);
+      }
+      input[type="range"]::-moz-range-thumb {
+        width: 13px;
+        height: 13px;
+        background: var(--accent);
+        border-radius: 50%;
+        cursor: pointer;
+        border: 2px solid var(--bg);
+      }
+
+      /* ── Select ── */
+      select {
+        background: var(--input-bg);
+        border: 1px solid oklch(100% 0 0 / 0.1);
+        border-radius: 4px; /* M3 outlined text field / dropdown corner (shape-xs) */
+        color: var(--text-dim);
+        font-family: 'DM Sans', system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 500;
+        padding: 4px 22px 4px 7px;
+        outline: none;
+        cursor: pointer;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 7px center;
+        transition: border-color 0.15s;
+        flex-shrink: 0;
+      }
+      select:focus { border-color: oklch(70% 0.145 248 / 0.5); }
+      select option { background: oklch(14% 0.018 257); }
+
+      /* ── Number input ── */
+      input[type="number"] {
+        background: var(--input-bg);
+        border: 1px solid oklch(100% 0 0 / 0.1);
+        border-radius: 6px;
+        color: var(--text-pri);
+        font-family: 'DM Mono', monospace;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 6px;
+        width: 56px;
+        text-align: center;
+        outline: none;
+        -moz-appearance: textfield;
+        flex-shrink: 0;
+        transition: border-color 0.15s;
+      }
+      input[type="number"]::-webkit-outer-spin-button,
+      input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+      input[type="number"]:focus { border-color: oklch(70% 0.145 248 / 0.5); }
+
+      /* ── Text input ── */
+      .text-input {
+        flex: 1;
+        min-width: 0;
+        background: var(--input-bg);
+        border: 1px solid oklch(100% 0 0 / 0.1);
+        border-radius: 6px;
+        color: var(--text-pri);
+        font-family: 'DM Mono', monospace;
+        font-size: 10px;
+        font-weight: 500;
+        padding: 5px 7px;
+        outline: none;
+        transition: border-color 0.15s;
+      }
+      .text-input::placeholder { color: var(--text-mut); opacity: 0.7; }
+      .text-input:focus { border-color: oklch(70% 0.145 248 / 0.5); }
+
+      /* ── Input row (text + action buttons) ── */
+      .input-row {
+        display: flex;
+        gap: 5px;
+        align-items: center;
+        padding-bottom: 6px;
+        border-top: 1px solid var(--border);
+        padding-top: 6px;
+      }
+
+      /* ── Action buttons ── */
+      .btn-save {
+        background: var(--accent);
+        color: var(--text-btn);
+        border: none;
+        border-radius: 6px;
+        font-family: 'DM Sans', system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 5px 9px;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: filter 0.15s;
+        white-space: nowrap;
+      }
+      .btn-save:hover { filter: brightness(1.1); }
+
+      .btn-clear {
+        background: none;
+        border: 1px solid oklch(100% 0 0 / 0.1);
+        border-radius: 6px;
+        color: var(--text-mut);
+        font-family: 'DM Mono', monospace;
+        font-size: 10px;
+        width: 27px;
+        height: 27px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: color 0.15s, border-color 0.15s;
+      }
+      .btn-clear:hover { color: var(--red); border-color: oklch(64% 0.18 25 / 0.35); }
+
+      .btn-ghost {
+        background: none;
+        border: 1px solid oklch(100% 0 0 / 0.1);
+        border-radius: 6px;
+        color: var(--text-mut);
+        font-family: 'DM Sans', system-ui, sans-serif;
+        font-size: 10px;
+        font-weight: 600;
+        padding: 5px 9px;
+        cursor: pointer;
+        transition: color 0.15s, border-color 0.15s;
+        white-space: nowrap;
+      }
+      .btn-ghost:hover { color: var(--text-pri); border-color: oklch(100% 0 0 / 0.2); }
+
+      .save-row {
+        display: flex;
+        justify-content: flex-end;
+        padding: 4px 0 8px;
+        border-top: 1px solid var(--border);
+      }
+
+      /* ── Status chip ── */
+      .chip {
+        font-family: 'DM Mono', monospace;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        padding: 2px 6px;
+        border-radius: 4px;
+        flex-shrink: 0;
+      }
+      .chip.set   { color: var(--grn); background: oklch(76% 0.16 145 / 0.12); }
+      .chip.unset { color: var(--text-mut); background: oklch(100% 0 0 / 0.05); }
+      .chip.warn  { color: var(--amb); background: oklch(80% 0.15 75 / 0.12); }
+      .chip.err   { color: var(--red); background: oklch(64% 0.18 25 / 0.12); }
+
+      /* ── Deposit section ── */
+      .btn-scan {
+        width: 100%;
+        padding: 9px 0;
+        background: oklch(100% 0 0 / 0.05);
+        border: 1px solid oklch(100% 0 0 / 0.09);
+        border-radius: 7px;
+        color: var(--text-dim);
+        font-family: 'DM Sans', system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s, color 0.15s;
+        margin-top: 4px;
+        margin-bottom: 6px;
+      }
+      .btn-scan:hover {
+        background: oklch(100% 0 0 / 0.08);
+        color: var(--text-pri);
+        border-color: oklch(100% 0 0 / 0.16);
+      }
+      .btn-stop {
+        display: none;
+        width: 100%;
+        padding: 8px 0;
+        background: oklch(64% 0.18 25 / 0.1);
+        border: 1px solid oklch(64% 0.18 25 / 0.22);
+        border-radius: 7px;
+        color: var(--red);
+        font-family: 'DM Sans', system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s;
+        margin-top: 4px;
+        margin-bottom: 6px;
+      }
+      .btn-stop:hover { background: oklch(64% 0.18 25 / 0.16); }
+
+      #depositResult {
+        font-size: 11px;
+        color: var(--text-dim);
+        line-height: 1.55;
+        padding-bottom: 2px;
+      }
+
+      /* ── Reduced motion ── */
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          transition-duration: 0.01ms !important;
+          animation-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+
+    <!-- ── Header ── -->
+    <div class="popup-header">
+      <svg class="popup-logo" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M2 9h3.5L7 5l3 9 2.5-7 1.5 2H16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="popup-title">QXTradeLens</span>
+      <div class="popup-header-actions">
+        <button id="themeToggle" class="icon-btn" title="Toggle panel theme">
+          <svg id="sunIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+            <circle cx="12" cy="12" r="5"/>
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          <svg id="moonIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Primary CTA ── -->
+    <button id="panelToggleBtn" class="cta-btn">Show / Hide Panel</button>
+
+    <!-- ── DISPLAY ── -->
+    <div class="section">
+      <div class="section-hdr">Display</div>
+
+      <div class="slider-block" style="border-top:none;">
+        <div class="slider-header">
+          <span class="ctrl-label">Panel Scale</span>
+          <span id="sizeVal" class="ctrl-val">16px</span>
+        </div>
+        <input type="range" id="sizeSlider" min="10" max="32" step="1" value="16">
+      </div>
+
+      <div class="slider-block">
+        <div class="slider-header">
+          <span class="ctrl-label">Journal Scale</span>
+          <span id="journalSizeVal" class="ctrl-val">20px</span>
+        </div>
+        <input type="range" id="journalSizeSlider" min="10" max="32" step="1" value="20">
+      </div>
+
+      <div class="ctrl-row">
+        <span class="ctrl-label">Chip Position</span>
+        <select id="chipPosSelect" title="Where trade timer and projected-balance chips appear on the chart">
+          <option value="cursor">Follow cursor</option>
+          <option value="center">Chart center</option>
+          <option value="anchored">Anchored</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ── RISK ── -->
+    <div class="section">
+      <div class="section-hdr">Risk</div>
+
+      <div class="ctrl-row">
+        <span class="ctrl-label">Daily SL Setup</span>
+        <label class="switch" title="Enable automatic daily stop-loss setup at 5:30 AM IST">
+          <input type="checkbox" id="slEnabledToggle" checked>
+          <span class="sw-track"></span>
+        </label>
+      </div>
+
+      <div class="ctrl-row">
+        <span class="ctrl-label" title="After TP is hit, SL trails this % below the day's peak balance — but never below TP itself. Capped at 15%.">Post-TP Trail Gap %</span>
+        <input type="number" id="postTpGapInput" min="1" max="15" step="1" value="5">
+      </div>
+
+      <div class="ctrl-row">
+        <span class="ctrl-label" title="SL breach / 3-loss streak still show warnings, but won't close tabs or block the domain. Stays off until you switch it back on — no daily reset.">Disable System Lock</span>
+        <label class="switch">
+          <input type="checkbox" id="sysLockDisableToggle" checked>
+          <span class="sw-track"></span>
+        </label>
+      </div>
+
+      <div class="ctrl-row" style="padding-bottom: 6px;">
+        <span class="ctrl-label" title="Max concurrent open trades. 1 = single-trade mode — no new trade until active one settles.">Max Concurrent Trades</span>
+        <select id="maxTradesSelect">
+          <option value="1">1 — single</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ── HOTKEYS ── -->
+    <div class="section">
+      <div class="section-hdr">Hotkeys</div>
+
+      <div class="ctrl-row">
+        <span class="ctrl-label" title="ArrowUp / ArrowDown place Up / Down trades">↑↓ → Trade</span>
+        <label class="switch">
+          <input type="checkbox" id="hkUpDownToggle">
+          <span class="sw-track"></span>
+        </label>
+      </div>
+
+      <div class="ctrl-row" style="padding-bottom: 6px;">
+        <span class="ctrl-label" title="ArrowLeft / ArrowRight step investment amount up / down">←→ → Investment</span>
+        <label class="switch">
+          <input type="checkbox" id="hkLeftRightToggle">
+          <span class="sw-track"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- ── SECTIONS ── -->
+    <div class="section">
+      <div class="section-hdr">Sections</div>
+      <div class="toggles-container">
+        <div class="ctrl-row">
+          <span class="ctrl-label">Targets</span>
+          <label class="switch">
+            <input type="checkbox" data-idx="0" checked>
+            <span class="sw-track"></span>
+          </label>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Protections</span>
+          <label class="switch">
+            <input type="checkbox" data-idx="1" checked>
+            <span class="sw-track"></span>
+          </label>
+        </div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Projection</span>
+          <label class="switch">
+            <input type="checkbox" data-idx="2" checked>
+            <span class="sw-track"></span>
+          </label>
+        </div>
+      </div>
+      <div class="save-row">
+        <button id="saveVisibility" class="btn-ghost">Save Sections</button>
+      </div>
+    </div>
+
+    <!-- ── MARQUEE ── -->
+    <div class="section">
+      <div class="section-hdr">
+        Marquee
+        <span id="marqueeStatus" class="chip unset">Off</span>
+      </div>
+      <div class="input-row">
+        <input type="text" id="marqueeInput" class="text-input" placeholder="Scrolling banner text" autocomplete="off" spellcheck="false">
+        <button id="marqueeSave" class="btn-save">Save</button>
+        <button id="marqueeClear" class="btn-clear" title="Clear message">✕</button>
+      </div>
+      <div class="slider-block" style="border-top:none; padding-top: 0;">
+        <div class="slider-header">
+          <span class="ctrl-label">Speed</span>
+          <span id="marqueeSpeedVal" class="ctrl-val">5</span>
+        </div>
+        <input type="range" id="marqueeSpeedSlider" min="1" max="10" step="1" value="5">
+      </div>
+    </div>
+
+    <!-- ── MULTI-TIMEFRAME CHARTS ── -->
+    <div class="section">
+      <div class="section-hdr">
+        Multi-Timeframe Charts
+        <span id="mtfStatus" class="chip unset">1m, 5m, 15m</span>
+      </div>
+      <div class="input-row" title="Up to 4, comma separated, from: 5s 10s 15s 30s 1m 2m 3m 5m 10m 15m 30m 1h 4h. Press C on the chart to show or hide the panel. A timeframe finer than the one the platform is currently on has no data until you visit it once — use the panel's refresh button.">
+        <input type="text" id="mtfTfsInput" class="text-input" placeholder="1m, 5m, 15m" autocomplete="off" spellcheck="false">
+        <button id="mtfTfsSave" class="btn-save">Save</button>
+      </div>
+      <div class="slider-block" style="border-top:none; padding-top: 0;">
+        <div class="slider-header">
+          <span class="ctrl-label" title="How many candles each mini chart shows.">Candles per chart</span>
+          <span id="mtfCountVal" class="ctrl-val">40</span>
+        </div>
+        <input type="range" id="mtfCountSlider" min="10" max="120" step="5" value="40">
+      </div>
+    </div>
+
+    <!-- ── ACTIVITY LOG ── -->
+    <div class="section">
+      <div class="section-hdr">
+        Activity Log
+        <span id="sheetStatus" class="chip unset">Not set</span>
+      </div>
+      <div class="input-row">
+        <input type="text" id="sheetUrlInput" class="text-input" placeholder="Apps Script URL" autocomplete="off" spellcheck="false">
+        <button id="sheetSave" class="btn-save">Save</button>
+        <button id="sheetClear" class="btn-clear" title="Remove URL">✕</button>
+      </div>
+    </div>
+
+    <!-- ── DEPOSITS ── -->
+    <div class="section" id="depositCard">
+      <div class="section-hdr">
+        Deposits
+        <span id="depositStatus" class="chip unset">Idle</span>
+      </div>
+      <button id="depositCalcBtn" class="btn-scan">Scan UPI / PhonePe Deposits</button>
+      <button id="depositCancelBtn" class="btn-stop">Stop scan</button>
+      <div id="depositResult"></div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
