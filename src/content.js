@@ -77,23 +77,11 @@
         window.__tradeCalcObs.disconnect();
         delete window.__tradeCalcObs;
       }
-      if (window.__tcHistObs) {
-        window.__tcHistObs.disconnect();
-        delete window.__tcHistObs;
-      }
       document.querySelectorAll("." + ids.tcPlacedBal).forEach((t) => t.remove());
-      if (window.__tcSpoof) {
-        window.__tcSpoof.disconnect();
-        delete window.__tcSpoof;
-      }
       delete window.__tcSLBreachNotified;
-      if (window.__tcAutoCloseTimer) {
-        clearInterval(window.__tcAutoCloseTimer);
-        delete window.__tcAutoCloseTimer;
-      }
-      if (window.__tcSettleMonitor) {
-        clearInterval(window.__tcSettleMonitor);
-        delete window.__tcSettleMonitor;
+      if (window.__tcScheduler) {
+        clearInterval(window.__tcScheduler);
+        delete window.__tcScheduler;
       }
       if (window.__tcAssetCloseTimer) {
         clearTimeout(window.__tcAssetCloseTimer);
@@ -106,10 +94,6 @@
       if (window.__tcAutoCloseStepTimer) {
         clearTimeout(window.__tcAutoCloseStepTimer);
         delete window.__tcAutoCloseStepTimer;
-      }
-      if (window.__tcLiveTimer) {
-        clearInterval(window.__tcLiveTimer);
-        delete window.__tcLiveTimer;
       }
       stopTimerLoop();
       try {
@@ -255,6 +239,37 @@
       delete window.__tcCleanup;
     };
     document.addEventListener("__tcToggle", window.__tcCleanup);
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // Scheduler (v1.23.0): one 100 ms interval runs every periodic task, replacing three separate
+    // intervals. Cleanup stops it through window.__tcScheduler. A failing task doesn't stop the others;
+    // its error is rethrown asynchronously so it still shows up in the console.
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    const SCHEDULER_TICK_MS = 100;
+    const scheduledTasks = [];
+    function every(periodMs, fn) {
+      // First run after one full period, like setInterval.
+      scheduledTasks.push({ periodMs, fn, lastRun: Date.now() });
+      if (window.__tcScheduler) {
+        return;
+      }
+      window.__tcScheduler = setInterval(() => {
+        const now = Date.now();
+        for (const task of scheduledTasks) {
+          // Small slack so a 200 ms task isn't pushed to 300 ms by timer jitter.
+          if (now - task.lastRun < task.periodMs - SCHEDULER_TICK_MS / 2) {
+            continue;
+          }
+          task.lastRun = now;
+          try {
+            task.fn();
+          } catch (err) {
+            setTimeout(() => {
+              throw err;
+            });
+          }
+        }
+      }, SCHEDULER_TICK_MS);
+    }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Quotex DOM selectors + number/currency helpers
     // ⚠ Most entries are hashed CSS-module classes that rotate when Quotex ships a new build.
@@ -1235,8 +1250,9 @@
       }
     }
     spoofLiveAccountLabel();
+    // Re-applied after DOM additions by the shared page observer (see "Page observer" below).
     let spoofQueued = false;
-    const spoofObserver = new MutationObserver((t) => {
+    function onPageMutationsForSpoof(t) {
       if (!spoofQueued) {
         for (let e = 0; e < t.length; e++) {
           if (t[e].addedNodes.length > 0) {
@@ -1249,14 +1265,7 @@
           }
         }
       }
-    });
-    spoofObserver.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-    window.__tcSpoof = {
-      disconnect: () => spoofObserver.disconnect(),
-    };
+    }
     (function () {
       if (!isMobileWidth()) {
         return;
@@ -3110,10 +3119,7 @@
         }
       }
     }
-    if (window.__tcAutoCloseTimer) {
-      clearInterval(window.__tcAutoCloseTimer);
-    }
-    window.__tcAutoCloseTimer = setInterval(() => {
+    every(5000, () => {
       if (void 0 === minPayoutInput || !minPayoutInput) {
         return;
       }
@@ -3121,7 +3127,7 @@
       if (!isNaN(t)) {
         autoCloseLowPayoutTabs(t);
       }
-    }, 5000);
+    });
     const TRADE_BTN_SELECTOR = "#trade-button button, .hkjXJ button, .bSenO button";
     let lastTradeBtnLock = null,
       lastTradeBtnEl = null;
@@ -3959,18 +3965,14 @@
       }
       return false;
     }
-    const domObserver = new MutationObserver((t) => {
+    function onPageMutationsForRecalc(t) {
       for (let e = 0; e < t.length; e++) {
         if (isRelevantMutation(t[e])) {
           scheduleRecalc();
           return;
         }
       }
-    });
-    domObserver.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
+    }
     let lastTradeClickAt = 0,
       stakeInputEl = null;
     function isActiveTab(t) {
@@ -4505,7 +4507,6 @@
     document.addEventListener("pointerdown", window.__tcPointerdownDispatch, {
       capture: true,
     });
-    window.__tradeCalcObs = domObserver;
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Trade placement log + "Entry balance" tags in trade history
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -4647,7 +4648,7 @@
     }
     window.__tcRecordPlacement = recordPlacement;
     let historyTagQueued = false;
-    const historyObserver = new MutationObserver(function () {
+    function onPageMutationsForHistory() {
       if (!historyTagQueued) {
         historyTagQueued = true;
         setTimeout(() => {
@@ -4655,7 +4656,7 @@
           tagHistoryEntryBalances();
         }, 300);
       }
-    });
+    }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Asset dropdown automation (OTC rebuild `R`, close tabs)
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -4812,11 +4813,21 @@
     function isPairTabOpen(t) {
       return getPairTabs().some((e) => normKey(getTabName(e)) === t);
     }
-    historyObserver.observe(document.body, {
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // Page observer (v1.23.0): one MutationObserver on document.body feeds the three consumers that used
+    // to each observe the whole body subtree: the account-label spoof, recalc scheduling and the trade
+    // history "Entry balance" tags. Cleanup disconnects it through window.__tradeCalcObs.
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    const pageObserver = new MutationObserver((records) => {
+      onPageMutationsForSpoof(records);
+      onPageMutationsForRecalc(records);
+      onPageMutationsForHistory();
+    });
+    pageObserver.observe(document.body, {
       childList: true,
       subtree: true,
     });
-    window.__tcHistObs = historyObserver;
+    window.__tradeCalcObs = pageObserver;
     let otcRebuildBusy = false;
     function waitUntil(t, e, n, o) {
       const r = Date.now(),
@@ -4983,9 +4994,6 @@
       return r && o ? (t._tcUuid = r.trim() + "|" + o) : "";
     }
     const settleTracker = new Map();
-    if (window.__tcSettleMonitor) {
-      clearInterval(window.__tcSettleMonitor);
-    }
     // v1.22.0: settled trades come from the store's closed deals when the bridge is available. The page
     // rows below (`.A7vDd` / `.Os2ep`) no longer exist on the current Quotex build, so the loss streak
     // could never trigger (B7). Deals already closed when the panel starts are the baseline, not outcomes.
@@ -5013,7 +5021,7 @@
       }
       return true;
     }
-    window.__tcSettleMonitor = setInterval(function () {
+    every(500, function () {
       if (trackStoreOutcomes()) {
         outcomesVia = "store";
         settleTracker.clear();
@@ -5047,7 +5055,7 @@
           }
         }
       }
-    }, 500);
+    });
     const TIMERS_ENABLED = true;
     function parseClock(t) {
       const e = t.split(":").map(Number);
@@ -5477,13 +5485,16 @@
           timerRaf = 0;
           renderTradeTimers();
         };
-        timerRaf = requestAnimationFrame(t);
+        // v1.23.0: ~20 fps instead of every animation frame (60+ fps). Each frame re-queries the open
+        // trade rows and rebuilds the chip HTML; 50 ms still moves the centisecond countdown smoothly.
+        timerRaf = setTimeout(t, TIMER_FRAME_MS);
       })();
     }
+    const TIMER_FRAME_MS = 50;
     let timerRaf = 0;
     function stopTimerLoop() {
       if (timerRaf) {
-        cancelAnimationFrame(timerRaf);
+        clearTimeout(timerRaf);
         timerRaf = 0;
       }
     }
@@ -5764,131 +5775,8 @@
     // MTF: chart data via the MAIN-world bridge (chart_reader.js), drawing, widget
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     const CHART_REQ_EVENT = "__tcChartReq",
-      CHART_RES_EVENT = "__tcChartRes",
-      MAX_FIBER_DEPTH = 40;
+      CHART_RES_EVENT = "__tcChartRes";
     let chartReqSeq = 0;
-    function readChartDirect() {
-      let t;
-      try {
-        t = (function () {
-          const t = document.getElementById("graph");
-          if (!t) {
-            return null;
-          }
-          const e = [t.querySelector("canvas.layer.plot"), t.querySelector("canvas"), t];
-          for (let t = 0; t < e.length; t++) {
-            const n = e[t];
-            if (!n) {
-              continue;
-            }
-            let o = null;
-            const r = Object.keys(n);
-            for (let t = 0; t < r.length; t++) {
-              if (r[t].indexOf("__reactFiber$") === 0 || r[t].indexOf("__reactInternalInstance$") === 0) {
-                o = r[t];
-                break;
-              }
-            }
-            if (!o) {
-              continue;
-            }
-            let a = n[o],
-              i = 0;
-            for (; a && i < MAX_FIBER_DEPTH; ) {
-              const t = a.stateNode;
-              if (
-                t &&
-                typeof t == "object" &&
-                t.plot &&
-                t.plot.pointsManager &&
-                t.plot.pointsManager.candles
-              ) {
-                return t.plot;
-              }
-              a = a.return;
-              i++;
-            }
-          }
-          return null;
-        })();
-      } catch (t) {
-        return null;
-      }
-      if (!t) {
-        return null;
-      }
-      try {
-        const e = t.pointsManager.candles;
-        if (!e || !e.length) {
-          return null;
-        }
-        const n = (function (t) {
-          if (!Array.isArray(t) || t.length < 3) {
-            return 0;
-          }
-          const e = Object.create(null);
-          let n = 0,
-            o = 0;
-          for (let r = 1; r < t.length; r++) {
-            const a = t[r].t - t[r - 1].t;
-            if (a > 0) {
-              e[a] = (e[a] || 0) + 1;
-              if (e[a] > o) {
-                o = e[a];
-                n = a;
-              }
-            }
-          }
-          return n;
-        })(
-          e.map((t) => ({
-            t: t.time,
-          })),
-        );
-        if (!n) {
-          return null;
-        }
-        const o = new Array(e.length);
-        for (let t = 0; t < e.length; t++) {
-          const n = e[t];
-          o[t] = {
-            t: n.time,
-            o: n.enterValue,
-            h: n.maxValue,
-            l: n.minValue,
-            c: n.exitValue,
-          };
-        }
-        let r = null;
-        try {
-          const e = t.store && t.store.getState && t.store.getState(),
-            n = e && e.chartSettings && e.chartSettings.chartById;
-          if (n) {
-            r = n[t.chartId] || n[Object.keys(n)[0]] || null;
-          }
-        } catch (t) {}
-        let a = null;
-        const i = r && r.currentAsset;
-        if (i && typeof i == "object") {
-          a = i.symbol || i.ticker || i.name || i.id || null;
-        }
-        if (!a) {
-          const t = document.querySelector("#tab-active .WRocw, #tab-active .l5ftG, .tab-active .WRocw");
-          if (t) {
-            a = (t.textContent || "").trim() || null;
-          }
-        }
-        return {
-          symbol: a ? String(a) : null,
-          periodSeconds: n,
-          upColor: (r && r.upColor) || null,
-          downColor: (r && r.downColor) || null,
-          candles: o,
-        };
-      } catch (t) {
-        return null;
-      }
-    }
     const MTF_MAX_CANDLES = 1500,
       MTF_STALE_SEC = 3;
     let mtfEntries = {},
@@ -5916,11 +5804,8 @@
     }
     function pullChartSnapshot() {
       !(function (t) {
-        const e = readChartDirect();
-        if (e) {
-          t(e);
-          return;
-        }
+        // v1.23.0: candles always come through the chart_reader.js bridge. A direct fiber read was tried
+        // first, but React's expando properties are invisible from this isolated world, so it never worked (B5).
         const n = ++chartReqSeq;
         let o = false;
         const r = (e) => {
@@ -6576,11 +6461,14 @@
       }
     }
     let mtfSyncBusy = false;
-    if (window.__tcLiveTimer) {
-      clearInterval(window.__tcLiveTimer);
-    }
-    window.__tcLiveTimer = setInterval(() => {
+    every(200, () => {
+      // The tab-title countdown stays live in background tabs (that's where it's read). Everything
+      // else here only paints the page, so it's skipped while the tab is hidden (v1.23.0).
+      const hidden = document.hidden;
       !(function () {
+        if (hidden) {
+          return;
+        }
         if (!balanceEl) {
           return;
         }
@@ -6598,7 +6486,7 @@
           t.textContent = n;
         }
       })();
-      if (lastReqInputs) {
+      if (lastReqInputs && !hidden) {
         renderReq(
           false,
           lastReqInputs.nSettled,
@@ -6623,6 +6511,9 @@
         }
         updateTabTitle(e, n);
       })();
+      if (hidden) {
+        return;
+      }
       renderTradeTimers();
       (function () {
         const t = byId("__tcMTF");
@@ -6639,7 +6530,7 @@
       if (byId("__tcMobileBar")) {
         renderMobileBar();
       }
-    }, 200);
+    });
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Mobile bar (≤ 640 px)
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -7297,8 +7188,11 @@
       _tc();
     }
   }
+  // URL watcher (v1.23.0): a 250 ms poll plus popstate, instead of a MutationObserver on the whole
+  // document that woke on every DOM change just to compare location.href. An isolated-world script can't
+  // see the page's history.pushState calls, so polling is the cheap reliable option.
   var _tcLastUrl = location.href;
-  new MutationObserver(function () {
+  function _tcCheckUrl() {
     var u = location.href;
     if (u === _tcLastUrl) {
       return;
@@ -7309,10 +7203,9 @@
     } else if (_tcIsRunning()) {
       window.__tcCleanup();
     }
-  }).observe(document, {
-    subtree: true,
-    childList: true,
-  });
+  }
+  setInterval(_tcCheckUrl, 250);
+  window.addEventListener("popstate", _tcCheckUrl);
   if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener(function (msg) {
       if (msg.type === "TOGGLE_PANEL") {

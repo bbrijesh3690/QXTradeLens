@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.23.0] - 2026-09-15
+
+### Performance (no change to what the panel does)
+- **One scheduler** (100 ms tick) runs all periodic work, replacing three `setInterval`s. Visual-only work
+  (live balance tag, REQ, trade-timer chips, MTF charts, mobile bar) is skipped while the tab is in the
+  background; the tab-title countdown keeps updating.
+- **One `MutationObserver`** instead of three, each of which watched every DOM change under `<body>`
+  (account-label spoof, recalc scheduling, history "Entry balance" tags).
+- **The launcher polls the URL** every 250 ms (plus `popstate`) instead of observing every DOM mutation on
+  the whole document.
+- **Trade-timer chips redraw at ~20 fps** instead of on every animation frame.
+- **Removed `readChartDirect()` (B5).** It tried to read React internals from the isolated world, where they're
+  invisible, so it always failed before the bridge was used.
+
 ## [1.22.0] - 2026-09-15
 
 ### Added

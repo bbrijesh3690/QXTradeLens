@@ -70,8 +70,7 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
     shadowRoots.push(root);
     return root;
   };
-  // Track observers so teardown can disconnect them; otherwise closing the window fires the content
-  // script's URL watcher against a destroyed `location`.
+  // Track observers (for the resource tests, and so teardown can disconnect them before the window closes).
   const observers = [];
   const NativeObserver = window.MutationObserver;
   window.MutationObserver = class extends NativeObserver {
@@ -79,6 +78,19 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
       super(cb);
       observers.push(this);
     }
+  };
+  // Track intervals (for the resource tests).
+  const intervals = new Set();
+  const nativeSetInterval = window.setInterval.bind(window);
+  const nativeClearInterval = window.clearInterval.bind(window);
+  window.setInterval = (fn, ms, ...rest) => {
+    const id = nativeSetInterval(fn, ms, ...rest);
+    intervals.add(id);
+    return id;
+  };
+  window.clearInterval = (id) => {
+    intervals.delete(id);
+    return nativeClearInterval(id);
   };
   window.PointerEvent = window.MouseEvent; // not implemented by jsdom
   window.HTMLCanvasElement.prototype.getContext = () => null;
@@ -126,12 +138,13 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
     errors,
     listeners,
     sentMessages,
+    observers,
+    intervals,
     isRunning: () => typeof window.__tcCleanup === "function",
     panelRoot: () => shadowRoots.filter((r) => r.host.isConnected).at(-1),
     async navigate(p) {
       window.history.pushState({}, "", p);
-      window.document.body.appendChild(window.document.createElement("i")); // any DOM change wakes the URL watcher
-      await sleep(80);
+      await sleep(350); // the launcher polls the URL every 250 ms
     },
     async sendToPanel(msg) {
       for (const f of Array.from(listeners)) f(msg, {}, () => {});
@@ -528,6 +541,43 @@ test("health: without the store the report says so instead of failing", async ()
   try {
     const row = healthRow(qx, "Store bridge (chart_reader.js)");
     assert.equal(row.status, "missing");
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.23.0: resource use ──────────────────────────────────────────────────────────────────────────
+
+test("perf: the panel runs one DOM observer and one scheduler interval", async () => {
+  const qx = await boot({ store: quotexStore() });
+  try {
+    assert.equal(qx.observers.length, 1, "MutationObservers created (v1.22.0 had 4: launcher + 3 in the panel)");
+    assert.equal(qx.intervals.size, 2, "intervals: launcher URL poll + panel scheduler");
+  } finally {
+    qx.close();
+  }
+});
+
+test("perf: turning the panel off stops its observer and scheduler", async () => {
+  const qx = await boot();
+  try {
+    await qx.sendToPanel({ type: "TOGGLE_PANEL" });
+    assert.equal(qx.intervals.size, 1, "only the launcher URL poll remains");
+  } finally {
+    qx.close();
+  }
+});
+
+test("perf: the scheduler still runs periodic work (loss streak tracking at 500 ms)", async () => {
+  const store = quotexStore();
+  const qx = await boot({ store });
+  try {
+    await sleep(600);
+    const l = deal("late-loss", { close: 1789466000 });
+    store.deals.closedById[l.id] = l;
+    store.deals.closedIds.push(l.id);
+    await sleep(800);
+    assert.equal(qx.window.localStorage.getItem("__tradeCalc_loss_streak"), "1");
   } finally {
     qx.close();
   }
