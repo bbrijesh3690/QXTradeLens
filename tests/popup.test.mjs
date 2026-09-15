@@ -53,7 +53,7 @@ test("deposit scanner: every successful deposit counts, whatever the payment met
   }
 });
 
-test("deposit scanner: per-method breakdown groups spellings and sorts by total", async () => {
+test("deposit scanner: per-method breakdown groups spellings, keeps currencies apart, sorts by count", async () => {
   const w = await loadPopup();
   try {
     const rows = [
@@ -62,14 +62,43 @@ test("deposit scanner: per-method breakdown groups spellings and sorts by total"
       { payment: "Phone Pe", amountRaw: "₹300.00" },
       { payment: "PhonePe", amountRaw: "₹200.00" },
       { payment: "upi", amountRaw: "₹500.00" },
+      { payment: "Binance Pay", amountRaw: "$1000.00" },
       { payment: "", amountRaw: "₹50.00" },
     ];
     assert.deepEqual(JSON.parse(JSON.stringify(w.qxBreakdownByMethod(rows))), [
-      { method: "GPay", count: 1, total: 5000 },
-      { method: "UPI", count: 2, total: 1500 },
-      { method: "Phone Pe", count: 2, total: 500 },
-      { method: "Other", count: 1, total: 50 },
+      { method: "UPI", symbol: "₹", count: 2, total: 1500 },
+      { method: "Phone Pe", symbol: "₹", count: 2, total: 500 },
+      { method: "GPay", symbol: "₹", count: 1, total: 5000 },
+      { method: "Binance Pay", symbol: "$", count: 1, total: 1000 },
+      { method: "Other", symbol: "₹", count: 1, total: 50 },
     ]);
+  } finally {
+    w.close();
+  }
+});
+
+test("deposit scanner: ₹ and $ deposits get separate totals, never added together (v1.24.3)", async () => {
+  const w = await loadPopup();
+  try {
+    // Live 2026-09-15: UPI in ₹, Binance Pay in $ (store currencySign).
+    const rows = [
+      { id: "1", payment: "UPI", amountRaw: "₹50000.00" },
+      { id: "2", payment: "Binance Pay", amountRaw: "$1000.00" },
+      { id: "3", payment: "UPI", amountRaw: "₹40000.00" },
+      { id: "4", payment: "Binance Pay", amountRaw: "$10.00" },
+    ];
+    assert.deepEqual(JSON.parse(JSON.stringify(w.qxTotalsByCurrency(rows))), [
+      { symbol: "₹", count: 2, total: 90000 },
+      { symbol: "$", count: 2, total: 1010 },
+    ]);
+    assert.equal(w.qxDetectSymbol("+$1,000.00"), "$");
+    assert.equal(w.qxDetectSymbol("USDT 25.00"), "USDT");
+    assert.equal(w.qxFormatMoney(609030, "₹"), "₹6,09,030.00");
+    w.qxRenderResults(rows, 10, false, new Set(["store"]));
+    const text = w.document.getElementById("depositResult").textContent.replace(/\s+/g, " ");
+    assert.match(text, /₹90,000\.00 \+ \$1,010\.00/);
+    assert.match(text, /4 successful deposits · 10 pages scanned · read from Quotex data/);
+    assert.match(text, /Binance Pay × 2 \$1,010\.00/);
   } finally {
     w.close();
   }

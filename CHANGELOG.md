@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.24.3] - 2026-09-15
+
+### Fixed
+- **Deposit totals no longer mix currencies.** Live data shows Binance Pay deposits in USD ($) while UPI,
+  PhonePe and GPay are in INR (₹). v1.24.2 added them all under one symbol. The scanner now shows one
+  total per currency (e.g. "₹6,89,030.00 + $4,660.00"), and the per-method breakdown and deposit list
+  each keep their own currency. Currencies aren't converted. ₹ amounts use Indian digit grouping.
+
 ## [1.24.2] - 2026-09-15
 
 ### Changed

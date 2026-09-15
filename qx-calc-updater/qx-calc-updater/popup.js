@@ -404,10 +404,10 @@ function qxParseAmount(raw) {
   return isNaN(n) ? 0 : n;
 }
 
-/** First currency symbol found in the amount string (₹, $, €, £), else ''. */
+/** Currency sign of an amount string ("₹70,000.00", "+$1,000.00", "USDT 25") or '' if none. */
 function qxDetectSymbol(raw) {
-  const m = String(raw || '').match(/[₹$€£]/);
-  return m ? m[0] : '';
+  const m = String(raw || '').trim().replace(/^[+\-]/, '').match(/^[^\d\s.,+\-]+/);
+  return m ? m[0].trim() : '';
 }
 
 /**
@@ -428,22 +428,41 @@ function qxMethodKey(payment) {
   return String(payment || '').trim().toLowerCase().replace(/\s+/g, '') || 'other';
 }
 
-/** Per-method totals, largest first: [{ method, count, total }]. The label is the first spelling seen. */
+/**
+ * Per-method totals: [{ method, symbol, count, total }], grouped by method AND currency, because deposits
+ * come in different currencies (live 2026-09-15: UPI/PhonePe/GPay in ₹, Binance Pay in $). Largest count
+ * first. The label is the first spelling seen.
+ */
 function qxBreakdownByMethod(matched) {
   const groups = new Map();
   for (const tx of matched) {
-    const key = qxMethodKey(tx.payment);
-    const g = groups.get(key) || { method: String(tx.payment || '').trim() || 'Other', count: 0, total: 0 };
+    const symbol = qxDetectSymbol(tx.amountRaw);
+    const key = qxMethodKey(tx.payment) + '|' + symbol;
+    const g = groups.get(key) || { method: String(tx.payment || '').trim() || 'Other', symbol, count: 0, total: 0 };
     g.count += 1;
     g.total += qxParseAmount(tx.amountRaw);
     groups.set(key, g);
   }
-  return Array.from(groups.values()).sort((a, b) => b.total - a.total || a.method.localeCompare(b.method));
+  return Array.from(groups.values()).sort((a, b) => b.count - a.count || b.total - a.total || a.method.localeCompare(b.method));
 }
 
-/** Format a number as currency, e.g. 1253.31 -> "$1,253.31". */
+/** Totals per currency, most deposits first: [{ symbol, count, total }]. Currencies are never added together. */
+function qxTotalsByCurrency(matched) {
+  const groups = new Map();
+  for (const tx of matched) {
+    const symbol = qxDetectSymbol(tx.amountRaw);
+    const g = groups.get(symbol) || { symbol, count: 0, total: 0 };
+    g.count += 1;
+    g.total += qxParseAmount(tx.amountRaw);
+    groups.set(symbol, g);
+  }
+  return Array.from(groups.values()).sort((a, b) => b.count - a.count || b.total - a.total);
+}
+
+/** Format a number as currency: "₹6,09,030.00" (Indian grouping for ₹), "$4,660.00" otherwise. */
 function qxFormatMoney(n, symbol) {
-  return (symbol || '$') + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const locale = symbol === '₹' ? 'en-IN' : 'en-US';
+  return (symbol || '') + n.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 /**
@@ -572,34 +591,30 @@ function qxRenderResults(matched, pagesScanned, cancelled, sources) {
   const via = sources && sources.size
     ? ' · read from ' + Array.from(sources).map((s) => (s === 'store' ? 'Quotex data' : 'page')).join(' + ')
     : '';
-  let total = 0;
-  const symCount = {};
-  matched.forEach((tx) => {
-    total += qxParseAmount(tx.amountRaw);
-    const s = qxDetectSymbol(tx.amountRaw);
-    if (s) symCount[s] = (symCount[s] || 0) + 1;
-  });
-  const symbol = Object.keys(symCount).sort((a, b) => symCount[b] - symCount[a])[0] || '$';
-
   qxSetChip(cancelled ? 'Stopped' : 'Done', cancelled ? 'warn' : 'ok');
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // One total per currency (v1.24.3): v1.24.2 added $ Binance deposits into the ₹ total.
+  const totals = qxTotalsByCurrency(matched);
+  const totalsHtml = totals.length
+    ? totals.map((g) => esc(qxFormatMoney(g.total, g.symbol))).join('<span style="opacity:0.5;font-weight:400;"> + </span>')
+    : esc(qxFormatMoney(0, ''));
   const breakdownHtml = qxBreakdownByMethod(matched).map((g) =>
     `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;">
        <span>${esc(g.method)} <span style="opacity:0.55;">× ${g.count}</span></span>
-       <span style="font-family:'DM Mono',monospace;font-weight:600;">${qxFormatMoney(g.total, symbol)}</span>
+       <span style="font-family:'DM Mono',monospace;font-weight:600;">${esc(qxFormatMoney(g.total, g.symbol))}</span>
      </div>`).join('');
 
   const SHOW = 12;
   const listHtml = matched.slice(0, SHOW).map((tx) =>
     `<div style="display:flex;justify-content:space-between;gap:8px;">
        <span style="font-family:'DM Mono',monospace;color:oklch(62% 0.016 257);font-size:10px;">${esc(tx.id)} <span style="opacity:0.8;">${esc(String(tx.payment || '').trim())}</span></span>
-       <span style="font-family:'DM Mono',monospace;font-size:11px;">${qxFormatMoney(qxParseAmount(tx.amountRaw), symbol)}</span>
+       <span style="font-family:'DM Mono',monospace;font-size:11px;">${esc(qxFormatMoney(qxParseAmount(tx.amountRaw), qxDetectSymbol(tx.amountRaw)))}</span>
      </div>`).join('');
   const more = matched.length > SHOW ? `<div style="opacity:0.5;margin-top:2px;font-size:10px;">…and ${matched.length - SHOW} more</div>` : '';
 
   depositResultEl.innerHTML =
-    `<div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:oklch(76% 0.16 145);margin:4px 0 3px;">${qxFormatMoney(total, symbol)}</div>
+    `<div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:oklch(76% 0.16 145);margin:4px 0 3px;line-height:1.3;">${totalsHtml}</div>
      <div style="font-size:11px;color:oklch(62% 0.016 257);margin-bottom:4px;">${matched.length} successful deposit${matched.length === 1 ? '' : 's'} · ${pagesScanned} page${pagesScanned === 1 ? '' : 's'} scanned${via}</div>
      ${matched.length
        ? `<div style="display:flex;flex-direction:column;gap:2px;padding:4px 0 6px;border-bottom:1px solid oklch(100% 0 0 / 0.08);margin-bottom:5px;">${breakdownHtml}</div>
