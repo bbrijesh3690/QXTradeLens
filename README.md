@@ -16,7 +16,6 @@ trade timers, multi-timeframe mini charts, a Google Sheets journal and keyboard 
 | `…/chart_reader.js` | Read-only MAIN-world bridge to Quotex's chart/Redux store |
 | `…/service_worker.js` | Background: dev reload, sheet fetch proxy, system lock (network block) |
 | `…/popup.html`, `popup.js` | Toolbar popup: settings and the deposit scanner |
-| `…/bookmarklet.js` | Legacy bookmarklet build, not used by the extension |
 | `docs/ANALYSIS.md` | Capability map, known bugs and the refactor plan |
 | `CHANGELOG.md` | Version history |
 

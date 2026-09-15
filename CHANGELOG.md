@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.21.1] - 2026-09-15
+
+### Fixed
+- **Daily SL setup no longer reappears when today's SL is saved (B14).** It trusted synced storage only.
+  It now uses today's SL from sync or the local backup (the higher one if both), and repairs sync when
+  sync had lost it.
+- **The popup's "Daily SL Setup" switch applies immediately (B10).** Switching off hides the SL, stops
+  trailing and closes an open setup screen. Switching on restores today's SL or shows setup. Before, both
+  needed a page reload.
+- **Panel runs on Quotex subdomains (B12).** Content scripts now also match `*.qxbroker.com`.
+
+### Removed
+- `bookmarklet.js`, an unused 163 KB legacy build (B13, still in git history). Replaced the stale extension
+  folder README.
+
 ## [1.21.0] - 2026-09-15
 
 ### Changed

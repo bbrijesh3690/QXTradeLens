@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "QXTradeLens Controller",
-  "version": "1.21.0",
+  "version": "1.21.1",
   "description": "Professional trading controls and real-time scaling for QXTradeLens.",
   "permissions": [
     "storage",
@@ -31,7 +31,8 @@
   "content_scripts": [
     {
       "matches": [
-        "*://qxbroker.com/*"
+        "*://qxbroker.com/*",
+        "*://*.qxbroker.com/*"
       ],
       "js": [
         "content.js"
@@ -40,7 +41,8 @@
     },
     {
       "matches": [
-        "*://qxbroker.com/*"
+        "*://qxbroker.com/*",
+        "*://*.qxbroker.com/*"
       ],
       "js": [
         "chart_reader.js"

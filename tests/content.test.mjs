@@ -27,7 +27,7 @@ const slStorage = (sl) => ({
   __tradeCalc_tp_manual_date: istToday(),
 });
 
-async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html = FIXTURE } = {}) {
+async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html = FIXTURE, sync = null } = {}) {
   const errors = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on("jsdomError", (e) => {
@@ -69,6 +69,24 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
       sendMessage: (msg) => sentMessages.push(msg),
     },
   };
+  // Optional chrome.storage.sync mock: `sync` is the initial stored object.
+  if (sync) {
+    window.chrome.storage = {
+      sync: {
+        data: { ...sync },
+        get(keys, cb) {
+          const list = Array.isArray(keys) ? keys : [keys];
+          const out = {};
+          for (const k of list) if (k in this.data) out[k] = this.data[k];
+          setTimeout(() => cb(out), 0);
+        },
+        set(obj, cb) {
+          Object.assign(this.data, obj);
+          if (cb) setTimeout(cb, 0);
+        },
+      },
+    };
+  }
   for (const [k, v] of Object.entries(storage)) window.localStorage.setItem(k, v);
 
   window.eval(SOURCE);
@@ -276,6 +294,76 @@ test("bug 4: Ctrl+↑ steps take profit on Windows/Linux", async () => {
 
 test("bug 4: Cmd+↑ steps from the full formatted value (not 20 from \"20,000.00\")", async () => {
   assert.equal(await pressTpStep("metaKey"), "21000");
+});
+
+// ── v1.21.1: B14 SL setup source, B10 live popup SL switch ─────────────────────────────────────────
+
+const slSetupOpen = (qx) => !!qx.panelRoot().getElementById("__tcSLSetup");
+const slShown = (qx) => qx.panelRoot().getElementById("__tcSLInput").value;
+
+test("B14: today's SL in the local backup is used when sync has none, and sync is repaired", async () => {
+  const qx = await boot({ storage: slStorage(14466), sync: { __tradeCalc_sl_value: 12000, __tradeCalc_sl_date: "2026-01-01" } });
+  try {
+    assert.equal(slSetupOpen(qx), false, "no setup screen");
+    assert.equal(slShown(qx), "14,466.00");
+    const data = qx.window.chrome.storage.sync.data;
+    assert.equal(data.__tradeCalc_sl_value, 14466);
+    assert.equal(data.__tradeCalc_sl_date, istToday());
+  } finally {
+    qx.close();
+  }
+});
+
+test("B14: when sync and local both have today's SL, the higher (trailed) one wins", async () => {
+  const qx = await boot({
+    storage: slStorage(13000),
+    sync: { __tradeCalc_sl_value: 13500, __tradeCalc_sl_date: istToday(), __tradeCalc_sl_init_bal: 15228 },
+  });
+  try {
+    assert.equal(slShown(qx), "13,500.00");
+  } finally {
+    qx.close();
+  }
+});
+
+test("B14: with no SL saved for today anywhere, the setup screen still appears", async () => {
+  const storage = { __tradeCalc_tb: "20000" };
+  const qx = await boot({ storage, sync: {} });
+  try {
+    assert.equal(slSetupOpen(qx), true);
+  } finally {
+    qx.close();
+  }
+});
+
+test("B10: the popup SL switch applies without a reload", async () => {
+  const qx = await boot();
+  try {
+    const field = qx.panelRoot().getElementById("__tcSLFld");
+    assert.notEqual(field.style.display, "none", "SL shown at start");
+    const before = slShown(qx); // 12,182.00: the trailing SL lifts 10,000 to 20% below the 15,228 peak
+    assert.ok(before);
+    await qx.sendToPanel({ type: "SET_SL_ENABLED", enabled: false });
+    assert.equal(field.style.display, "none", "hidden after switching off");
+    assert.equal(slShown(qx), "");
+    await qx.sendToPanel({ type: "SET_SL_ENABLED", enabled: true });
+    assert.notEqual(field.style.display, "none", "shown again after switching on");
+    assert.equal(slShown(qx), before);
+  } finally {
+    qx.close();
+  }
+});
+
+test("B10: switching SL off closes an open setup screen and its click blocker", async () => {
+  const qx = await boot({ storage: { __tradeCalc_tb: "20000" } });
+  try {
+    assert.equal(slSetupOpen(qx), true);
+    await qx.sendToPanel({ type: "SET_SL_ENABLED", enabled: false });
+    assert.equal(slSetupOpen(qx), false);
+    assert.equal(qx.window.__tcSLBlocker, undefined);
+  } finally {
+    qx.close();
+  }
 });
 
 test("no uncaught errors while the panel runs", async () => {

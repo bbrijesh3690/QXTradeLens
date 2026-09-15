@@ -2134,64 +2134,117 @@
     // SL bootstrap from storage, font sizes, min payout, sheet URL, logging, theme
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     const KEY_SL_ENABLED = "__tradeCalc_sl_enabled";
-    !(function () {
-      let t = false;
-      function e(e) {
-        if (t) {
+    const hasSyncStorage = () => typeof chrome != "undefined" && chrome.storage && chrome.storage.sync;
+    // Picks today's stop loss from synced storage or the localStorage backup (v1.21.1, B14). It used to
+    // trust sync only: when sync had no SL for today (e.g. a dropped write, since storage.sync has write
+    // quotas) the setup screen reappeared even though today's SL was saved locally. Both stores are
+    // written together and the trailing SL only moves up, so if both have today's SL the higher one wins.
+    function pickTodaysSl(syncData) {
+      const today = getIstDateKey();
+      const candidates = [syncData, readSlLocalBackup()].filter(
+        (s) => s && s[KEY_SL_DATE] === today && parseFloat(s[KEY_SL_VALUE]) > 0,
+      );
+      if (!candidates.length) {
+        return null;
+      }
+      const best = candidates.reduce((a, b) => (parseFloat(b[KEY_SL_VALUE]) > parseFloat(a[KEY_SL_VALUE]) ? b : a));
+      const tpLockSource = candidates.find((s) => s[KEY_SL_TP_LOCK_DATE] === today && parseFloat(s[KEY_SL_TP_LOCK]) > 0);
+      return {
+        value: parseFloat(best[KEY_SL_VALUE]),
+        peak: parseFloat(best[KEY_SL_INIT_BAL]),
+        tpLock: tpLockSource ? parseFloat(tpLockSource[KEY_SL_TP_LOCK]) : NaN,
+        fromSync: best === syncData,
+      };
+    }
+    function applySlSettings(stored, forceEnabled) {
+      if (stored[KEY_SYS_LOCK_DISABLED] != null) {
+        sysLockDisabled = stored[KEY_SYS_LOCK_DISABLED] !== false;
+        setSysLockDisabledStored(sysLockDisabled);
+      }
+      if (!forceEnabled && stored[KEY_SL_ENABLED] === false) {
+        disableSl();
+        return;
+      }
+      if (stored[KEY_POST_TP_GAP] != null) {
+        postTpGapPct = clampPostTpGap(stored[KEY_POST_TP_GAP]);
+        setPostTpGapStored(postTpGapPct);
+      }
+      const sl = pickTodaysSl(stored);
+      if (!sl) {
+        showSlSetup();
+        return;
+      }
+      slPeak = isNaN(sl.peak) ? sl.value / 0.85 : sl.peak;
+      slTpLock = sl.tpLock;
+      slArmed = true;
+      applySl(sl.value);
+      if (!sl.fromSync && hasSyncStorage()) {
+        // Repair sync so other tabs and devices see today's SL too.
+        chrome.storage.sync.set({
+          [KEY_SL_VALUE]: sl.value,
+          [KEY_SL_DATE]: getIstDateKey(),
+          [KEY_SL_INIT_BAL]: slPeak,
+        });
+      }
+    }
+    // Reads SL settings (sync, falling back to the local backup after 1.5 s) and applies them.
+    // `forceEnabled` is used when the popup switch turns SL on before its storage write has landed.
+    function bootstrapSl(forceEnabled) {
+      let done = false;
+      const once = (stored) => {
+        if (done) {
           return;
         }
-        t = true;
-        if (e[KEY_SYS_LOCK_DISABLED] != null) {
-          sysLockDisabled = e[KEY_SYS_LOCK_DISABLED] !== false;
-          setSysLockDisabledStored(sysLockDisabled);
-        }
-        if (e[KEY_SL_ENABLED] === false) {
-          return;
-        }
-        if (e[KEY_POST_TP_GAP] != null) {
-          postTpGapPct = clampPostTpGap(e[KEY_POST_TP_GAP]);
-          setPostTpGapStored(postTpGapPct);
-        }
-        const n = getIstDateKey(),
-          o = e[KEY_SL_DATE],
-          r = parseFloat(e[KEY_SL_VALUE]);
-        if (o === n && !isNaN(r) && r > 0) {
-          const t = parseFloat(e[KEY_SL_INIT_BAL]);
-          slPeak = isNaN(t) ? r / 0.85 : t;
-          if (e[KEY_SL_TP_LOCK_DATE] === n) {
-            const t = parseFloat(e[KEY_SL_TP_LOCK]);
-            if (!isNaN(t) && t > 0) {
-              slTpLock = t;
-            }
-          }
-          slArmed = true;
-          applySl(r);
-        } else {
-          showSlSetup();
-        }
+        done = true;
+        applySlSettings(stored || readSlLocalBackup(), forceEnabled);
+      };
+      if (!hasSyncStorage()) {
+        once(readSlLocalBackup());
+        return;
       }
-      if (typeof chrome != "undefined" && chrome.storage && chrome.storage.sync) {
-        const t = setTimeout(() => e(readSlLocalBackup()), 1500);
-        chrome.storage.sync.get(
-          [
-            KEY_SL_VALUE,
-            KEY_SL_DATE,
-            KEY_SL_ENABLED,
-            KEY_SL_INIT_BAL,
-            KEY_SL_TP_LOCK,
-            KEY_SL_TP_LOCK_DATE,
-            KEY_POST_TP_GAP,
-            KEY_SYS_LOCK_DISABLED,
-          ],
-          (n) => {
-            clearTimeout(t);
-            e(n || readSlLocalBackup());
-          },
-        );
-      } else {
-        e(readSlLocalBackup());
+      const timer = setTimeout(() => once(readSlLocalBackup()), 1500);
+      chrome.storage.sync.get(
+        [
+          KEY_SL_VALUE,
+          KEY_SL_DATE,
+          KEY_SL_ENABLED,
+          KEY_SL_INIT_BAL,
+          KEY_SL_TP_LOCK,
+          KEY_SL_TP_LOCK_DATE,
+          KEY_POST_TP_GAP,
+          KEY_SYS_LOCK_DISABLED,
+        ],
+        (stored) => {
+          clearTimeout(timer);
+          once(stored);
+        },
+      );
+    }
+    // Turns the stop loss off without a reload (v1.21.1, B10): hides the SL field, stops trailing and
+    // closes the daily setup screen if it's open. The saved SL stays in storage for re-enabling.
+    function disableSl() {
+      slArmed = false;
+      slPeak = NaN;
+      slTpLock = NaN;
+      if (slInput) {
+        slInput.value = "";
       }
-    })();
+      const field = byId("__tcSLFld");
+      if (field) {
+        field.style.display = "none";
+      }
+      const setup = byId("__tcSLSetup");
+      if (setup) {
+        setup.remove();
+      }
+      if (window.__tcSLBlocker) {
+        document.removeEventListener("click", window.__tcSLBlocker, { capture: true });
+        document.removeEventListener("keydown", window.__tcSLBlocker, { capture: true });
+        delete window.__tcSLBlocker;
+      }
+      scheduleRecalc();
+    }
+    bootstrapSl(false);
     const setPanelFontSize = (t) => {
         if (isMobileWidth()) {
           return;
@@ -6877,6 +6930,12 @@
           if (void 0 !== sysLockDisabled) {
             sysLockDisabled = !!t.disabled;
             setSysLockDisabledStored(sysLockDisabled);
+          }
+        } else if (t.type === "SET_SL_ENABLED") {
+          if (t.enabled) {
+            bootstrapSl(true);
+          } else {
+            disableSl();
           }
         } else if (t.type === "SET_POST_TP_GAP") {
           setPostTpGap(t.value);

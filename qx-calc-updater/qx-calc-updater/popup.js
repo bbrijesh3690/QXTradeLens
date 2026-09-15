@@ -220,6 +220,8 @@ if (saveVisibilityBtn) {
 if (slEnabledToggle) {
   slEnabledToggle.addEventListener('change', () => {
     chrome.storage.sync.set({ '__tradeCalc_sl_enabled': slEnabledToggle.checked });
+    // Apply to open tabs right away (v1.21.1, B10); this used to need a page reload.
+    broadcastMessage({ type: 'SET_SL_ENABLED', enabled: slEnabledToggle.checked });
   });
 }
 

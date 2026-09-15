@@ -88,7 +88,7 @@ Theme, panel/journal font size, section visibility, chip position, SL on/off, po
 | B13 | `README.md` inside the extension describes an old bookmark updater. `bookmarklet.js` (163 KB) is unused | Confusing |
 | B14 | The daily SL setup trusts `chrome.storage.sync` over the local backup. On 2026-09-15 (v1.19.0 running), today's SL (14,466) and a recorded breach were in localStorage, but the setup modal reappeared offering a new SL at 85% of the *lower* balance. A possible cause is missing or rate-limited sync writes (`storage.sync` has per-minute and per-hour write quotas, and the trade log also writes to it) | After an SL breach, trading can resume by accepting a lower SL, which defeats the stop loss |
 
-Status: B1, B2 and B4 were fixed in v1.20.1. In v1.21.0 the stop loss stopped blocking trading at the
+Status: B1, B2 and B4 were fixed in v1.20.1; B10, B12, B13 and B14 in v1.21.1. In v1.21.0 the stop loss stopped blocking trading at the
 owner's request: the SL-breach trade block, the "Set limit" lock and the SL system lock are gone. B14
 still makes the daily SL setup screen reappear, but it no longer leads to a lockout.
 
@@ -130,7 +130,7 @@ A single `resolve(name)` registry where each target has an ordered strategy list
 | 0 | Git baseline, versioning, changelog | **v1.19.0** ✅ |
 | 1 | Recover a readable source tree with a build step, keeping behavior identical (proved by `npm run verify`) | **v1.20.0** ✅ |
 | 2a | Hotfixes B1 panel toggle, B2 investment, B4 take-profit shortcut, plus jsdom tests | **v1.20.1** ✅ |
-| 2b | Remaining quick fixes: B10, B12, B13, B14 | v1.20.x |
+| 2b | Remaining quick fixes: B10, B12, B13, B14 | **v1.21.1** ✅ |
 | 3 | Store bridge (Layer 1) + selector resolver (Layers 2–3) + Health panel. Migrate every hashed class to it | v1.21.0 |
 | 4 | Performance: one scheduler instead of 5 timers and 4 observers, drop dead `gi()` | v1.22.0 |
 | 5 | Cleanup: currency/timezone from store, i18n-safe URLs, deposit scanner via store, decide on account-label spoof as an explicit opt-in toggle | v1.23.0 |
