@@ -767,33 +767,32 @@
       const n = (t.textContent || "").match(/[A-Z]{3}\/[A-Z]{3}/);
       return n ? n[0] + (t.textContent.includes("OTC") ? " (OTC)" : "") : "";
     }
+    // A pair tab's close control, or null when the tab has none.
+    // v1.24.4: only real close controls count. The old last-resort guesses (any child whose HTML contains
+    // "close" or even just the letter "x", or any svg inside a button) matched the tab's own content block on
+    // the current Quotex build, whose tabs have no close button, only a dropdown caret. Clicking that opened
+    // the asset selection panel, and auto-close repeated it every 300 ms: the "flickering" asset panel.
     function getTabCloseBtn(t) {
       if (!t) {
         return null;
       }
-      let e =
-        t.querySelector(".LtauB") ||
-        t
-          .querySelector('use[href*="icon-close-tiny"], use[xlink\\:href*="icon-close-tiny"]')
-          ?.closest("div, button, span") ||
-        t.querySelector(".rGA6o") ||
-        t.querySelector('[class*="close"]') ||
-        t.querySelector('[class*="remove"]') ||
-        t.querySelector("svg.icon-close")?.closest("button") ||
-        t.querySelector("svg")?.closest("button");
-      return (
-        e ||
-        ((e = Array.from(t.querySelectorAll("button, span, div")).find((t) => {
-          const e = t.innerHTML.toLowerCase();
-          return (
-            e.includes("close") ||
-            e.includes("x") ||
-            e.includes("×") ||
-            t.getAttribute("aria-label")?.toLowerCase().includes("close")
-          );
-        })),
-        e)
+      const iconUse = t.querySelector(
+        'use[href*="icon-close"], use[xlink\\:href*="icon-close"], use[href*="icon-cross"], use[xlink\\:href*="icon-cross"]',
       );
+      const candidate =
+        t.querySelector(".LtauB") ||
+        t.querySelector(".rGA6o") ||
+        Array.from(t.querySelectorAll("button[aria-label], [role='button'][aria-label]")).find((el) =>
+          /close/i.test(el.getAttribute("aria-label")),
+        ) ||
+        (iconUse && iconUse.closest("button, [role='button'], span, div")) ||
+        t.querySelector('svg[class*="icon-close"], svg[class*="icon-cross"]')?.closest("button, [role='button'], span, div") ||
+        null;
+      // Never the tab itself or a block holding the dropdown caret (that opens the asset panel).
+      if (!candidate || candidate === t || candidate.querySelector('[class*="icon-caret"], use[href*="icon-caret"]')) {
+        return null;
+      }
+      return candidate;
     }
     function tradesToTarget(t, e, n, o) {
       if (!t || !e || !n || !o || t <= 0 || e <= 0 || n <= 0 || o <= 0) {
@@ -3238,17 +3237,23 @@
           const asset = storeAssetFor(t);
           return asset && asset.payout != null ? asset.payout : NaN;
         })(e);
-        return !isNaN(n) && n < t && !tabHasOpenTrade(e);
+        // Only tabs that actually have a close control (v1.24.4).
+        return !isNaN(n) && n < t && !tabHasOpenTrade(e) && !!getTabCloseBtn(e);
       });
       if (!n) {
         autoCloseRunning = false;
         return;
       }
-      const o = getTabCloseBtn(n);
-      if (o) {
-        synthClick(o);
-      }
-      window.__tcAutoCloseStepTimer = setTimeout(() => autoCloseStep(t, e + 1), 300);
+      const tabsBefore = getPairTabs().length;
+      synthClick(getTabCloseBtn(n));
+      window.__tcAutoCloseStepTimer = setTimeout(() => {
+        // Stop if the click didn't close anything, instead of clicking again every 300 ms (v1.24.4).
+        if (getPairTabs().length >= tabsBefore) {
+          autoCloseRunning = false;
+          return;
+        }
+        autoCloseStep(t, e + 1);
+      }, 300);
     }
     function autoCloseLowPayoutTabs(t, e) {
       const n = Date.now();
@@ -5011,7 +5016,8 @@
           () => getClosableTabs(t).length < r,
           80,
           400,
-          () => closeTabsExcept(t, e + 1, n),
+          // v1.24.4: continue only if that click closed a tab; otherwise finish instead of retrying up to 40×.
+          () => (getClosableTabs(t).length < r ? closeTabsExcept(t, e + 1, n) : closeTabsExcept(t, 40, n)),
         );
         return;
       }

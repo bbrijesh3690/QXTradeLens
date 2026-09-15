@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.24.4] - 2026-09-15
+
+### Fixed
+- **Asset selection panel flickered when a pair's payout fell below the minimum.** Auto-close tries to close
+  low-payout tabs, but on the current Quotex build tabs have no close button, only a dropdown caret. The
+  close-button lookup fell back to guessing (any child whose HTML contained "close", or even just the letter
+  "x", such as `xmlns`), matched the tab's own content block, and clicked it every 300 ms and again every 5 s,
+  opening the asset panel each time (confirmed live).
+  - The lookup now only accepts real close controls: the known close classes, a close/cross icon, or an
+    `aria-label` "Close" button. It never clicks the tab itself or a block holding the dropdown caret.
+  - Auto-close, and the tab closing in the `R` hotkey, stop when a click didn't close a tab, instead of retrying.
+  - Low-payout tabs that do have a close button are still closed.
+
 ## [1.24.3] - 2026-09-15
 
 ### Fixed

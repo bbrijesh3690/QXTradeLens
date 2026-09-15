@@ -49,7 +49,7 @@ const deal = (id, { profit = 0, isDemo = 1, close = 1789464960 } = {}) => ({
   id, asset: "USDDZD_otc", amount: 2000, profit, isDemo, command: 1, openTimestamp: close - 60, closeTimestamp: close,
 });
 
-async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html = FIXTURE, sync = null, store = null } = {}) {
+async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html = FIXTURE, sync = null, store = null, setup = null } = {}) {
   const errors = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on("jsdomError", (e) => {
@@ -130,6 +130,7 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
     canvas["__reactFiber$test"] = { stateNode: null, return: { stateNode: { plot }, return: null } };
     window.eval(CHART_READER);
   }
+  if (setup) setup(window); // page behavior that must exist before the panel starts
   window.eval(SOURCE);
   await sleep(1100); // the launcher starts the panel after 800 ms
 
@@ -737,6 +738,42 @@ test("Quotex's promo banners are left alone (remover removed in v1.24.1)", async
     await sleep(500);
     assert.ok(qx.window.document.getElementById("promo"), "rocket banner still there");
     assert.ok(qx.window.document.getElementById("bonus"), "welcome bonus still there");
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.24.4: auto-close must never click a tab that has no close button ─────────────────────────────
+
+test("auto-close: a low-payout tab without a close button isn't clicked (asset panel flicker)", async () => {
+  // Live 2026-09-15: tabs have name, payout and a dropdown caret, no close button. Payout 77% < 89% minimum.
+  const html = FIXTURE.replace('<div class="dJ15T vXMlv" id="tab-active" data-symbol="USDDZD_otc">', '<div class="dJ15T vXMlv" id="tab-active" data-symbol="USDDZD_otc"><div class="ZyIJD" id="tabBody">')
+    .replace('<div class="ElyTP">91 %</div>', '<div class="ElyTP">77 %</div><div class="uLwPP"><svg xmlns="http://www.w3.org/2000/svg" class="icon-caret"><use href="#icon-caret"></use></svg></div></div>')
+    .replace('<span class="UI2Kh">91 %</span>', '<span class="UI2Kh">77 %</span>');
+  const qx = await boot({ html });
+  try {
+    let clicks = 0;
+    qx.window.document.getElementById("tab-active").addEventListener("click", () => clicks++, true);
+    await sleep(5600); // auto-close runs on recalc and every 5 s
+    assert.equal(clicks, 0, "the tab (which opens the asset panel) was never clicked");
+    assert.equal(healthRow(qx, "Tab close buttons").value, "0 of 1");
+  } finally {
+    qx.close();
+  }
+});
+
+test("auto-close: a low-payout tab with a real close button is closed", async () => {
+  const lowTab =
+    '<div class="dJ15T vXMlv" data-symbol="EURUSD_otc"><div class="WRocw">EUR/USD (OTC)</div><div class="ElyTP">70 %</div>' +
+    '<button id="closeLow" aria-label="Close"><svg class="icon-close-tiny"><use href="#icon-close-tiny"></use></svg></button></div>';
+  const html = FIXTURE.replace('<div class="ElyTP">91 %</div>\n          </div>', '<div class="ElyTP">91 %</div>\n          </div>' + lowTab);
+  // Quotex removes a tab when its close button is clicked.
+  const setup = (w) => w.document.getElementById("closeLow").addEventListener("click", (e) => e.currentTarget.closest("[data-symbol]").remove());
+  const qx = await boot({ html, setup });
+  try {
+    const doc = qx.window.document;
+    assert.equal(doc.querySelector('[data-symbol="EURUSD_otc"]'), null, "low-payout tab closed");
+    assert.ok(doc.getElementById("tab-active"), "the 91% tab stays");
   } finally {
     qx.close();
   }
