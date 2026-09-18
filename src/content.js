@@ -2205,6 +2205,14 @@
       if (!t) {
         return;
       }
+      if (window.__tcSLBalanceTimer) {
+        clearTimeout(window.__tcSLBalanceTimer);
+        delete window.__tcSLBalanceTimer;
+      }
+      if (t._tcOnVisible) {
+        document.removeEventListener("visibilitychange", t._tcOnVisible);
+        t._tcOnVisible = null;
+      }
       if (window.__tcSLBlocker) {
         document.removeEventListener("click", window.__tcSLBlocker, { capture: true });
         document.removeEventListener("keydown", window.__tcSLBlocker, { capture: true });
@@ -2339,30 +2347,86 @@
           confirmSl(balance, sl);
         }
       };
+      // Wait for Quotex to render the balance (v1.24.5: keeps waiting instead of giving up after ~21 s
+      // and leaving a dead screen with the page still click-blocked — Quotex can take longer to render,
+      // especially in a background tab where timers are throttled).
       let attempts = 0;
-      setTimeout(function waitForBalance() {
+      let skipBtn = null;
+      function offerSkip(label) {
+        if (skipBtn) {
+          skipBtn.textContent = label || skipBtn.textContent;
+          return;
+        }
+        // Release the page blocker so Quotex stays usable while we keep waiting.
+        if (window.__tcSLBlocker) {
+          document.removeEventListener("click", window.__tcSLBlocker, { capture: true });
+          document.removeEventListener("keydown", window.__tcSLBlocker, { capture: true });
+          delete window.__tcSLBlocker;
+        }
+        skipBtn = document.createElement("button");
+        skipBtn.type = "button";
+        skipBtn.id = "__tcSLSkipBtn";
+        skipBtn.textContent = label || "Skip for now";
+        skipBtn.style.cssText =
+          "margin-top:0.9em;background:transparent;color:oklch(72% 0.015 257);border:1px solid oklch(100% 0 0/0.15);border-radius:10px;padding:0.5em 1.2em;font-size:0.78em;font-weight:700;cursor:pointer;width:100%;";
+        skipBtn.onclick = closeSlSetup;
+        meta.parentElement.appendChild(skipBtn);
+      }
+      function waitForBalance() {
         if (!t.isConnected) {
           return;
         }
         const n = readAccountBalance();
+        // A zero balance is a real balance, not a failure (v1.24.5): the account simply has no funds, so
+        // there is nothing to protect. Say so, let the screen be closed, and keep watching in case the
+        // balance changes (a deposit, or switching between the live and demo account).
+        if (n === 0) {
+          balance = NaN;
+          input.disabled = true;
+          input.value = "";
+          input.placeholder = "—";
+          confirmBtn.disabled = true;
+          confirmBtn.style.opacity = "0.5";
+          confirmBtn.textContent = "No balance to protect";
+          meta.textContent = `Balance: ${cur()}0 — set a stop loss once the account has funds.`;
+          offerSkip("Close");
+          window.__tcSLBalanceTimer = setTimeout(waitForBalance, 2000);
+          return;
+        }
         if (!isNaN(n) && n > 0) {
           balance = n;
           t.querySelector("#__tcSLSetupCur").textContent = cur();
           input.disabled = false;
           input.placeholder = "";
           meta.textContent = `Balance: ${cur()}${fmtInputMoney(n)}`;
+          if (skipBtn) {
+            skipBtn.remove();
+            skipBtn = null;
+          }
           setPct(SL_SETUP_DEFAULT_PCT);
           confirmBtn.classList.remove("tcSLBtnReveal");
           requestAnimationFrame(() => confirmBtn.classList.add("tcSLBtnReveal"));
           confirmBtn.addEventListener("animationend", () => confirmBtn.classList.remove("tcSLBtnReveal"), {
             once: true,
           });
-        } else if (++attempts < 20) {
-          setTimeout(waitForBalance, 1000);
-        } else {
-          meta.textContent = "Balance not found. Reload and try again.";
+          return;
         }
-      }, 800);
+        attempts++;
+        if (attempts >= 10) {
+          meta.textContent = "Waiting for your balance — Quotex may still be loading.";
+          offerSkip();
+        }
+        // 1 s while the page is probably still loading, then every 3 s, for as long as the screen is open.
+        window.__tcSLBalanceTimer = setTimeout(waitForBalance, attempts < 30 ? 1000 : 3000);
+      }
+      window.__tcSLBalanceTimer = setTimeout(waitForBalance, 800);
+      // A background tab throttles timers; re-check as soon as it's shown again.
+      t._tcOnVisible = () => {
+        if (t.isConnected && isNaN(balance)) {
+          waitForBalance();
+        }
+      };
+      document.addEventListener("visibilitychange", t._tcOnVisible);
     }
     const KEY_SL_LS_DATE = "__tradeCalc_sl_ls_date",
       KEY_SL_LS_VALUE = "__tradeCalc_sl_ls_value",

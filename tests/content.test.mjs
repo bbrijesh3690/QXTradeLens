@@ -652,6 +652,53 @@ test("SL setup: Enter in the field confirms", async () => {
   }
 });
 
+test("SL setup: a zero balance says so instead of 'Balance not found', and unblocks the page (v1.24.5)", async () => {
+  // A live account with no funds: the balance reads ₹0.00, which used to be treated as unreadable.
+  const html = FIXTURE.replace("₹15,228.00", "₹0.00");
+  const qx = await boot({ storage: noSl, html });
+  await sleep(2000);
+  try {
+    const root = qx.panelRoot();
+    assert.match(root.getElementById("__tcSLSetupMeta").textContent, /no funds|once the account has funds/i);
+    assert.equal(root.getElementById("__tcSLConfirmBtn").disabled, true);
+    assert.ok(root.getElementById("__tcSLSkipBtn"), "a way out of the screen");
+    // The page must not stay click-blocked.
+    let clicked = false;
+    const up = qx.window.document.querySelector("#trade-button button");
+    up.addEventListener("click", () => (clicked = true));
+    up.dispatchEvent(new qx.window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    assert.equal(clicked, true, "page clicks work again");
+    // When the account is funded (or switched), the screen picks the balance up.
+    qx.window.document.querySelector(".Zt1hG").textContent = "₹15,228.00";
+    await sleep(2600);
+    assert.equal(root.getElementById("__tcSLSetupInput").value, "12943");
+    assert.equal(root.getElementById("__tcSLSkipBtn"), null, "skip button gone once a balance exists");
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL setup: keeps waiting when the balance is slow, and offers a way out (v1.24.5)", async () => {
+  const html = FIXTURE.replace('<div class="Zt1hG">₹15,228.00</div>', "");
+  const qx = await boot({ storage: noSl, html });
+  try {
+    const root = qx.panelRoot();
+    await sleep(11000); // the skip button appears after ~10 tries
+    assert.match(root.getElementById("__tcSLSetupMeta").textContent, /Waiting for your balance/i);
+    assert.ok(root.getElementById("__tcSLSkipBtn"), "skip offered instead of a dead end");
+    assert.equal(qx.window.__tcSLBlocker, undefined, "page no longer blocked");
+    // Still watching: a balance that appears later is picked up.
+    const bal = qx.window.document.createElement("div");
+    bal.className = "Zt1hG";
+    bal.textContent = "₹15,228.00";
+    qx.window.document.querySelector(".zfJUm").appendChild(bal);
+    await sleep(3200);
+    assert.equal(root.getElementById("__tcSLSetupInput").value, "12943");
+  } finally {
+    qx.close();
+  }
+});
+
 test("SL setup: page clicks stay blocked while the setup screen is open", async () => {
   const { qx } = await openSetup();
   try {

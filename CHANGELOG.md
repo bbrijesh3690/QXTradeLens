@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.24.5] - 2026-09-18
+
+### Fixed
+- **"Balance not found" on an account with no funds.** The daily SL setup treated a balance of 0 as
+  unreadable (`balance > 0`), so a live account at ₹0 showed "Reading balance…" and then
+  "Balance not found. Reload and try again." — with the page still click-blocked by the setup screen.
+  - A zero balance now says the account has no funds and offers **Close**.
+  - It keeps watching, so funding the account or switching to the demo account fills the amount in.
+- **No more dead end while waiting for a balance.** It used to give up after ~21 s and stop retrying. It now
+  keeps checking (1 s, then every 3 s), re-checks when a background tab becomes visible again, and after
+  ~10 s releases the page blocker and offers **Skip for now** so Quotex stays usable.
+
 ## [1.24.4] - 2026-09-15
 
 ### Fixed
