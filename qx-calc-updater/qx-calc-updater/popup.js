@@ -18,6 +18,7 @@ const postTpGapInput = document.getElementById('postTpGapInput');
 const sysLockDisableToggle = document.getElementById('sysLockDisableToggle');
 const hkUpDownToggle = document.getElementById('hkUpDownToggle');
 const hkLeftRightToggle = document.getElementById('hkLeftRightToggle');
+const hkFocusModeToggle = document.getElementById('hkFocusModeToggle');
 const marqueeInput = document.getElementById('marqueeInput');
 const marqueeSave = document.getElementById('marqueeSave');
 const marqueeClear = document.getElementById('marqueeClear');
@@ -54,7 +55,7 @@ function updateSheetStatus(url) {
 
 async function init() {
   // Load sheet URL and SL toggle from storage directly — doesn't need an active tab
-  const stored = await chrome.storage.sync.get(['sheetUrl', '__tradeCalc_sl_enabled', '__tradeCalc_sl_post_tp_gap', '__tradeCalc_sys_lock_disabled', '__tradeCalc_chip_pos', '__tradeCalc_max_trades', '__tradeCalc_max_two', 'sectionVisibility', '__tradeCalc_hk_updown', '__tradeCalc_hk_leftright', '__tradeCalc_marquee_msg', '__tradeCalc_marquee_speed', '__tradeCalc_mtf_tfs', '__tradeCalc_mtf_count', '__tradeCalc_relabel_demo', '__tradeCalc_entry_tags']);
+  const stored = await chrome.storage.sync.get(['sheetUrl', '__tradeCalc_sl_enabled', '__tradeCalc_sl_post_tp_gap', '__tradeCalc_sys_lock_disabled', '__tradeCalc_chip_pos', '__tradeCalc_max_trades', '__tradeCalc_max_two', 'sectionVisibility', '__tradeCalc_hk_updown', '__tradeCalc_hk_leftright', '__tradeCalc_marquee_msg', '__tradeCalc_marquee_speed', '__tradeCalc_mtf_tfs', '__tradeCalc_mtf_count', '__tradeCalc_relabel_demo', '__tradeCalc_entry_tags', '__tradeCalc_hk_focus_mode']);
   const savedUrl = stored.sheetUrl || '';
   sheetUrlInput.value = savedUrl;
   updateSheetStatus(savedUrl);
@@ -82,6 +83,7 @@ async function init() {
   }
   if (hkUpDownToggle) hkUpDownToggle.checked = stored['__tradeCalc_hk_updown'] === true;
   if (hkLeftRightToggle) hkLeftRightToggle.checked = stored['__tradeCalc_hk_leftright'] === true;
+  if (hkFocusModeToggle) hkFocusModeToggle.checked = stored['__tradeCalc_hk_focus_mode'] === true;
   if (marqueeInput) { const m = stored['__tradeCalc_marquee_msg'] || ''; marqueeInput.value = m; updateMarqueeStatus(m); }
   if (marqueeSpeedSlider) { let s = parseInt(stored['__tradeCalc_marquee_speed'], 10); if (isNaN(s)) s = 5; marqueeSpeedSlider.value = s; if (marqueeSpeedVal) marqueeSpeedVal.textContent = s; }
   {
@@ -113,6 +115,7 @@ async function init() {
       if (state.maxTrades !== undefined && maxTradesSelect) maxTradesSelect.value = String(Math.max(1, Math.min(4, parseInt(state.maxTrades, 10) || 2)));
       if (state.hkUpDown !== undefined && hkUpDownToggle) hkUpDownToggle.checked = state.hkUpDown === true;
       if (state.hkLeftRight !== undefined && hkLeftRightToggle) hkLeftRightToggle.checked = state.hkLeftRight === true;
+      if (state.hkFocusMode !== undefined && hkFocusModeToggle) hkFocusModeToggle.checked = state.hkFocusMode === true;
       if (state.marquee !== undefined && marqueeInput) { marqueeInput.value = state.marquee; updateMarqueeStatus(state.marquee); }
       if (state.marqueeSpeed !== undefined && marqueeSpeedSlider) { marqueeSpeedSlider.value = state.marqueeSpeed; if (marqueeSpeedVal) marqueeSpeedVal.textContent = state.marqueeSpeed; }
       if (state.mtfTfs !== undefined) { const t = parseTfListPopup(state.mtfTfs); if (mtfTfsInput) mtfTfsInput.value = t.join(', '); updateMtfStatus(t); }
@@ -229,6 +232,14 @@ if (slEnabledToggle) {
     chrome.storage.sync.set({ '__tradeCalc_sl_enabled': slEnabledToggle.checked });
     // Apply to open tabs right away (v1.21.1, B10); this used to need a page reload.
     broadcastMessage({ type: 'SET_SL_ENABLED', enabled: slEnabledToggle.checked });
+  });
+}
+
+// ↑↓ focus mode: the browser places the trade, not the panel (v1.28.0).
+if (hkFocusModeToggle) {
+  hkFocusModeToggle.addEventListener('change', () => {
+    chrome.storage.sync.set({ '__tradeCalc_hk_focus_mode': hkFocusModeToggle.checked });
+    broadcastMessage({ type: 'SET_HK_FOCUS_MODE', enabled: hkFocusModeToggle.checked });
   });
 }
 

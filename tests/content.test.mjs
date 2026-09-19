@@ -1153,6 +1153,64 @@ test("privacy: the Live-as-Demo relabel can be switched off and restores the lab
     qx.close();
   }
 });
+// ── v1.28.0: how the trade click is produced ───────────────────────────────────────────────────────
+
+const hkStorage = { ...slStorage(10000), __tradeCalc_hk_updown: "true" };
+const pressArrow = (qx, code) =>
+  qx.window.document.dispatchEvent(
+    new qx.window.KeyboardEvent("keydown", { key: code === "ArrowUp" ? "ArrowUp" : "ArrowDown", code, bubbles: true }),
+  );
+
+test("hotkey click carries real coordinates and focus (v1.28.0)", async () => {
+  const qx = await boot({ storage: hkStorage });
+  try {
+    const up = qx.window.document.querySelector("#trade-button button");
+    up.getBoundingClientRect = () => ({ left: 100, top: 200, width: 80, height: 40, right: 180, bottom: 240 });
+    const seen = [];
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+      up.addEventListener(type, (e) => seen.push({ type, x: e.clientX, y: e.clientY, detail: e.detail }));
+    }
+    pressArrow(qx, "ArrowUp");
+    assert.deepEqual(seen.map((e) => e.type), ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]);
+    assert.ok(seen.every((e) => e.x === 140 && e.y === 220), "sent at the button centre");
+    assert.ok(seen.every((e) => e.detail === 1), "counts as a single click");
+    assert.equal(qx.window.document.activeElement, up, "button focused first");
+  } finally {
+    qx.close();
+  }
+});
+
+test("focus mode: ↑ selects the button and places nothing until Enter (v1.28.0)", async () => {
+  const qx = await boot({ storage: { ...hkStorage, __tradeCalc_hk_focus_mode: "1" } });
+  try {
+    const up = qx.window.document.querySelector("#trade-button button");
+    let clicks = 0;
+    up.addEventListener("click", () => clicks++);
+    pressArrow(qx, "ArrowUp");
+    assert.equal(clicks, 0, "nothing is sent to the platform");
+    assert.equal(qx.window.document.activeElement, up, "the button is selected");
+    assert.match(qx.panelRoot().getElementById("__tcWarn").textContent, /Up selected/);
+    // Enter with that button focused must be left alone (the panel's own Enter shortcut would
+    // preventDefault, which would stop the browser from activating the button).
+    const enter = new qx.window.KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true });
+    qx.window.document.dispatchEvent(enter);
+    assert.equal(enter.defaultPrevented, false, "Enter is left to the browser");
+    assert.equal(qx.window.document.activeElement, up, "focus stays on the button for repeats");
+  } finally {
+    qx.close();
+  }
+});
+
+test("focus mode: guards still stop a trusted click (v1.28.0)", async () => {
+  // At the 2-trade cap, a browser-generated click must still be blocked.
+  const store = quotexStore({ opened: [deal("a"), deal("b")] });
+  const qx = await boot({ storage: { ...hkStorage, __tradeCalc_hk_focus_mode: "1" }, store });
+  try {
+    assert.equal(tradeReachesPlatform(qx), false, "blocked even without our own click");
+  } finally {
+    qx.close();
+  }
+});
 test("no uncaught errors while the panel runs", async () => {
   const qx = await boot();
   try {

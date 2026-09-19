@@ -84,7 +84,7 @@ Active on the trade page when you are not typing in a field.
 
 | Key | Action |
 |---|---|
-| **↑ / ↓** | **Place an Up / Down trade** (off by default; enable in the popup) |
+| **↑ / ↓** | **Place an Up / Down trade** (off by default; enable in the popup). With **Focus Mode** on, ↑/↓ select the button and your **Enter** places the trade |
 | **← / →** | Decrease / increase the trade amount (off by default) |
 | **S / D** | Previous / next chart timeframe |
 | **F / Shift+F / G** | Next / previous pair tab |
@@ -119,7 +119,7 @@ Amounts use your account's currency and number format.
 |---|---|
 | **Display** | Panel scale, journal scale, chip position (cursor / centre / anchored), light–dark theme, show or hide the panel |
 | **Risk** | Daily SL setup on/off, post-TP trail gap %, disable system lock, max concurrent trades (1–4) |
-| **Hotkeys** | ↑↓ places trades, ←→ changes the trade amount (both off by default) |
+| **Hotkeys** | ↑↓ places trades, ←→ changes the trade amount (both off by default), and ↑↓ Focus Mode (Enter places the trade, so the click comes from the browser) |
 | **Sections** | Show or hide the panel's Targets, Protections and Projection groups (the Log group appears once a sheet URL is set) |
 | **Marquee** | Message text and scroll speed |
 | **Multi-timeframe charts** | Which timeframes (up to 4) and how many candles each chart shows |
@@ -175,7 +175,8 @@ If you ever see ❌, send a screenshot of that list; it names exactly what moved
 - **Footprint on Quotex's page is kept small**: no webfont request, no stylesheet naming their classes, and
   their buttons are never disabled by the panel (blocked trades are stopped before the click reaches them).
   The two cosmetic marks — "Show Live as Demo" and "Entry Balance Tags" — can be switched off in the popup.
-  What cannot be hidden is automation: trades placed by the ↑/↓ shortcut dispatch untrusted events.
+  Trades placed by the ↑/↓ shortcut dispatch a scripted click; switch on **↑↓ Focus Mode** and your Enter
+  places the trade through the browser instead, leaving nothing scripted about it.
 - **Trades are only placed by you** — by clicking Quotex's buttons, or by the ↑/↓ shortcut if you
   enabled it.
 
