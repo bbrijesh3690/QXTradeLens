@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.29.0] - 2026-09-20
+
+### Changed
+- **The investment amount is now typed, not written by script.** Changing the amount with ←/→ (or the
+  ×1.5 / ÷1.5 box) used to set the field's value through the native setter and fire a constructed
+  `input` event, which reads `isTrusted: false` and marks the change as coming from a script. The value now
+  goes in through the browser's own editing pipeline, so the platform sees the same trusted `input` event it
+  gets when you type. Verified live on qxbroker.com: the deal amount takes the value and reformats it as
+  usual. If the browser ever refuses the command, the old path still runs, so the feature cannot break.
+- **Focus Mode now covers ←/→ as well**, and is renamed **Hotkey Focus Mode** in the popup (same switch,
+  same setting). With it on, ←/→ select the platform's own −/+ button and your Enter (or Space) presses it;
+  focus stays on the button, so a run of steps is one key each after the first.
+
 ## [1.28.0] - 2026-09-19
 
 ### Added
@@ -19,6 +32,7 @@ and every release is tagged in git as `vX.Y.Z`.
   pointer sequence (pointerdown → mousedown → pointerup → mouseup → click) is sent at the button's own
   screen coordinates, with a single-click count. The one thing no extension can set is `isTrusted`, which is
   exactly what Focus Mode sidesteps.
+
 ## [1.27.1] - 2026-09-19
 
 ### Fixed

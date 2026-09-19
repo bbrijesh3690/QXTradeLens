@@ -1211,6 +1211,92 @@ test("focus mode: guards still stop a trusted click (v1.28.0)", async () => {
     qx.close();
   }
 });
+// ── v1.29.0: how the investment change is produced ────────────────────────────────
+
+const amtStorage = { ...slStorage(10000), __tradeCalc_hk_leftright: "true" };
+const pressSideArrow = (qx, code) =>
+  qx.window.document.dispatchEvent(
+    new qx.window.KeyboardEvent("keydown", { key: code, code, bubbles: true, cancelable: true }),
+  );
+const stakeField = (qx) => qx.window.document.querySelector(".deal-amount-input input.input-control__input");
+
+test("← still steps the amount with a click when focus mode is off (v1.29.0)", async () => {
+  const qx = await boot({ storage: amtStorage });
+  try {
+    const minus = qx.window.document.querySelector(".deal-amount-input .VK9Nw");
+    let clicks = 0;
+    minus.addEventListener("click", () => clicks++);
+    pressSideArrow(qx, "ArrowLeft");
+    assert.equal(clicks, 1, "the platform's own − button is pressed");
+  } finally {
+    qx.close();
+  }
+});
+
+test("focus mode: ← selects the platform's − button and steps nothing until Enter (v1.29.0)", async () => {
+  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_hk_focus_mode: "1" } });
+  try {
+    const [minus, plus] = qx.window.document.querySelectorAll(".deal-amount-input .VK9Nw");
+    let clicks = 0;
+    minus.addEventListener("click", () => clicks++);
+    pressSideArrow(qx, "ArrowLeft");
+    assert.equal(clicks, 0, "nothing is sent to the platform");
+    assert.equal(qx.window.document.activeElement, minus, "the − button is selected");
+    assert.match(qx.panelRoot().getElementById("__tcWarn").textContent, /selected/);
+    // The panel's own Enter shortcut must not swallow the key, or the browser never activates it.
+    const enter = new qx.window.KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true });
+    qx.window.document.dispatchEvent(enter);
+    assert.equal(enter.defaultPrevented, false, "Enter is left to the browser");
+    assert.equal(qx.window.document.activeElement, minus, "focus stays put, so repeats are one key each");
+    pressSideArrow(qx, "ArrowRight");
+    assert.equal(qx.window.document.activeElement, plus, "→ moves the selection to +");
+  } finally {
+    qx.close();
+  }
+});
+
+test("the amount is typed into the field, not written by script (v1.29.0)", async () => {
+  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_step_mult: "1.5" } });
+  try {
+    const input = stakeField(qx);
+    const calls = [];
+    qx.window.document.execCommand = (cmd, ui, text) => {
+      calls.push({ cmd, text });
+      if (cmd !== "insertText") {
+        return false;
+      }
+      input.value = text; // what the browser's editing pipeline does on a real keystroke
+      input.dispatchEvent(new qx.window.Event("input", { bubbles: true }));
+      return true;
+    };
+    let scriptedChanges = 0;
+    input.addEventListener("change", () => scriptedChanges++); // only the fallback path fires `change`
+    pressSideArrow(qx, "ArrowRight");
+    assert.equal(calls.length, 1, "one editing command");
+    assert.equal(calls[0].cmd, "insertText");
+    assert.equal(calls[0].text, "3000", "2000 × 1.5");
+    assert.equal(input.value, "3000", "the field holds the new amount");
+    assert.equal(scriptedChanges, 0, "the scripted setter path was not used");
+  } finally {
+    qx.close();
+  }
+});
+
+test("typing falls back to the scripted setter if the browser refuses (v1.29.0)", async () => {
+  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_step_mult: "1.5" } });
+  try {
+    const input = stakeField(qx);
+    qx.window.document.execCommand = () => false;
+    let inputs = 0;
+    input.addEventListener("input", () => inputs++);
+    pressSideArrow(qx, "ArrowRight");
+    assert.equal(input.value, "3000", "the amount still changes");
+    assert.ok(inputs >= 1, "and the platform is still told about it");
+  } finally {
+    qx.close();
+  }
+});
+
 test("no uncaught errors while the panel runs", async () => {
   const qx = await boot();
   try {
