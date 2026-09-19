@@ -22,6 +22,7 @@ and every release is tagged in git as `vX.Y.Z`.
 
 ### Tests
 - 58 tests. The five new ones fail on v1.24.5 and pass here.
+
 ## [1.24.5] - 2026-09-18
 
 ### Fixed
