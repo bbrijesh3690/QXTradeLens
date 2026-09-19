@@ -29,6 +29,7 @@ const mtfTfsSave = document.getElementById('mtfTfsSave');
 const mtfStatus = document.getElementById('mtfStatus');
 const mtfCountSlider = document.getElementById('mtfCountSlider');
 const mtfCountVal = document.getElementById('mtfCountVal');
+const mtfAutofillToggle = document.getElementById('mtfAutofillToggle');
 const chipPosSelect = document.getElementById('chipPosSelect');
 const maxTradesSelect = document.getElementById('maxTradesSelect');
 const relabelDemoToggle = document.getElementById('relabelDemoToggle');
@@ -55,7 +56,7 @@ function updateSheetStatus(url) {
 
 async function init() {
   // Load sheet URL and SL toggle from storage directly — doesn't need an active tab
-  const stored = await chrome.storage.sync.get(['sheetUrl', '__tradeCalc_sl_enabled', '__tradeCalc_sl_post_tp_gap', '__tradeCalc_sys_lock_disabled', '__tradeCalc_chip_pos', '__tradeCalc_max_trades', '__tradeCalc_max_two', 'sectionVisibility', '__tradeCalc_hk_updown', '__tradeCalc_hk_leftright', '__tradeCalc_marquee_msg', '__tradeCalc_marquee_speed', '__tradeCalc_mtf_tfs', '__tradeCalc_mtf_count', '__tradeCalc_relabel_demo', '__tradeCalc_entry_tags', '__tradeCalc_hk_focus_mode']);
+  const stored = await chrome.storage.sync.get(['sheetUrl', '__tradeCalc_sl_enabled', '__tradeCalc_sl_post_tp_gap', '__tradeCalc_sys_lock_disabled', '__tradeCalc_chip_pos', '__tradeCalc_max_trades', '__tradeCalc_max_two', 'sectionVisibility', '__tradeCalc_hk_updown', '__tradeCalc_hk_leftright', '__tradeCalc_marquee_msg', '__tradeCalc_marquee_speed', '__tradeCalc_mtf_tfs', '__tradeCalc_mtf_count', '__tradeCalc_mtf_autofill', '__tradeCalc_relabel_demo', '__tradeCalc_entry_tags', '__tradeCalc_hk_focus_mode']);
   const savedUrl = stored.sheetUrl || '';
   sheetUrlInput.value = savedUrl;
   updateSheetStatus(savedUrl);
@@ -95,6 +96,8 @@ async function init() {
     c = Math.min(120, Math.max(10, c));
     if (mtfCountSlider) mtfCountSlider.value = c;
     if (mtfCountVal) mtfCountVal.textContent = c;
+    // On by default, so only an explicit false unticks it.
+    if (mtfAutofillToggle) mtfAutofillToggle.checked = stored['__tradeCalc_mtf_autofill'] !== false;
   }
   if (stored.sectionVisibility && Array.isArray(stored.sectionVisibility)) {
     updateUI(undefined, undefined, stored.sectionVisibility, undefined);
@@ -120,6 +123,7 @@ async function init() {
       if (state.marqueeSpeed !== undefined && marqueeSpeedSlider) { marqueeSpeedSlider.value = state.marqueeSpeed; if (marqueeSpeedVal) marqueeSpeedVal.textContent = state.marqueeSpeed; }
       if (state.mtfTfs !== undefined) { const t = parseTfListPopup(state.mtfTfs); if (mtfTfsInput) mtfTfsInput.value = t.join(', '); updateMtfStatus(t); }
       if (state.mtfCount !== undefined) { if (mtfCountSlider) mtfCountSlider.value = state.mtfCount; if (mtfCountVal) mtfCountVal.textContent = state.mtfCount; }
+      if (state.mtfAutofill !== undefined && mtfAutofillToggle) mtfAutofillToggle.checked = state.mtfAutofill === true;
       if (state.relabelDemo !== undefined && relabelDemoToggle) relabelDemoToggle.checked = state.relabelDemo !== false;
       if (state.entryTags !== undefined && entryTagsToggle) entryTagsToggle.checked = state.entryTags !== false;
     }
@@ -326,6 +330,12 @@ if (mtfCountSlider) {
     if (mtfCountVal) mtfCountVal.textContent = n;
     chrome.storage.sync.set({ '__tradeCalc_mtf_count': n });
     broadcastMessage({ type: 'SET_MTF', count: n });
+  });
+}
+if (mtfAutofillToggle) {
+  mtfAutofillToggle.addEventListener('change', () => {
+    chrome.storage.sync.set({ '__tradeCalc_mtf_autofill': mtfAutofillToggle.checked });
+    broadcastMessage({ type: 'SET_MTF', autofill: mtfAutofillToggle.checked });
   });
 }
 

@@ -1153,6 +1153,111 @@ test("privacy: the Live-as-Demo relabel can be switched off and restores the lab
     qx.close();
   }
 });
+// ── v1.30.0: multi-timeframe panel, second pass ───────────────────────────────────
+
+const mtfPairLabel = (qx) => qx.panelRoot().querySelector('[data-mtf="pair"]').textContent;
+
+test("MTF: clicking a cell's timeframe puts the platform chart on it (v1.30.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15);
+  const qx = await boot({ storage: mtfStorage, store });
+  try {
+    await sleep(900);
+    // The platform's timeframe button, as the site renders it.
+    const tfBtn = qx.window.document.createElement("div");
+    tfBtn.className = "HgaSf";
+    tfBtn.textContent = "15s";
+    qx.window.document.body.appendChild(tfBtn);
+    let opened = 0;
+    tfBtn.addEventListener("click", () => opened++);
+    qx.panelRoot().querySelector('.tcMtfCell[data-tf="5m"] .tcMtfTf').click();
+    assert.match(mtfPairLabel(qx), /5m/, "the panel says where the chart is going");
+    await sleep(400);
+    assert.equal(opened, 1, "the platform's own timeframe menu was opened");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: the pair name comes back after a message (v1.30.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15);
+  const qx = await boot({ storage: mtfStorage, store });
+  try {
+    await sleep(900);
+    qx.panelRoot().querySelector('.tcMtfCell[data-tf="15s"] .tcMtfTf').click(); // already on 15s
+    assert.match(mtfPairLabel(qx), /chart is on/);
+    await sleep(400);
+    assert.match(mtfPairLabel(qx), /chart is on/, "the 200 ms render does not wipe it straight away");
+    await sleep(1800);
+    assert.equal(mtfPairLabel(qx), "USD/DZD (OTC)", "and the pair name returns on its own");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: 15s candles are folded into a rolling 1m history (v1.30.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15); // 50 minutes of 15s bars
+  const qx = await boot({ storage: mtfStorage, store });
+  try {
+    await sleep(900);
+    setChart(store, "EURUSD_otc", 60); // switching pairs writes the cache immediately
+    await sleep(900);
+    const cache = JSON.parse(pref(qx, "__tradeCalc_mtf_cache"));
+    const entries = cache.symbols.USDDZD_otc;
+    const base = entries["USDDZD_otc@60"];
+    assert.ok(base, "a 1m entry exists although the chart was never on 1m: " + Object.keys(entries).join(","));
+    assert.ok(base.candles.length >= 45, "about one bar per minute of 15s data, got " + base.candles.length);
+    assert.equal(base.derived, true, "and it is marked as folded, not a real 1m pull");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: a folded 1m entry still reads as derived in the cell (v1.30.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15);
+  const qx = await boot({ storage: mtfStorage, store });
+  try {
+    await sleep(900);
+    assert.match(mtfCap(qx, "1m"), /^≈/, "1m is folded from 15s, so it stays marked approximate");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: an empty pair is filled once, by itself (v1.30.0)", async () => {
+  const store = quotexStore();
+  store.__candles = []; // a pair with nothing to draw
+  const qx = await boot({ storage: mtfStorage, store });
+  try {
+    assert.match(mtfCap(qx, "5m"), /visit once/, "nothing to show at the start");
+    await sleep(4200); // the auto-fill waits for the pair to settle
+    assert.match(mtfPairLabel(qx), /filling/, "it went and got the candles");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: auto-fill stays out of the way when it is switched off, or a trade is open (v1.30.0)", async () => {
+  const off = await boot({ storage: { ...mtfStorage, __tradeCalc_mtf_autofill: "0" }, store: (() => { const s = quotexStore(); s.__candles = []; return s; })() });
+  try {
+    await sleep(4200);
+    assert.equal(mtfPairLabel(off), "USD/DZD (OTC)", "switched off: the panel is left alone");
+  } finally {
+    off.close();
+  }
+  const busy = (() => { const s = quotexStore({ opened: [deal("a")] }); s.__candles = []; return s; })();
+  const qx = await boot({ storage: mtfStorage, store: busy });
+  try {
+    await sleep(4200);
+    assert.equal(mtfPairLabel(qx), "USD/DZD (OTC)", "a trade is open: the chart is not walked around");
+  } finally {
+    qx.close();
+  }
+});
+
 // ── v1.28.0: how the trade click is produced ───────────────────────────────────────────────────────
 
 const hkStorage = { ...slStorage(10000), __tradeCalc_hk_updown: "true" };

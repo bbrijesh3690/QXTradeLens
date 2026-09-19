@@ -67,9 +67,12 @@ The stop loss never blocks trading (changed in v1.21.0); it is tracked and displ
   amount, and tap the middle button to switch the factor between 1.3 and 1.5.
 - **Multi-timeframe charts** — up to 4 mini candle charts (default 1m, 5m, 15m) drawn from Quotex's own
   candle data. Drag to pan, drag edges to resize, double-click to return to live. The header shows the pair
-  and highlights the timeframe your chart is on, and each cell says how many bars it has. The ↻ button
-  visits each timeframe once to fill them in; collected candles are kept per pair (last 6) so switching
-  pairs does not lose them. Press **C** to show or hide the panel.
+  and highlights the timeframe your chart is on, and each cell says how many bars it has.
+  **Click a cell's timeframe label** to put the platform chart on that timeframe. A pair you have never
+  watched is **filled in automatically, once** (only with the tab in front and no trade open; switch it off
+  in the popup), and the ↻ button does the same walk on demand. From then on a **rolling 1-minute history**
+  per pair keeps the cells current as you trade, and collected candles are kept per pair (last 6) so
+  switching pairs does not lose them. Press **C** to show or hide the panel.
 - **Entry balance tags** — each row in the trade history is tagged with the balance you had when you
   placed that trade.
 - **Tab title** — 🟢/🔴 for winning/losing trades plus the nearest expiry countdown, so you can watch
@@ -122,7 +125,7 @@ Amounts use your account's currency and number format.
 | **Hotkeys** | ↑↓ places trades, ←→ changes the trade amount (both off by default), and Hotkey Focus Mode (your Enter does the pressing, so the click comes from the browser) |
 | **Sections** | Show or hide the panel's Targets, Protections and Projection groups (the Log group appears once a sheet URL is set) |
 | **Marquee** | Message text and scroll speed |
-| **Multi-timeframe charts** | Which timeframes (up to 4) and how many candles each chart shows |
+| **Multi-timeframe charts** | Which timeframes (up to 4), how many candles each chart shows, and whether a new pair is filled in automatically |
 | **Activity log** | Your Google Apps Script URL |
 | **Health** | "Check Quotex compatibility" — see below |
 | **Deposits** | "Scan Deposits" — see below |

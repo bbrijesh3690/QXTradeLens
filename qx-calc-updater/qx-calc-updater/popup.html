@@ -632,7 +632,7 @@
         Multi-Timeframe Charts
         <span id="mtfStatus" class="chip unset">1m, 5m, 15m</span>
       </div>
-      <div class="input-row" title="Up to 4, comma separated, from: 5s 10s 15s 30s 1m 2m 3m 5m 10m 15m 30m 1h 4h. Press C on the chart to show or hide the panel. A timeframe finer than the one the platform is currently on has no data until you visit it once — use the panel's refresh button.">
+      <div class="input-row" title="Up to 4, comma separated, from: 5s 10s 15s 30s 1m 2m 3m 5m 10m 15m 30m 1h 4h. Press C on the chart to show or hide the panel. Click a chart's timeframe label to put the platform chart on it.">
         <input type="text" id="mtfTfsInput" class="text-input" placeholder="1m, 5m, 15m" autocomplete="off" spellcheck="false">
         <button id="mtfTfsSave" class="btn-save">Save</button>
       </div>
@@ -642,6 +642,13 @@
           <span id="mtfCountVal" class="ctrl-val">40</span>
         </div>
         <input type="range" id="mtfCountSlider" min="10" max="120" step="5" value="40">
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label" title="A pair you have never watched has no candles to draw. Once per pair — and only with the tab in front and no trade open — the panel visits each timeframe once to fill the charts, then leaves it to the rolling 1m history. Off: the charts stay empty until you press the refresh button.">Auto-fill New Pairs</span>
+        <label class="switch">
+          <input type="checkbox" id="mtfAutofillToggle" checked>
+          <span class="sw-track"></span>
+        </label>
       </div>
     </div>
 

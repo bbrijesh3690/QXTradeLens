@@ -5,6 +5,35 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.30.0] - 2026-09-20
+
+### Added
+- **Click a chart's timeframe to switch the platform chart to it.** The label in each mini chart's header
+  is now a control: click **5m** and Quotex's chart goes to 5m, so you can act on the cell you were just
+  reading without going through their menu. The cell matching the chart's own timeframe stays highlighted.
+- **New pairs fill themselves in, once.** A pair you have never watched had nothing to draw and every cell
+  said "visit once" until you pressed ↻. The panel now does that walk for you — once per pair, only with
+  the tab in front, no trade open and nothing else using the menus — and then leaves it to the rolling 1m
+  history below. It says "filling …" while it happens. Switch it off with **Auto-fill New Pairs** in the popup.
+
+### Changed
+- **A rolling 1-minute history is kept per pair.** Quotex only sends candles for the timeframe its chart is
+  actually on, so the higher cells emptied out as soon as you left them. Any chart period that divides a
+  minute (5s, 10s, 15s, 30s) is now folded into a 1m history for that pair, and every higher timeframe
+  derives from that one history instead of from whichever fine timeframe you happened to visit. The panel
+  fills itself as you trade, and the cells reach much further back.
+- **The cache keeps enough bars to be useful.** It stored a flat 200 candles per timeframe, which is 13 bars
+  of 15m — so a restored cache drew a stub and then said "visit once". The 1m history and anything above it
+  now keep what the widest chart on screen needs (up to 1000 bars); finer timeframes keep only what their
+  own cell shows, since the 1m history carries the rest. Measured live: 436 one-minute bars for a pair
+  (7 hours) built from 15s data alone, where the old cache held 50 minutes.
+- **A message in the panel's header no longer vanishes instantly.** "not while a trade is open" and the new
+  ones were overwritten by the next 200 ms redraw, often before you could read them.
+
+### Fixed
+- **A folded timeframe is marked as approximate.** A 1m cell built from 15s bars said "live" like a real 1m
+  pull; it now shows "≈" the way every other derived cell does.
+
 ## [1.29.0] - 2026-09-20
 
 ### Changed
