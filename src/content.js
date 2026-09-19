@@ -6545,7 +6545,26 @@
         }
       });
     }
+    // v1.27.1: on load the cached candles sat in the archive until the next chart pull promoted them, so
+    // every cell read "visit once" even though the data was there. Take the pair from Quotex's own state
+    // and use its cache straight away.
+    function ensureMtfSymbol() {
+      if (mtfSymbol) {
+        return;
+      }
+      const state = readQuotexState();
+      const symbol = state && state.symbol;
+      if (!symbol) {
+        return;
+      }
+      mtfSymbol = symbol;
+      if (mtfArchive[symbol]) {
+        mtfEntries = mtfArchive[symbol];
+        delete mtfArchive[symbol];
+      }
+    }
     function renderMtf(t) {
+      ensureMtfSymbol();
       const e = t._tcTfs || getMtfTfs(),
         n = getMtfCount(),
         o = t.querySelector('[data-mtf="pair"]'),

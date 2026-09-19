@@ -1030,6 +1030,26 @@ test("MTF: candles collected for one pair survive switching pairs (v1.26.0)", as
   }
 });
 
+test("MTF: cached candles show immediately on load, before any chart pull (v1.27.1)", async () => {
+  // A cache from an earlier session, and a chart that has no candles yet.
+  const now = Math.floor(Date.now() / 1000);
+  const candles = [];
+  for (let i = 0; i < 200; i++) {
+    const o = 100 + i * 0.01;
+    candles.push({ t: now - (200 - i) * 15, o, h: o + 0.05, l: o - 0.05, c: o + 0.02 });
+  }
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@15": { candles, capturedAt: now, periodSeconds: 15 } } } };
+  const storage = { ...mtfStorage, __tradeCalc_mtf_cache: JSON.stringify(cache) };
+  const store = quotexStore();
+  store.__candles = []; // the chart itself has nothing to give
+  const qx = await boot({ storage, store });
+  try {
+    await sleep(700);
+    assert.ok(!/visit once/.test(mtfCap(qx, "1m")), "1m derived from the cached 15s candles: " + mtfCap(qx, "1m"));
+  } finally {
+    qx.close();
+  }
+});
 test("MTF: the cache keeps several pairs (v2 format)", async () => {
   const store = quotexStore();
   store.__candles = makeCandles(200, 60);

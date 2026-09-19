@@ -5,6 +5,13 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.27.1] - 2026-09-19
+
+### Fixed
+- **Multi-timeframe cells said "visit once" on load even with candles cached.** The cache was restored into a
+  holding area and only came into use when the next chart pull happened; the pair is now read from Quotex's
+  state at render time, so cached candles are shown immediately.
+
 ## [1.27.0] - 2026-09-19
 
 ### Changed — much less visible to the platform (no feature removed)
