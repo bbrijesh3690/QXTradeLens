@@ -5,6 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.25.0] - 2026-09-19
+
+### Added — self-repair for the rest of the panel
+- **Open trades, chart countdown chips, tab-title countdown and live totals now work from Quotex's own data**
+  when the deal rows can't be read. The bridge also carries live prices and each deal's entry price and
+  payout %, so winning/losing is known without reading the page (command 0 = Up, 1 = Down, checked against
+  10 settled trades live).
+- **Lists repair themselves like single elements did.** Deal rows, asset rows, timeframe items and expiry
+  times are found by shape and text when their classes change, and the new class is remembered:
+  a deal row = a small block holding one pair name and one mm:ss countdown; timeframe items = "1m"-style
+  labels; expiry times = "HH:MM" labels inside the expiry box.
+- **Max open trades** counts the highest of profit/loss cells, deal rows and Quotex's data.
+- **Health check** now also reports Open trades list, Trade timers, Asset list rows, Timeframe menu and
+  Expiry times, with a new "–" state for a list that simply isn't open at the moment (not a fault).
+
+### Tests
+- 58 tests. The five new ones fail on v1.24.5 and pass here.
 ## [1.24.5] - 2026-09-18
 
 ### Fixed

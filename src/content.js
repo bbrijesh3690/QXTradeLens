@@ -461,6 +461,79 @@
       }
       return a;
     }
+    // Same idea as findEl but for groups of elements (deal rows, asset rows, menu items) — v1.25.0.
+    // learned selector -> known classes -> a finder that matches on shape and text. Records how it
+    // resolved (for the health check) and learns the current class when only the finder worked.
+    const listVia = {};
+    // "On screen" without relying on layout boxes: a hidden ancestor sets display/visibility, and a
+    // headless DOM reports no boxes at all.
+    const isVisible = (el) => {
+      if (!el) {
+        return false;
+      }
+      if (el.offsetWidth || el.offsetHeight || el.getClientRects().length) {
+        return true;
+      }
+      try {
+        const cs = getComputedStyle(el);
+        return cs.display !== "none" && cs.visibility !== "hidden";
+      } catch (t) {
+        return true;
+      }
+    };
+    function resolveList(name, scope, selectors, semantic) {
+      const root = scope || document;
+      const learned = learnedSelectors["list:" + name];
+      if (learned) {
+        try {
+          const hit = Array.from(root.querySelectorAll(learned.sel));
+          if (hit.length) {
+            listVia[name] = "learned";
+            return hit;
+          }
+        } catch (t) {}
+      }
+      for (const sel of selectors) {
+        const hit = Array.from(root.querySelectorAll(sel));
+        if (hit.length) {
+          listVia[name] = "class";
+          return hit;
+        }
+      }
+      let found = [];
+      try {
+        found = semantic ? semantic(root) || [] : [];
+      } catch (t) {
+        found = [];
+      }
+      if (found.length) {
+        listVia[name] = "semantic";
+        const sel = found[0].classList && found[0].classList.length ? "." + found[0].classList[0] : null;
+        if (sel) {
+          try {
+            if (Array.from(root.querySelectorAll(sel)).length === found.length) {
+              learnedSelectors["list:" + name] = { sel, at: new Date().toISOString() };
+              localStorage.setItem(KEY_LEARNED_SELECTORS, JSON.stringify(learnedSelectors));
+            }
+          } catch (t) {}
+        }
+        return found;
+      }
+      listVia[name] = "missing";
+      return [];
+    }
+    // A trade row shows a pair name and a mm:ss countdown; a menu item is just a short label.
+    const PAIR_TEXT_RE = /[A-Z]{3}\/[A-Z]{3}|OTC/;
+    const TF_TEXT_RE = /^\d+\s*[smhd]$/i;
+    const TIME_TEXT_RE = /^\d{1,2}:\d{2}$/;
+    const CLOCK_ONLY_RE = /^\d{1,2}:\d{2}(:\d{2})?$/;
+    const textIn = (el) => (el && el.textContent ? el.textContent.trim() : "");
+    function leafMatches(root, re, extra) {
+      return Array.from(root.querySelectorAll("div, span, button, li")).filter(
+        (el) => el.children.length === 0 && re.test(textIn(el)) && (!extra || extra(el)),
+      );
+    }
+
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Quotex data layer (v1.22.0): plain values from Quotex's own Redux store, answered by
     // chart_reader.js in the page's MAIN world. The CustomEvent round trip is synchronous (DOM event
@@ -555,9 +628,48 @@
     // Open trades for the max-trades cap: the higher of the page count and the store count, because
     // for a cap over-counting is the safe side.
     function openTradeCount() {
-      const dom = getOpenTradePnlEls().length;
+      // Highest of: profit/loss cells, deal rows (v1.25.0) and Quotex's data.
+      const dom = Math.max(getOpenTradePnlEls().length, getOpenTradeRows().length);
       const store = storeOpenTradeCount();
       return isNaN(store) ? dom : Math.max(dom, store);
+    }
+    // Open trades straight from Quotex's data (v1.25.0): pair, seconds left, winning/losing and the
+    // amount a win would return. Independent of the platform's markup, so the chart countdown chips, the
+    // tab-title countdown and the live totals keep working when the deal-list classes rotate.
+    // command 0 = Up, 1 = Down (checked against 10 settled trades live on 2026-09-18).
+    function storeOpenTrades() {
+      const state = readQuotexState();
+      if (!state || !Array.isArray(state.openedDeals)) {
+        return null;
+      }
+      const quotes = state.quotes || {};
+      const assets = readQuotexAssets() || {};
+      const nowSec = Date.now() / 1000;
+      return dealsForThisAccount(state.openedDeals).map((d) => {
+        const price = quotes[d.asset];
+        const isUp = d.command === 0;
+        const winning =
+          price == null || d.openPrice == null ? null : isUp ? price > d.openPrice : price < d.openPrice;
+        const pct = d.percentProfit;
+        return {
+          id: d.id,
+          symbol: d.asset,
+          pair: (assets[d.asset] && assets[d.asset].label) || d.asset || "",
+          amount: d.amount,
+          secondsLeft: d.closeTimestamp ? Math.max(0, Math.round(d.closeTimestamp - nowSec)) : NaN,
+          winning,
+          // What the platform shows in the deal row while it runs: the full return on a win, 0 on a loss.
+          liveReturn: winning && pct != null ? d.amount * (1 + pct / 100) : 0,
+        };
+      });
+    }
+    // [winning, losing] for the tab title. Falls back to Quotex's data when the deal rows can't be read.
+    function storeOutcomeFlags() {
+      const fromStore = storeOpenTrades();
+      if (!fromStore || !fromStore.length) {
+        return null;
+      }
+      return [fromStore.some((t) => t.winning === true), fromStore.some((t) => t.winning === false)];
     }
     function storeAssetFor(tab) {
       const symbol = tab && tab.getAttribute && tab.getAttribute("data-symbol");
@@ -3095,16 +3207,34 @@
     }
     function getOpenTradeRows() {
       if (openTradeRowsLive.length) {
+        listVia.openTradeRows = "class";
         return Array.from(openTradeRowsLive);
       }
-      const t = [],
-        e = document.querySelectorAll(".ib6yR, .RLj1p");
-      for (let n = 0; n < e.length; n++) {
-        if (!isSettledRow(e[n])) {
-          t.push(e[n]);
+      // v1.25.0: a running trade's row holds both a pair name and a mm:ss countdown, and no settled marker.
+      const rows = resolveList("openTradeRows", document, [".ib6yR", ".RLj1p"], (root) => {
+        const clocks = leafMatches(root, CLOCK_ONLY_RE);
+        const seen = new Set();
+        const out = [];
+        for (const clock of clocks) {
+          for (let el = clock.parentElement, hops = 0; el && hops < 4; el = el.parentElement, hops++) {
+            // Stop before anything page-sized: a deal row is a small block holding one pair and one clock.
+            if (el.closest("#__tradeCalc") || el.querySelector("#graph, #trade-button, #tab-active")) {
+              break;
+            }
+            const text = textIn(el);
+            if (text.length > 120 || !PAIR_TEXT_RE.test(text)) {
+              continue;
+            }
+            if (!seen.has(el)) {
+              seen.add(el);
+              out.push(el);
+            }
+            break;
+          }
         }
-      }
-      return t;
+        return out;
+      });
+      return rows.filter((row) => !isSettledRow(row));
     }
     function getOpenTradePnlEls() {
       if (openTradePnlElsLive.length) {
@@ -3143,6 +3273,13 @@
     }
     function sumOpenPnl() {
       const t = getOpenTradePnlEls();
+      if (!t.length) {
+        // v1.25.0: same figure the deal rows show — full return on a winning trade, 0 on a losing one.
+        const fromStore = storeOpenTrades();
+        if (fromStore && fromStore.length) {
+          return fromStore.reduce((sum, trade) => sum + (trade.liveReturn || 0), 0);
+        }
+      }
       let e = 0;
       for (let n = 0, o = t.length; n < o; n++) {
         const o = parseMoney(t[n].textContent);
@@ -3561,13 +3698,36 @@
         reqEl.classList.remove("tcTradeCritical");
       }
     }
+    // "⏱1:23 (2)" for the browser tab title: soonest expiry, and how many trades are open.
+    function fmtTitleCountdown(t, e) {
+      if (!(t >= 0) || t >= 1000000000) {
+        return "";
+      }
+      const n = Math.floor(t / 3600),
+        o = Math.floor((t % 3600) / 60),
+        r = t % 60,
+        a = (t) => (t < 10 ? "0" + t : "" + t);
+      return "⏱" + (n ? n + ":" + a(o) + ":" + a(r) : o + ":" + a(r)) + (e > 1 ? " (" + e + ")" : "") + " ";
+    }
+    let timersVia = "page";
     function buildTitleCountdown() {
       if (!TIMERS_ENABLED) {
         return "";
       }
       const t = getOpenTradeRows();
       if (!t.length) {
-        return "";
+        // v1.25.0: Quotex's data carries each open deal's close time.
+        const fromStore = storeOpenTrades();
+        if (!fromStore || !fromStore.length) {
+          return "";
+        }
+        let soonest = Infinity;
+        for (const trade of fromStore) {
+          if (!isNaN(trade.secondsLeft) && trade.secondsLeft < soonest) {
+            soonest = trade.secondsLeft;
+          }
+        }
+        return fmtTitleCountdown(soonest, fromStore.length);
       }
       let e = 1 / 0;
       for (let n = 0, o = t.length; n < o; n++) {
@@ -3585,18 +3745,7 @@
           e = a;
         }
       }
-      return (function (t, e) {
-        if (!(t >= 0) || t >= 1000000000) {
-          return "";
-        }
-        const n = Math.floor(t / 3600),
-          o = Math.floor((t % 3600) / 60),
-          r = t % 60,
-          a = (t) => (t < 10 ? "0" + t : "" + t);
-        return (
-          "⏱" + (n ? n + ":" + a(o) + ":" + a(r) : o + ":" + a(r)) + (e > 1 ? " (" + e + ")" : "") + " "
-        );
-      })(e, t.length);
+      return fmtTitleCountdown(e, t.length);
     }
     function updateTabTitle(t, e) {
       const n = t && e ? "🟢🔴 " : t ? "🟢 " : e ? "🔴 " : "",
@@ -3662,6 +3811,15 @@
       let anyWinning = false,
         anyTied = false,
         openPnlSum = 0;
+      if (!openPnlEls.length) {
+        // v1.25.0: read open trades from Quotex's data when the deal rows can't be read.
+        const flags = storeOutcomeFlags();
+        if (flags) {
+          anyWinning = flags[0];
+          anyTied = flags[1];
+          openPnlSum = sumOpenPnl();
+        }
+      }
       for (let t = 0, a = openPnlEls.length; t < a; t++) {
         const a = openPnlEls[t].textContent.trim();
         if (a.startsWith("+")) {
@@ -4032,15 +4190,17 @@
       return window._tcTimeBtnCache;
     }
     function getTimeframeItems() {
-      const t = document.querySelector(".kCc27") || document.querySelector(".PY5Eb");
+      const t =
+        document.querySelector(".kCc27") ||
+        document.querySelector(".PY5Eb") ||
+        // v1.25.0: any open menu that holds several timeframe labels ("1m", "5m", …).
+        (leafMatches(document, TF_TEXT_RE, isVisible)[0] || {}).parentElement ||
+        null;
       if (!t) {
+        listVia.timeframeItems = "missing";
         return [];
       }
-      let e = Array.from(t.querySelectorAll(".Dy2a9"));
-      if (!e.length) {
-        e = Array.from(t.querySelectorAll(".blYud"));
-      }
-      return e;
+      return resolveList("timeframeItems", t, [".Dy2a9", ".blYud"], (root) => leafMatches(root, TF_TEXT_RE));
     }
     function getActiveTimeframe() {
       const t = getTimeframeItems().find(
@@ -4072,6 +4232,10 @@
         e();
       }
     }
+    // Expiry time choices in the open time menu (v1.25.0: class first, then any "HH:MM" leaf in that menu).
+    function getExpiryTimeItems(scope) {
+      return resolveList("expiryTimes", scope || document, [".VPv5q"], (root) => leafMatches(root, TIME_TEXT_RE));
+    }
     function getExpiryBox() {
       return document.querySelector(".NEJ1S");
     }
@@ -4098,7 +4262,7 @@
               t.click();
               setTimeout(() => {
                 const t = (function () {
-                  const t = Array.from(document.querySelectorAll(".VPv5q"));
+                  const t = getExpiryTimeItems(document);
                   return (
                     t.find(
                       (t) =>
@@ -4127,7 +4291,7 @@
           if (e) {
             e.click();
             setTimeout(() => {
-              const e = Array.from(document.querySelectorAll(".VPv5q")).find(
+              const e = getExpiryTimeItems(document).find(
                 (t) => (t.textContent || "").trim() === "00:05",
               );
               if (e) {
@@ -4959,13 +5123,7 @@
       if (!t) {
         return [];
       }
-      let e = Array.from(t.querySelectorAll(".R2Rgm"));
-      if (!e.length) {
-        e = Array.from(t.querySelectorAll(".vPvlJ"));
-      }
-      if (!e.length) {
-        e = Array.from(t.querySelectorAll(".fZEV1"));
-      }
+      let e = resolveList("assetRows", t, [".R2Rgm", ".vPvlJ", ".fZEV1"], () => []);
       if (!e.length) {
         e = Array.from(t.querySelectorAll("*")).filter((t) => {
           const e = t.textContent || "";
@@ -5499,8 +5657,15 @@
         return;
       }
       const t = getOpenTradeRows();
+      // v1.25.0: no readable deal rows -> use Quotex's data instead of hiding the chips.
+      const fromStore = t.length ? null : storeOpenTrades();
+      if (!t.length && fromStore && fromStore.length) {
+        timersVia = "store";
+      } else if (t.length) {
+        timersVia = "page";
+      }
       let e = byId(ids.tcTradeTimer);
-      if (!t.length) {
+      if (!t.length && !(fromStore && fromStore.length)) {
         if (e) {
           e.style.display = "none";
           e.style.animation = "";
@@ -5549,6 +5714,16 @@
       let o = null;
       const r = [],
         a = Date.now();
+      if (fromStore) {
+        for (const trade of fromStore) {
+          r.push({
+            pair: trade.pair,
+            time: fmtCountdown(isNaN(trade.secondsLeft) ? 0 : trade.secondsLeft, 0),
+            secs: isNaN(trade.secondsLeft) ? 0 : trade.secondsLeft,
+            win: trade.winning === true,
+          });
+        }
+      }
       for (let e = 0; e < t.length; e++) {
         const n = t[e],
           i =
@@ -6711,6 +6886,13 @@
         const t = getOpenTradePnlEls();
         let e = false,
           n = false;
+        if (!t.length) {
+          const flags = storeOutcomeFlags();
+          if (flags) {
+            e = flags[0];
+            n = flags[1];
+          }
+        }
         for (let o = 0, r = t.length; o < r; o++) {
           const r = t[o].textContent.trim();
           if (r.startsWith("+")) {
@@ -6896,7 +7078,7 @@
                 if (e) {
                   synthClick(e);
                   setTimeout(() => {
-                    const e = Array.from(t.querySelectorAll(".VPv5q")).find(
+                    const e = getExpiryTimeItems(t).find(
                       (t) => (t.textContent || "").trim() === "00:10",
                     );
                     if (e) {
@@ -7223,6 +7405,39 @@
       const storeOpen = storeOpenTradeCount();
       add("Open trades", isNaN(storeOpen) && !domOpen ? "fallback" : "ok", isNaN(storeOpen) ? "page" : "store + page", domOpen + " page · " + (isNaN(storeOpen) ? "—" : storeOpen) + " store");
       add("Settled trades (loss streak)", outcomesVia === "store" ? "ok" : "fallback", outcomesVia, "streak " + lossStreak);
+      // Lists (v1.25.0). A menu that isn't open right now can't be checked; that's "not open", not broken.
+      const openRows = getOpenTradeRows();
+      const storeTrades = storeOpenTrades();
+      const openCount = openRows.length || (storeTrades ? storeTrades.length : 0);
+      add(
+        "Open trades list",
+        !openCount ? "idle" : openRows.length ? (listVia.openTradeRows === "class" ? "ok" : "fallback") : "ok",
+        openRows.length ? listVia.openTradeRows || "page" : storeTrades ? "store" : "none",
+        openCount ? openCount + " open" : "no open trades",
+      );
+      add("Trade timers", !openCount ? "idle" : "ok", openRows.length ? "page" : timersVia, openCount ? openCount + " tracked" : "no open trades");
+      const dropdown = getAssetDropdown();
+      const assetRows = dropdown ? getAssetRows(dropdown) : [];
+      add(
+        "Asset list rows",
+        !dropdown ? "idle" : assetRows.length ? (listVia.assetRows === "class" ? "ok" : "fallback") : "missing",
+        dropdown ? listVia.assetRows || "heuristic" : "not open",
+        dropdown ? assetRows.length + " rows" : "not open",
+      );
+      const tfItems = getTimeframeItems();
+      add(
+        "Timeframe menu",
+        tfItems.length ? (listVia.timeframeItems === "class" ? "ok" : "fallback") : "idle",
+        tfItems.length ? listVia.timeframeItems : "not open",
+        tfItems.length ? tfItems.length + " items" : "not open",
+      );
+      const expiryItems = getExpiryTimeItems(getExpiryBox() || document);
+      add(
+        "Expiry times",
+        expiryItems.length ? (listVia.expiryTimes === "class" ? "ok" : "fallback") : "idle",
+        expiryItems.length ? listVia.expiryTimes : "not open",
+        expiryItems.length ? expiryItems.length + " items" : "not open",
+      );
       add("Currency", state && state.currency ? "ok" : "fallback", state && state.currency ? "store" : "page", detectCurrency());
       const version =
         typeof chrome != "undefined" && chrome.runtime && chrome.runtime.getManifest ? chrome.runtime.getManifest().version : "";

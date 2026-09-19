@@ -156,6 +156,7 @@
 
   function num(v) { var n = Number(v); return isFinite(n) ? n : null; }
 
+  // command 0 = Up, 1 = Down (checked against 10 settled trades live on 2026-09-18).
   function dealOut(d) {
     return {
       id: d.id != null ? String(d.id) : null,
@@ -164,6 +165,9 @@
       profit: num(d.profit),
       command: num(d.command),
       isDemo: num(d.isDemo),
+      openPrice: num(d.openPrice),
+      closePrice: num(d.closePrice),
+      percentProfit: num(d.percentProfit),
       openTimestamp: num(d.openTimestamp),
       closeTimestamp: num(d.closeTimestamp)
     };
@@ -182,6 +186,20 @@
       return ((b.closeTimestamp || 0) - (a.closeTimestamp || 0)) || ((b.openTimestamp || 0) - (a.openTimestamp || 0));
     });
     return limit > 0 ? out.slice(0, limit) : out;
+  }
+
+  // Live price per symbol: { SYMBOL: price }. Lets the panel tell a winning trade from a losing one
+  // without reading the platform's markup (v1.25.0).
+  function quoteMap(q) {
+    var out = {};
+    var by = q && q.quoteBySymbol;
+    if (!by) return out;
+    var keys = Object.keys(by);
+    for (var i = 0; i < keys.length; i++) {
+      var v = by[keys[i]];
+      if (v && typeof v === 'object' && num(v.price) !== null) out[keys[i]] = num(v.price);
+    }
+    return out;
   }
 
   function stateSnapshot(withAssets) {
@@ -207,6 +225,7 @@
       timeZone: num(g.timeZone),
       tabs: st.navigationSymbols && st.navigationSymbols.list ? st.navigationSymbols.list.map(String) : [],
       openedDeals: dealList(deals.openedById, deals.openedIds, 0),
+      quotes: quoteMap(st.quotes),
       closedDeals: dealList(deals.closedById, deals.closedIds, MAX_CLOSED_DEALS),
       assets: null
     };

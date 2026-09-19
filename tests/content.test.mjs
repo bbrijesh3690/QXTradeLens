@@ -30,7 +30,7 @@ const slStorage = (sl) => ({
 const CHART_READER = fs.readFileSync(new URL("../qx-calc-updater/qx-calc-updater/chart_reader.js", import.meta.url), "utf8");
 
 // A Redux state shaped like Quotex's (paths seen live on 2026-09-15). Tests mutate it to simulate the app.
-function quotexStore({ payout = 91, opened = [], closed = [], timeZone = 19800 } = {}) {
+function quotexStore({ payout = 91, opened = [], closed = [], timeZone = 19800, quotes = {} } = {}) {
   const byId = (list) => Object.fromEntries(list.map((d) => [d.id, d]));
   return {
     chartSettings: { chartById: { c1: { currentAsset: { symbol: "USDDZD_otc" }, dealValue: 2000 } } },
@@ -42,11 +42,13 @@ function quotexStore({ payout = 91, opened = [], closed = [], timeZone = 19800 }
     },
     deals: { openedById: byId(opened), openedIds: opened.map((d) => d.id), closedById: byId(closed), closedIds: closed.map((d) => d.id) },
     global: { currency: "₹", currencyCode: "INR", timeZone },
+    quotes: { quoteBySymbol: Object.fromEntries(Object.entries(quotes).map(([k, price]) => [k, { price, time: 1789464900 }])), symbols: Object.keys(quotes) },
     navigationSymbols: { list: ["USDDZD_otc"] },
   };
 }
-const deal = (id, { profit = 0, isDemo = 1, close = 1789464960 } = {}) => ({
-  id, asset: "USDDZD_otc", amount: 2000, profit, isDemo, command: 1, openTimestamp: close - 60, closeTimestamp: close,
+const deal = (id, { profit = 0, isDemo = 1, close = 1789464960, command = 1, openPrice = 256.5, percentProfit = 85 } = {}) => ({
+  id, asset: "USDDZD_otc", amount: 2000, profit, isDemo, command, openPrice, percentProfit,
+  openTimestamp: close - 60, closeTimestamp: close,
 });
 
 async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html = FIXTURE, sync = null, store = null, setup = null } = {}) {
@@ -514,7 +516,7 @@ test("selectors: renamed pair-tab classes are found through data-symbol", async 
   const qx = await boot({ html });
   try {
     const row = healthRow(qx, "Pair tabs");
-    assert.equal(row.via, "semantic");
+    assert.match(row.via, /semantic|learned/, "found by shape (and remembered afterwards)");
     assert.equal(row.value, "1 open");
   } finally {
     qx.close();
@@ -821,6 +823,96 @@ test("auto-close: a low-payout tab with a real close button is closed", async ()
     const doc = qx.window.document;
     assert.equal(doc.querySelector('[data-symbol="EURUSD_otc"]'), null, "low-payout tab closed");
     assert.ok(doc.getElementById("tab-active"), "the 91% tab stays");
+  } finally {
+    qx.close();
+  }
+});
+
+
+// ── v1.25.0: the rest of the panel repairs itself too ──────────────────────────────────────────────
+
+// An open trade closing 45 s from now, with a live price that makes it a winner (command 1 = Down).
+const openDealNow = (over = {}) => deal("live-1", { close: Math.floor(Date.now() / 1000) + 45, command: 1, openPrice: 256.5, ...over });
+
+test("store: chart countdown chips work with no readable deal rows", async () => {
+  const store = quotexStore({ opened: [openDealNow()], quotes: { USDDZD_otc: 256.2 } }); // price below entry = winning
+  const qx = await boot({ store });
+  try {
+    await sleep(700);
+    const graphText = qx.window.document.getElementById("graph").textContent;
+    assert.match(graphText, /USD\/DZD \(OTC\)/, "pair on the chip");
+    assert.match(graphText, /0[01]:\d\d/, "countdown on the chip");
+    assert.match(qx.window.document.title, /⏱/, "tab title countdown");
+    assert.match(qx.window.document.title, /🟢/, "winning marker");
+    assert.equal(healthRow(qx, "Trade timers").via, "store");
+  } finally {
+    qx.close();
+  }
+});
+
+test("store: a losing open trade shows the loss marker and no phantom profit", async () => {
+  const store = quotexStore({ opened: [openDealNow()], quotes: { USDDZD_otc: 256.9 } }); // price above entry = losing
+  const qx = await boot({ store });
+  try {
+    await sleep(700);
+    assert.match(qx.window.document.title, /🔴/, "losing marker");
+    assert.doesNotMatch(qx.window.document.title, /🟢/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("selectors: deal rows with renamed classes are still found by shape", async () => {
+  // A running trade's row: pair name + mm:ss countdown, unknown classes.
+  const rows = '<div class="Zz9Tt"><div class="Qq1">USD/DZD (OTC)</div><div class="Qq2">00:45</div><div class="Qq3">+3,700.00 ₹</div></div>' +
+    '<div class="Zz9Tt"><div class="Qq1">EUR/USD (OTC)</div><div class="Qq2">00:20</div><div class="Qq3">+1,900.00 ₹</div></div>';
+  const html = FIXTURE.replace('<div id="graph">', rows + '<div id="graph">');
+  const qx = await boot({ html });
+  try {
+    const row = healthRow(qx, "Open trades list");
+    assert.equal(row.value, "2 open");
+    assert.match(row.via, /semantic|learned/, "found by shape, then remembered");
+    // Two open trades is the default cap, so trading is blocked.
+    assert.ok(Array.from(qx.window.document.querySelectorAll("#trade-button button")).every((b) => b.disabled));
+  } finally {
+    qx.close();
+  }
+});
+
+test("selectors: timeframe and expiry menus with renamed classes are still found", async () => {
+  const menus =
+    '<div class="Mm1"><div class="Mm2">15s</div><div class="Mm2">1m</div><div class="Mm2">5m</div><div class="Mm2">15m</div></div>';
+  const times = '<div class="Tt1"><div class="Tt2">18:14</div><div class="Tt2">18:15</div><div class="Tt2">18:16</div></div>';
+  const html = FIXTURE.replace('<div id="graph">', menus + times + '<div id="graph">');
+  // Quotex renders the time choices inside the expiry box; put them there before the panel starts.
+  const setup = (w) => w.document.querySelector(".NEJ1S").appendChild(w.document.querySelector(".Tt1"));
+  const qx = await boot({ html, setup });
+  try {
+    const tf = healthRow(qx, "Timeframe menu");
+    assert.equal(tf.status, "fallback");
+    assert.equal(tf.value, "4 items");
+    const ex = healthRow(qx, "Expiry times");
+    assert.equal(ex.status, "fallback");
+    assert.equal(ex.value, "3 items");
+    // The new classes are remembered so later lookups are plain queries again.
+    const learned = JSON.parse(qx.window.localStorage.getItem("__tradeCalc_learned_selectors"));
+    assert.equal(learned["list:timeframeItems"].sel, ".Mm2");
+    assert.equal(learned["list:expiryTimes"].sel, ".Tt2");
+  } finally {
+    qx.close();
+  }
+});
+
+test("health: lists that aren't open right now read as idle, not broken", async () => {
+  const qx = await boot({ store: quotexStore() });
+  try {
+    const report = qx.askPanel({ type: "GET_HEALTH" });
+    const byName = Object.fromEntries(report.rows.map((r) => [r.name, r]));
+    assert.equal(byName["Open trades list"].status, "idle");
+    assert.equal(byName["Asset list rows"].value, "not open");
+    assert.equal(byName["Timeframe menu"].status, "idle");
+    // Only the tab close button is genuinely absent on this Quotex build.
+    assert.equal(report.rows.filter((r) => r.status === "missing").map((r) => r.name).join(","), "Tab close buttons");
   } finally {
     qx.close();
   }

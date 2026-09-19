@@ -721,8 +721,9 @@ async function runHealthCheck() {
       : 'Open a Quotex trade page with the panel running, then check again.';
     return;
   }
-  const icon = { ok: '✅', fallback: '🔁', missing: '❌' };
+  const icon = { ok: '✅', fallback: '🔁', missing: '❌', idle: '–' };
   const missing = report.rows.filter((r) => r.status === 'missing').length;
+  // 'idle' = nothing to check right now (no open trades, menu closed) — not a problem.
   const fallback = report.rows.filter((r) => r.status === 'fallback').length;
   healthStatusEl.textContent = missing ? missing + ' missing' : fallback ? fallback + ' fallback' : 'All OK';
   healthStatusEl.className = 'chip ' + (missing ? 'err' : fallback ? 'warn' : 'set');
