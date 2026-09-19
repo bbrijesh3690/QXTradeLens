@@ -1258,6 +1258,100 @@ test("MTF: auto-fill stays out of the way when it is switched off, or a trade is
   }
 });
 
+// ── v1.30.1: a cell is never left on a snapshot ─────────────────────────────────────
+
+// Plain OHLC rows, the shape the cache stores (the chart bridge's shape is converted on the way in).
+function rows(count, sec, endT, price = 100) {
+  const out = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const o = price + i * 0.01;
+    out.push({ t: endT - i * sec, o, h: o + 0.05, l: o - 0.05, c: o + 0.02 });
+  }
+  return out;
+}
+const bigTfStorage = { ...mtfStorage, __tradeCalc_mtf_tfs: JSON.stringify(["1m", "5m", "15m"]) };
+
+test("MTF: a stale 15m snapshot is brought up to date from the 1m history (v1.30.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const bucket = Math.floor(now / 900) * 900;
+  const cache = {
+    v: 2,
+    symbols: {
+      USDDZD_otc: {
+        // Quotex's own 15m bars, captured five minutes ago and frozen there.
+        "USDDZD_otc@900": { candles: rows(60, 900, bucket), capturedAt: now - 300, periodSeconds: 900 },
+        // The rolling 1m history, still being folded from the live chart.
+        "USDDZD_otc@60": { candles: rows(600, 60, Math.floor(now / 60) * 60), capturedAt: now, periodSeconds: 60, derived: true },
+      },
+    },
+  };
+  const store = quotexStore();
+  store.__candles = []; // nothing live, so only the cache decides what the cell shows
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1200);
+    const cap = mtfCap(qx, "15m");
+    assert.ok(!/ago/.test(cap), "not frozen on the five-minute-old snapshot: " + cap);
+    assert.match(cap, /live/, "the tail is redrawn from the 1m history: " + cap);
+    // The point of the merge: the platform own 15m history is KEPT and only the tail is re-folded.
+    // Falling back to the 1m history wholesale would draw a shorter, entirely derived chart.
+    assert.ok(!/≈/.test(cap), "still backed by native bars, not purely folded: " + cap);
+    assert.ok(!/bars/.test(cap), "and long enough to fill the cell: " + cap);
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: the freshest source wins, not the coarsest (v1.30.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const cache = {
+    v: 2,
+    symbols: {
+      USDDZD_otc: {
+        // A 5m entry left behind by an old walk, and a 1m history from a moment ago.
+        "USDDZD_otc@300": { candles: rows(100, 300, Math.floor(now / 300) * 300), capturedAt: now - 600, periodSeconds: 300 },
+        "USDDZD_otc@60": { candles: rows(600, 60, Math.floor(now / 60) * 60), capturedAt: now, periodSeconds: 60, derived: true },
+      },
+    },
+  };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1200);
+    // 15m can be folded from either the 10-minute-old 5m entry or the current 1m one.
+    const cap = mtfCap(qx, "15m");
+    assert.ok(!/ago/.test(cap), "the stale 5m entry is not what the 15m cell folds: " + cap);
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: auto-fill runs when only some cells are blank (v1.30.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // 5m bars only: 5m and 15m can be drawn, 1m cannot be built from them at all.
+  const cache = {
+    v: 2,
+    symbols: {
+      USDDZD_otc: {
+        "USDDZD_otc@300": { candles: rows(100, 300, Math.floor(now / 300) * 300), capturedAt: now, periodSeconds: 300 },
+      },
+    },
+  };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1200);
+    assert.match(mtfCap(qx, "1m"), /visit once/, "the 1m cell has nothing it can fold from");
+    assert.ok(!/visit once/.test(mtfCap(qx, "5m")), "while 5m is fine");
+    await sleep(3200);
+    assert.match(mtfPairLabel(qx), /filling/, "one blank cell is enough to go and get it");
+  } finally {
+    qx.close();
+  }
+});
+
 // ── v1.28.0: how the trade click is produced ───────────────────────────────────────────────────────
 
 const hkStorage = { ...slStorage(10000), __tradeCalc_hk_updown: "true" };

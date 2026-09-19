@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.30.1] - 2026-09-20
+
+### Fixed
+- **A cell could sit on a stale snapshot while live data was right beside it.** Bars pulled for a
+  timeframe are a snapshot: they stop the moment you leave it. A 15m cell filled by a refresh walk then
+  read "4m ago" even though the rolling 1m history was updating three times a second. The platform's own
+  bars are now kept for the history and the tail is re-folded from the freshest source, so the newest bars
+  always move. Seen live on a 15s chart.
+- **The coarsest source was preferred over the freshest.** Picking what to fold from went by timeframe
+  size alone, so a ten-minute-old 5m entry beat a current 1m history. Freshness decides now; between
+  sources of the same age the coarser one still wins, as it needs less folding.
+- **Auto-fill never ran in practice.** It required EVERY chart to be blank. On a 15s chart a new pair has
+  15s bars immediately and the 1m cell fills from the fold, so that was never true and the 5m/15m cells
+  were left empty. One blank chart is now reason enough.
+
 ## [1.30.0] - 2026-09-20
 
 ### Added

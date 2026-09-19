@@ -6205,64 +6205,79 @@
       }
       return rows.length < 2 ? rows.slice() : rows[0].partial ? rows.slice(1) : rows.slice();
     }
-    function resolveMtfRows(t, e, n, o, r) {
-      const a = (function (t, e, n, o, r) {
-        if (!(t && e && n > 0)) {
-          return null;
-        }
-        const a = t[e + "@" + n],
-          i =
-            a && a.candles && a.candles.length
-              ? {
-                  entry: a,
-                  srcSec: n,
-                  // v1.30.0: a 1m entry folded up from 15s bars sits under the same key as a real 1m
-                  // pull, but it is still derived data — say so, so the cell shows "≈".
-                  native: !a.derived,
-                }
-              : null;
-        let c = null;
-        for (const o in t) {
-          const r = o.lastIndexOf("@");
-          if (r < 0 || o.slice(0, r) !== e) {
-            continue;
-          }
-          const a = parseInt(o.slice(r + 1), 10);
-          if (!(a > 0) || a >= n || n % a !== 0) {
-            continue;
-          }
-          const i = t[o];
-          if (i && i.candles && i.candles.length && (!c || a > c.srcSec)) {
-            c = {
-              entry: i,
-              srcSec: a,
-              native: false,
-            };
-          }
-        }
-        return i
-          ? o > 0 && r > 0
-            ? o - (i.entry.capturedAt || 0) <= r
-              ? i
-              : c && (c.entry.capturedAt || 0) > (i.entry.capturedAt || 0)
-                ? c
-                : i
-            : i
-          : c;
-      })(t, e, n, o, r);
-      if (!a) {
+    // Picks what a cell draws: the platform's own bars for this timeframe, bars folded up from a finer
+    // one, or — since v1.30.1 — the native history with a live tail folded onto the end.
+    //
+    // A native pull is a SNAPSHOT: it stops the moment you leave that timeframe. Before v1.30.1 a stale
+    // native entry still won, and the coarsest source was preferred over the freshest, so a 15m cell sat
+    // reading "4m ago" with a 1m history updating three times a second right beside it.
+    function resolveMtfRows(entries, symbol, sec, nowSec, staleSec) {
+      if (!(entries && symbol && sec > 0)) {
         return null;
       }
-      const i = a.native
-        ? a.entry.candles.slice()
-        : dropLeadingPartial(aggregateCandles(a.entry.candles, a.srcSec, n));
-      return i.length
-        ? {
-            rows: i,
-            srcSec: a.srcSec,
-            native: a.native,
-            capturedAt: a.entry.capturedAt || 0,
+      const window = staleSec > 0 ? staleSec : 3;
+      const natEntry = entries[symbol + "@" + sec];
+      const nat =
+        natEntry && natEntry.candles && natEntry.candles.length
+          ? {
+              entry: natEntry,
+              srcSec: sec,
+              // A 1m entry folded up from 15s bars sits under the same key as a real 1m pull, but it is
+              // still derived data — say so, so the cell shows "≈".
+              native: !natEntry.derived,
+            }
+          : null;
+      let der = null;
+      for (const key in entries) {
+        const at = key.lastIndexOf("@");
+        if (at < 0 || key.slice(0, at) !== symbol) {
+          continue;
+        }
+        const srcSec = parseInt(key.slice(at + 1), 10);
+        if (!(srcSec > 0) || srcSec >= sec || sec % srcSec !== 0) {
+          continue;
+        }
+        const e = entries[key];
+        if (!(e && e.candles && e.candles.length)) {
+          continue;
+        }
+        if (!der) {
+          der = { entry: e, srcSec, native: false };
+          continue;
+        }
+        // Freshest source wins; a coarser one only wins between sources of the same age (less folding,
+        // and fewer buckets built from part of a minute).
+        const gap = (e.capturedAt || 0) - (der.entry.capturedAt || 0);
+        if (gap > window || (Math.abs(gap) <= window && srcSec > der.srcSec)) {
+          der = { entry: e, srcSec, native: false };
+        }
+      }
+      const derRows = der ? dropLeadingPartial(aggregateCandles(der.entry.candles, der.srcSec, sec)) : [];
+      const derAt = der ? der.entry.capturedAt || 0 : 0;
+      if (!nat) {
+        return derRows.length
+          ? { rows: derRows, srcSec: der.srcSec, native: false, capturedAt: derAt }
+          : null;
+      }
+      const natRows = nat.entry.candles.slice();
+      const natAt = nat.entry.capturedAt || 0;
+      if (derRows.length && derAt > natAt && natRows.length) {
+        // The native entry's last bar was still forming when the snapshot was taken, so it is re-drawn
+        // from the live source along with everything after it. Only when the live source reaches back
+        // that far — otherwise the cell would show a hole as if it were continuous.
+        const cut = natRows[natRows.length - 1].t;
+        if (derRows[0].t <= cut) {
+          const rows = natRows.filter((c) => c.t < cut).concat(derRows.filter((c) => c.t >= cut));
+          if (rows.length) {
+            return { rows, srcSec: nat.srcSec, native: nat.native, capturedAt: derAt };
           }
+        }
+        if (!nat.native) {
+          return { rows: derRows, srcSec: der.srcSec, native: false, capturedAt: derAt };
+        }
+      }
+      return natRows.length
+        ? { rows: natRows, srcSec: nat.srcSec, native: nat.native, capturedAt: natAt }
         : null;
     }
     const defaultFutureSlots = (t) => Math.max(2, Math.round(0.28 * t)),
@@ -6805,8 +6820,10 @@
       }
       const tfs = panel._tcTfs || getMtfTfs(),
         nowSec = Math.floor(now / 1000);
-      // Only a pair with nothing at all to show; a half-filled panel is left to the rolling base.
-      if (!tfs.every((tf) => !resolveMtfRows(mtfEntries, sym, tfSeconds(tf), nowSec, MTF_STALE_SEC))) {
+      // v1.30.1: ANY blank cell is reason enough. Requiring every cell to be blank meant it never ran
+      // for the way this is actually used: on a 15s chart a new pair has 15s bars at once, the 1m cell
+      // fills from the fold, and the 5m/15m cells were left empty with no walk to fill them.
+      if (!tfs.some((tf) => !resolveMtfRows(mtfEntries, sym, tfSeconds(tf), nowSec, MTF_STALE_SEC))) {
         return;
       }
       mtfAutofilledAt[sym] = now;
