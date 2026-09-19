@@ -4189,18 +4189,37 @@
       }
       return window._tcTimeBtnCache;
     }
+    const TF_MENU_MIN_ITEMS = 3;
     function getTimeframeItems() {
-      const t =
-        document.querySelector(".kCc27") ||
-        document.querySelector(".PY5Eb") ||
-        // v1.25.0: any open menu that holds several timeframe labels ("1m", "5m", …).
-        (leafMatches(document, TF_TEXT_RE, isVisible)[0] || {}).parentElement ||
-        null;
+      // The open menu: a known class, or any container holding several timeframe labels ("1m", "5m", …).
+      // v1.25.1: a single match is the chart's own timeframe label, not a menu — don't report that as one.
+      let t = document.querySelector(".kCc27") || document.querySelector(".PY5Eb");
+      if (!t) {
+        const labels = leafMatches(document, TF_TEXT_RE, isVisible);
+        const counts = new Map();
+        for (const el of labels) {
+          const parent = el.parentElement;
+          if (parent) {
+            counts.set(parent, (counts.get(parent) || 0) + 1);
+          }
+        }
+        for (const [parent, n] of counts) {
+          if (n >= TF_MENU_MIN_ITEMS) {
+            t = parent;
+            break;
+          }
+        }
+      }
       if (!t) {
         listVia.timeframeItems = "missing";
         return [];
       }
-      return resolveList("timeframeItems", t, [".Dy2a9", ".blYud"], (root) => leafMatches(root, TF_TEXT_RE));
+      const items = resolveList("timeframeItems", t, [".Dy2a9", ".blYud"], (root) => leafMatches(root, TF_TEXT_RE));
+      if (items.length < TF_MENU_MIN_ITEMS && !document.querySelector(".kCc27, .PY5Eb")) {
+        listVia.timeframeItems = "missing";
+        return [];
+      }
+      return items;
     }
     function getActiveTimeframe() {
       const t = getTimeframeItems().find(
@@ -7367,7 +7386,8 @@
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     function buildHealthReport() {
       const rows = [];
-      const add = (name, status, via, value) => rows.push({ name, status, via, value: value == null ? "" : String(value) });
+      const tidy = (v) => (typeof v == "number" && isFinite(v) ? String(Math.round(v * 100) / 100) : String(v));
+      const add = (name, status, via, value) => rows.push({ name, status, via, value: value == null ? "" : tidy(value) });
       const state = requestQuotexState(false);
       add("Store bridge (chart_reader.js)", state ? "ok" : "missing", state ? "store" : "none", state ? state.symbol : "chart not found");
       const elementTargets = [

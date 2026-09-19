@@ -903,6 +903,30 @@ test("selectors: timeframe and expiry menus with renamed classes are still found
   }
 });
 
+test("health: a lone timeframe label on the page is not a menu (v1.25.1)", async () => {
+  // The chart toolbar shows the current timeframe ("1m"); that must not read as an open menu.
+  const html = FIXTURE.replace('<div id="graph">', '<div class="Toolbar"><div class="Tb1">1m</div></div><div id="graph">');
+  const qx = await boot({ html });
+  try {
+    const tf = healthRow(qx, "Timeframe menu");
+    assert.equal(tf.status, "idle");
+    assert.equal(tf.value, "not open");
+  } finally {
+    qx.close();
+  }
+});
+
+test("health: values are rounded, not raw floating point (v1.25.1)", async () => {
+  // 5% of ₹28,004.59 is 1400.2295000000001 in binary floating point.
+  const html = FIXTURE.replace("₹15,228.00", "₹28,004.59").replace('value="2000"', 'value="5%"');
+  const qx = await boot({ html });
+  try {
+    assert.equal(healthRow(qx, "Stake").value, "1400.23");
+    assert.equal(healthRow(qx, "Balance value").value, "28004.59");
+  } finally {
+    qx.close();
+  }
+});
 test("health: lists that aren't open right now read as idle, not broken", async () => {
   const qx = await boot({ store: quotexStore() });
   try {

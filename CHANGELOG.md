@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.25.1] - 2026-09-19
+
+### Fixed (both found by running the health check on a live page)
+- **"Timeframe menu" no longer reports a fallback while the menu is closed.** The finder matched the chart
+  toolbar's own timeframe label ("1m") and called it an open menu. A menu now needs at least three
+  timeframe choices; a single label reads as "not open".
+- **Health values are rounded.** A percent stake showed raw floating point (5% of ₹28,004.59 as
+  `1400.2295000000001`); it now reads `1400.23`.
 ## [1.25.0] - 2026-09-19
 
 ### Added — self-repair for the rest of the panel
