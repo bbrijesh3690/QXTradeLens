@@ -170,8 +170,12 @@ If you ever see ❌, send a screenshot of that list; it names exactly what moved
 
 - **"Live Account" is displayed as "Demo Account"**, and the tab title says "Demo trading", on every
   account. This is deliberate (screen-sharing cover), so check the balance itself before trading.
-- **Your data stays on your machine.** Settings live in Chrome storage; the only outbound traffic is to
-  your own Google Sheet, if you configure one.
+- **Your data stays on your machine.** Settings live in Chrome storage and in this site's own storage under
+  opaque names; the only outbound traffic is to your own Google Sheet, if you configure one.
+- **Footprint on Quotex's page is kept small**: no webfont request, no stylesheet naming their classes, and
+  their buttons are never disabled by the panel (blocked trades are stopped before the click reaches them).
+  The two cosmetic marks — "Show Live as Demo" and "Entry Balance Tags" — can be switched off in the popup.
+  What cannot be hidden is automation: trades placed by the ↑/↓ shortcut dispatch untrusted events.
 - **Trades are only placed by you** — by clicking Quotex's buttons, or by the ↑/↓ shortcut if you
   enabled it.
 

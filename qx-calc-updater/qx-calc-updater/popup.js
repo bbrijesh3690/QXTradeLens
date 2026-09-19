@@ -30,6 +30,8 @@ const mtfCountSlider = document.getElementById('mtfCountSlider');
 const mtfCountVal = document.getElementById('mtfCountVal');
 const chipPosSelect = document.getElementById('chipPosSelect');
 const maxTradesSelect = document.getElementById('maxTradesSelect');
+const relabelDemoToggle = document.getElementById('relabelDemoToggle');
+const entryTagsToggle = document.getElementById('entryTagsToggle');
 
 let currentTheme = 'dark';
 let currentVisibility = [1, 1, 1, 1];
@@ -52,13 +54,16 @@ function updateSheetStatus(url) {
 
 async function init() {
   // Load sheet URL and SL toggle from storage directly — doesn't need an active tab
-  const stored = await chrome.storage.sync.get(['sheetUrl', '__tradeCalc_sl_enabled', '__tradeCalc_sl_post_tp_gap', '__tradeCalc_sys_lock_disabled', '__tradeCalc_chip_pos', '__tradeCalc_max_trades', '__tradeCalc_max_two', 'sectionVisibility', '__tradeCalc_hk_updown', '__tradeCalc_hk_leftright', '__tradeCalc_marquee_msg', '__tradeCalc_marquee_speed', '__tradeCalc_mtf_tfs', '__tradeCalc_mtf_count']);
+  const stored = await chrome.storage.sync.get(['sheetUrl', '__tradeCalc_sl_enabled', '__tradeCalc_sl_post_tp_gap', '__tradeCalc_sys_lock_disabled', '__tradeCalc_chip_pos', '__tradeCalc_max_trades', '__tradeCalc_max_two', 'sectionVisibility', '__tradeCalc_hk_updown', '__tradeCalc_hk_leftright', '__tradeCalc_marquee_msg', '__tradeCalc_marquee_speed', '__tradeCalc_mtf_tfs', '__tradeCalc_mtf_count', '__tradeCalc_relabel_demo', '__tradeCalc_entry_tags']);
   const savedUrl = stored.sheetUrl || '';
   sheetUrlInput.value = savedUrl;
   updateSheetStatus(savedUrl);
   if (slEnabledToggle) {
     slEnabledToggle.checked = stored['__tradeCalc_sl_enabled'] !== false;
   }
+  // Page marks default ON, so nothing changes until they are switched off (v1.27.0).
+  if (relabelDemoToggle) relabelDemoToggle.checked = stored['__tradeCalc_relabel_demo'] !== false;
+  if (entryTagsToggle) entryTagsToggle.checked = stored['__tradeCalc_entry_tags'] !== false;
   if (postTpGapInput) {
     const pg = parseFloat(stored['__tradeCalc_sl_post_tp_gap']);
     postTpGapInput.value = (!isNaN(pg) && pg > 0) ? Math.min(15, Math.max(1, pg)) : 5;
@@ -112,6 +117,8 @@ async function init() {
       if (state.marqueeSpeed !== undefined && marqueeSpeedSlider) { marqueeSpeedSlider.value = state.marqueeSpeed; if (marqueeSpeedVal) marqueeSpeedVal.textContent = state.marqueeSpeed; }
       if (state.mtfTfs !== undefined) { const t = parseTfListPopup(state.mtfTfs); if (mtfTfsInput) mtfTfsInput.value = t.join(', '); updateMtfStatus(t); }
       if (state.mtfCount !== undefined) { if (mtfCountSlider) mtfCountSlider.value = state.mtfCount; if (mtfCountVal) mtfCountVal.textContent = state.mtfCount; }
+      if (state.relabelDemo !== undefined && relabelDemoToggle) relabelDemoToggle.checked = state.relabelDemo !== false;
+      if (state.entryTags !== undefined && entryTagsToggle) entryTagsToggle.checked = state.entryTags !== false;
     }
   } catch (e) {
     console.log('Could not get state from content script', e);
@@ -222,6 +229,20 @@ if (slEnabledToggle) {
     chrome.storage.sync.set({ '__tradeCalc_sl_enabled': slEnabledToggle.checked });
     // Apply to open tabs right away (v1.21.1, B10); this used to need a page reload.
     broadcastMessage({ type: 'SET_SL_ENABLED', enabled: slEnabledToggle.checked });
+  });
+}
+
+// Page marks: cosmetic changes the panel makes to Quotex's own page (v1.27.0).
+if (relabelDemoToggle) {
+  relabelDemoToggle.addEventListener('change', () => {
+    chrome.storage.sync.set({ '__tradeCalc_relabel_demo': relabelDemoToggle.checked });
+    broadcastMessage({ type: 'SET_PAGE_MARKS', relabel: relabelDemoToggle.checked });
+  });
+}
+if (entryTagsToggle) {
+  entryTagsToggle.addEventListener('change', () => {
+    chrome.storage.sync.set({ '__tradeCalc_entry_tags': entryTagsToggle.checked });
+    broadcastMessage({ type: 'SET_PAGE_MARKS', entryTags: entryTagsToggle.checked });
   });
 }
 

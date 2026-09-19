@@ -486,6 +486,22 @@
       </div>
 
       <div class="ctrl-row">
+        <span class="ctrl-label" title="Show every 'Live Account' label as 'Demo Account' (cover for screen sharing). Turning this off leaves Quotex's own page untouched.">Show Live as Demo</span>
+        <label class="switch">
+          <input type="checkbox" id="relabelDemoToggle" checked>
+          <span class="sw-track"></span>
+        </label>
+      </div>
+
+      <div class="ctrl-row">
+        <span class="ctrl-label" title="Add 'Entry ₹X' to each row of the trade history. Turning this off leaves Quotex's own page untouched.">Entry Balance Tags</span>
+        <label class="switch">
+          <input type="checkbox" id="entryTagsToggle" checked>
+          <span class="sw-track"></span>
+        </label>
+      </div>
+
+      <div class="ctrl-row">
         <span class="ctrl-label">Chip Position</span>
         <select id="chipPosSelect" title="Where trade timer and projected-balance chips appear on the chart">
           <option value="cursor">Follow cursor</option>

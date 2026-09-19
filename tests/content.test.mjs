@@ -27,6 +27,17 @@ const slStorage = (sl) => ({
   __tradeCalc_tp_manual_date: istToday(),
 });
 
+// Settings are stored under opaque key names (v1.27.0); this mirrors the extension's prefKey().
+function prefKey(name) {
+  let h = 2166136261;
+  for (let i = 0; i < name.length; i++) {
+    h ^= name.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return "q" + (h >>> 0).toString(36) + name.length.toString(36);
+}
+const pref = (qx, name) => qx.window.localStorage.getItem(prefKey(name));
+
 const CHART_READER = fs.readFileSync(new URL("../qx-calc-updater/qx-calc-updater/chart_reader.js", import.meta.url), "utf8");
 
 // A Redux state shaped like Quotex's (paths seen live on 2026-09-15). Tests mutate it to simulate the app.
@@ -195,6 +206,19 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
   return api;
 }
 
+// v1.27.0: Quotex's buttons keep their own state; a blocked trade is stopped before it reaches them.
+function tradeReachesPlatform(qx) {
+  const btn = qx.window.document.querySelector("#trade-button button");
+  let reached = false;
+  const onClick = () => (reached = true);
+  btn.addEventListener("click", onClick);
+  btn.dispatchEvent(new qx.window.MouseEvent("click", { bubbles: true, cancelable: true }));
+  btn.removeEventListener("click", onClick);
+  return reached;
+}
+const tradeButtonsGreyed = (qx) =>
+  Array.from(qx.window.document.querySelectorAll("#trade-button button")).every((b) => b.style.opacity === "0.55");
+
 // ── Bug 1: panel toggled itself off on in-app URL changes ─────────────────────────────────────────
 
 test("panel starts on a trade page", async () => {
@@ -275,8 +299,7 @@ test("bug 1: a relaunched panel leaves exactly one popup message listener", asyn
 
 // ── v1.21.0: the stop loss never blocks trading ───────────────────────────────────────────────────
 
-const tradeButtonsEnabled = (qx) =>
-  Array.from(qx.window.document.querySelectorAll("#trade-button button")).every((b) => !b.disabled);
+const tradeButtonsEnabled = (qx) => !tradeButtonsGreyed(qx) && tradeReachesPlatform(qx);
 
 test("SL: a stake that would take balance below the stop loss is not blocked", async () => {
   // balance 15,228 − stake 2,000 = 13,228, which is ≤ SL 14,000
@@ -299,7 +322,7 @@ test("SL: a breach (balance at or below SL) doesn't block, lock Set limit, or lo
     assert.equal(tradeButtonsEnabled(qx), true, "Up/Down stay enabled");
     const setLimit = Array.from(qx.window.document.querySelectorAll("button")).find((b) => b.textContent === "Set limit");
     assert.equal(setLimit.disabled, false, "Quotex Set limit button not locked");
-    assert.equal(qx.window.localStorage.getItem("__tradeCalc_native_limit_lock_date"), null);
+    assert.equal(pref(qx, "__tradeCalc_native_limit_lock_date"), null);
     assert.deepEqual(qx.sentMessages.filter((m) => m.type === "SYS_LOCK"), [], "no SYS_LOCK sent");
   } finally {
     qx.close();
@@ -310,7 +333,7 @@ test("SL: a lock date stored by an older version is cleared", async () => {
   const storage = { ...slStorage(10000), __tradeCalc_native_limit_lock_date: istToday() };
   const qx = await boot({ storage });
   try {
-    assert.equal(qx.window.localStorage.getItem("__tradeCalc_native_limit_lock_date"), null);
+    assert.equal(pref(qx, "__tradeCalc_native_limit_lock_date"), null);
   } finally {
     qx.close();
   }
@@ -324,7 +347,7 @@ test("bug 2: win/loss projection uses the stake from the Investment field", asyn
     assert.equal(doc.querySelector(".__tcProjBalWin").textContent, "↑ 16,808.00 ₹");
     assert.equal(doc.querySelector(".__tcProjBalLoss").textContent, "↓ 13,228.00 ₹");
     const buttons = doc.querySelectorAll("#trade-button button");
-    assert.ok(Array.from(buttons).every((b) => !b.disabled), "not blocked when SL is safe");
+    assert.equal(tradeReachesPlatform(qx), true, "not blocked when SL is safe");
   } finally {
     qx.close();
   }
@@ -472,7 +495,8 @@ test("store: open trades from the store enforce the max-trades cap", async () =>
   const qx = await boot({ store });
   try {
     const buttons = Array.from(qx.window.document.querySelectorAll("#trade-button button"));
-    assert.ok(buttons.every((b) => b.disabled), "blocked at 2 open trades");
+    assert.equal(tradeReachesPlatform(qx), false, "blocked at 2 open trades");
+    assert.equal(tradeButtonsGreyed(qx), true, "and shown as blocked");
     assert.match(qx.panelRoot().getElementById("__tcWarn").textContent, /Max 2 active trades/);
   } finally {
     qx.close();
@@ -484,7 +508,7 @@ test("store: open trades on the other account don't count", async () => {
   const qx = await boot({ store });
   try {
     const buttons = Array.from(qx.window.document.querySelectorAll("#trade-button button"));
-    assert.ok(buttons.every((b) => !b.disabled), "live-account deals ignored on the demo page");
+    assert.equal(tradeReachesPlatform(qx), true, "live-account deals ignored on the demo page");
   } finally {
     qx.close();
   }
@@ -495,7 +519,7 @@ test("store: the loss streak counts newly closed deals, not history", async () =
   const qx = await boot({ store });
   try {
     await sleep(600);
-    assert.equal(qx.window.localStorage.getItem("__tradeCalc_loss_streak"), "0", "history isn't counted");
+    assert.equal(pref(qx, "__tradeCalc_loss_streak"), "0", "history isn't counted");
     const add = (d) => {
       store.deals.closedById[d.id] = d;
       store.deals.closedIds.push(d.id);
@@ -503,10 +527,10 @@ test("store: the loss streak counts newly closed deals, not history", async () =
     add(deal("l1", { close: 1789465000 }));
     add(deal("l2", { close: 1789465060 }));
     await sleep(900);
-    assert.equal(qx.window.localStorage.getItem("__tradeCalc_loss_streak"), "2");
+    assert.equal(pref(qx, "__tradeCalc_loss_streak"), "2");
     add(deal("w1", { profit: 1700, close: 1789465120 }));
     await sleep(900);
-    assert.equal(qx.window.localStorage.getItem("__tradeCalc_loss_streak"), "0", "a win resets the streak");
+    assert.equal(pref(qx, "__tradeCalc_loss_streak"), "0", "a win resets the streak");
     assert.equal(healthRow(qx, "Settled trades (loss streak)").via, "store");
   } finally {
     qx.close();
@@ -519,7 +543,7 @@ test("store: tab name comes from the store label when the name element is gone",
   try {
     // X marks the active tab as monitored, saving its normalized name.
     qx.window.document.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key: "x", code: "KeyX", bubbles: true }));
-    assert.deepEqual(JSON.parse(qx.window.localStorage.getItem("__tradeCalc_monitor_pairs")), ["usddzdotc"]);
+    assert.deepEqual(JSON.parse(pref(qx, "__tradeCalc_monitor_pairs")), ["usddzdotc"]);
   } finally {
     qx.close();
   }
@@ -530,7 +554,7 @@ test("selectors: renamed payout-amount class is found by its text and the new cl
   const qx = await boot({ html });
   try {
     assert.equal(qx.window.document.querySelector(".__tcProjBalWin").textContent, "↑ 16,808.00 ₹", "payout 3,580 still read");
-    const learned = JSON.parse(qx.window.localStorage.getItem("__tradeCalc_learned_selectors"));
+    const learned = JSON.parse(pref(qx, "__tradeCalc_learned_selectors"));
     assert.equal(learned.payoutTotal.sel, ".Zq9Xy > b");
     const row = healthRow(qx, "Payout amount");
     assert.equal(row.status, "fallback");
@@ -609,7 +633,7 @@ test("perf: the scheduler still runs periodic work (loss streak tracking at 500 
     store.deals.closedById[l.id] = l;
     store.deals.closedIds.push(l.id);
     await sleep(800);
-    assert.equal(qx.window.localStorage.getItem("__tradeCalc_loss_streak"), "1");
+    assert.equal(pref(qx, "__tradeCalc_loss_streak"), "1");
   } finally {
     qx.close();
   }
@@ -650,9 +674,8 @@ test("SL setup: a typed amount is saved and not pulled back up by the trailing S
     await sleep(900); // close animation + a few recalc ticks (trailing SL runs on recalc)
     assert.equal(root.getElementById("__tcSLSetup"), null, "setup closed");
     assert.equal(root.getElementById("__tcSLInput").value, "10,500.00", "SL kept at the typed value");
-    const ls = qx.window.localStorage;
-    assert.equal(ls.getItem("__tradeCalc_sl_ls_value"), "10500");
-    assert.equal(ls.getItem("__tradeCalc_sl_ls_trail"), String(Math.round((1 - 10500 / 15228) * 10000) / 10000));
+    assert.equal(pref(qx, "__tradeCalc_sl_ls_value"), "10500");
+    assert.equal(pref(qx, "__tradeCalc_sl_ls_trail"), String(Math.round((1 - 10500 / 15228) * 10000) / 10000));
   } finally {
     qx.close();
   }
@@ -751,7 +774,7 @@ test("timezone: the trading day follows the account timezone from the store and 
   const qx = await boot({ storage: slForDay(dayKeyAt(50400)), store: quotexStore({ timeZone: 50400 }) });
   try {
     assert.equal(qx.panelRoot().getElementById("__tcSLSetup"), null, "today's SL (UTC+14 day) recognized");
-    assert.equal(qx.window.localStorage.getItem("__tradeCalc_tz_offset_sec"), "50400");
+    assert.equal(pref(qx, "__tradeCalc_tz_offset_sec"), "50400");
   } finally {
     qx.close();
   }
@@ -902,7 +925,7 @@ test("selectors: deal rows with renamed classes are still found by shape", async
     assert.equal(row.value, "2 open");
     assert.match(row.via, /semantic|learned/, "found by shape, then remembered");
     // Two open trades is the default cap, so trading is blocked.
-    assert.ok(Array.from(qx.window.document.querySelectorAll("#trade-button button")).every((b) => b.disabled));
+    assert.equal(tradeReachesPlatform(qx), false);
   } finally {
     qx.close();
   }
@@ -924,7 +947,7 @@ test("selectors: timeframe and expiry menus with renamed classes are still found
     assert.equal(ex.status, "fallback");
     assert.equal(ex.value, "3 items");
     // The new classes are remembered so later lookups are plain queries again.
-    const learned = JSON.parse(qx.window.localStorage.getItem("__tradeCalc_learned_selectors"));
+    const learned = JSON.parse(pref(qx, "__tradeCalc_learned_selectors"));
     assert.equal(learned["list:timeframeItems"].sel, ".Mm2");
     assert.equal(learned["list:expiryTimes"].sel, ".Tt2");
   } finally {
@@ -1015,7 +1038,7 @@ test("MTF: the cache keeps several pairs (v2 format)", async () => {
     await sleep(900);
     setChart(store, "EURUSD_otc", 60);
     await sleep(1200);
-    const cache = JSON.parse(qx.window.localStorage.getItem("__tradeCalc_mtf_cache"));
+    const cache = JSON.parse(pref(qx, "__tradeCalc_mtf_cache"));
     assert.equal(cache.v, 2);
     assert.deepEqual(Object.keys(cache.symbols).sort().join(","), "EURUSD_otc,USDDZD_otc");
     // Only what the charts can show is stored.
@@ -1051,6 +1074,61 @@ test("MTF: header shows the pair label and marks the chart's own timeframe", asy
     const label = (tf) => root.querySelector('.tcMtfCell[data-tf="' + tf + '"] .tcMtfTf').style.color;
     assert.match(label("1m"), /accent/, "1m is the chart timeframe");
     assert.equal(label("5m"), "");
+  } finally {
+    qx.close();
+  }
+});
+// ── v1.27.0: less visible to the platform ──────────────────────────────────────────────────────────
+
+test("privacy: no __tradeCalc_* keys are left in page storage", async () => {
+  const qx = await boot();
+  try {
+    const keys = Object.keys(qx.window.localStorage);
+    assert.equal(keys.filter((k) => /^__tradeCalc|^tc_pos$/.test(k)).length, 0, "old names are gone: " + keys.join(","));
+    // The values still work: today's SL is stored under its opaque name (the trailing SL may have raised it).
+    assert.ok(Number(pref(qx, "__tradeCalc_sl_ls_value")) >= 10000, "SL value kept");
+    assert.equal(pref(qx, "__tradeCalc_sl_ls_date"), istToday());
+    assert.ok(keys.length > 0 && keys.every((k) => /^q[0-9a-z]+$/.test(k)), "opaque names only: " + keys.join(","));
+  } finally {
+    qx.close();
+  }
+});
+
+test("privacy: nothing in the page <head> names Quotex classes or loads a webfont", async () => {
+  const qx = await boot();
+  try {
+    const css = Array.from(qx.window.document.head.querySelectorAll("style")).map((n) => n.textContent).join(" ");
+    assert.doesNotMatch(css, /fonts\.googleapis|fonts\.gstatic/, "no webfont request");
+    assert.doesNotMatch(css, /UI2Kh|bvdd_|omlQ2|lCITV|dJ15T/, "no rule naming their classes");
+  } finally {
+    qx.close();
+  }
+});
+
+test("privacy: blocked trades never touch the platform's buttons", async () => {
+  const store = quotexStore({ opened: [deal("a"), deal("b")] }); // at the 2-trade cap
+  const qx = await boot({ store });
+  try {
+    const buttons = Array.from(qx.window.document.querySelectorAll("#trade-button button"));
+    assert.equal(tradeReachesPlatform(qx), false, "click is stopped before their handler");
+    assert.ok(buttons.every((b) => !b.disabled), "their disabled state is untouched");
+    assert.ok(buttons.every((b) => !b.hasAttribute("aria-disabled")), "no aria-disabled written");
+  } finally {
+    qx.close();
+  }
+});
+
+test("privacy: the Live-as-Demo relabel can be switched off and restores the label", async () => {
+  const html = FIXTURE.replace(">Demo Account<", ">Live Account<");
+  const qx = await boot({ html });
+  try {
+    const label = () => qx.window.document.querySelector(".v2KPX").textContent;
+    assert.equal(label(), "Demo Account", "relabelled by default");
+    await qx.sendToPanel({ type: "SET_PAGE_MARKS", relabel: false });
+    assert.equal(label(), "Live Account", "platform label restored");
+    await qx.sendToPanel({ type: "SET_PAGE_MARKS", relabel: true });
+    await sleep(300);
+    assert.equal(label(), "Demo Account", "and back again");
   } finally {
     qx.close();
   }

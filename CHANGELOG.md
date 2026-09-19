@@ -5,6 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.27.0] - 2026-09-19
+
+### Changed — much less visible to the platform (no feature removed)
+- **Settings no longer announce the extension.** Thirty keys named `__tradeCalc_*` sat in localStorage,
+  readable by any script on the page and left behind after uninstalling. Each name is now an opaque hash;
+  values are unchanged and the old keys are imported once, then deleted.
+- **No webfont request from their page.** The `@import` of Google Fonts is gone; the panel uses the system UI font.
+- **No stylesheet naming their classes.** The `<style>` listing `.UI2Kh, .bvdd_ { … }` is replaced by per-element
+  styling applied where those elements are already handled, so no rule mentions their internals.
+- **Their buttons are left alone.** A blocked trade is stopped in the capture phase (every reason, not just
+  some) and the buttons are only greyed; `disabled` and `aria-disabled` are never written to their DOM.
+- **Two page marks are now switches** in the popup, both default ON: "Show Live as Demo" and
+  "Entry Balance Tags". Switching the relabel off restores the platform's own label.
+
+Unchanged and unavoidable: automation is automation. Trades placed with ↑/↓ (and the R/Q/S/D/T helpers)
+dispatch untrusted events, which a platform can distinguish from a human click. Use the buttons yourself if
+that matters; the panel's guards and readouts do not need automation.
 ## [1.26.0] - 2026-09-19
 
 ### Fixed — multi-timeframe charts
