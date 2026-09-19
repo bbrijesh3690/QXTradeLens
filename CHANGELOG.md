@@ -21,6 +21,7 @@ and every release is tagged in git as `vX.Y.Z`.
 - The header shows the **pair label** ("USD/DZD (OTC)") instead of the raw symbol.
 - The cell matching the **platform chart's own timeframe** is highlighted.
 - A derived timeframe shows **how many bars it has** ("12/40 bars · ↻") instead of only "≈ live".
+
 ## [1.25.1] - 2026-09-19
 
 ### Fixed (both found by running the health check on a live page)
@@ -29,6 +30,7 @@ and every release is tagged in git as `vX.Y.Z`.
   timeframe choices; a single label reads as "not open".
 - **Health values are rounded.** A percent stake showed raw floating point (5% of ₹28,004.59 as
   `1400.2295000000001`); it now reads `1400.23`.
+
 ## [1.25.0] - 2026-09-19
 
 ### Added — self-repair for the rest of the panel
