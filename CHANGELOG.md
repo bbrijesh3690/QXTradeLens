@@ -5,6 +5,22 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.26.0] - 2026-09-19
+
+### Fixed — multi-timeframe charts
+- **Switching pairs no longer throws the collected candles away.** Every timeframe was wiped on a pair
+  change, so each pair needed a fresh ↻ sync (with 12 tabs open, that was constant "visit once").
+  Candles are now kept per pair for the last 6 pairs, restored when you come back, and saved immediately
+  on a pair switch.
+- **The cache stores several pairs** (new v2 format, old single-pair caches are still read), trimmed to what
+  the charts can show, and written every 30 s instead of every 10 s.
+- **↻ sync waits for data.** It moved to the next timeframe after a fixed 260 ms, which often captured
+  almost nothing; it now waits up to 2.5 s per timeframe for candles to arrive.
+
+### Added
+- The header shows the **pair label** ("USD/DZD (OTC)") instead of the raw symbol.
+- The cell matching the **platform chart's own timeframe** is highlighted.
+- A derived timeframe shows **how many bars it has** ("12/40 bars · ↻") instead of only "≈ live".
 ## [1.25.1] - 2026-09-19
 
 ### Fixed (both found by running the health check on a live page)

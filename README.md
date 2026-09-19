@@ -66,8 +66,10 @@ The stop loss never blocks trading (changed in v1.21.0); it is tracked and displ
 - **Investment multiplier** — a small box with **×1.5 / 1.5× / ÷1.5**: multiply or divide your trade
   amount, and tap the middle button to switch the factor between 1.3 and 1.5.
 - **Multi-timeframe charts** — up to 4 mini candle charts (default 1m, 5m, 15m) drawn from Quotex's own
-  candle data. Drag to pan, drag edges to resize, double-click to return to live, and use the refresh
-  button to visit each timeframe once so it has data. Press **C** to show or hide them.
+  candle data. Drag to pan, drag edges to resize, double-click to return to live. The header shows the pair
+  and highlights the timeframe your chart is on, and each cell says how many bars it has. The ↻ button
+  visits each timeframe once to fill them in; collected candles are kept per pair (last 6) so switching
+  pairs does not lose them. Press **C** to show or hide the panel.
 - **Entry balance tags** — each row in the trade history is tagged with the balance you had when you
   placed that trade.
 - **Tab title** — 🟢/🔴 for winning/losing trades plus the nearest expiry countdown, so you can watch

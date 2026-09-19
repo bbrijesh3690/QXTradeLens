@@ -46,6 +46,16 @@ function quotexStore({ payout = 91, opened = [], closed = [], timeZone = 19800, 
     navigationSymbols: { list: ["USDDZD_otc"] },
   };
 }
+// Candles as the platform stores them: { time, enterValue, maxValue, minValue, exitValue }.
+function makeCandles(count, periodSec, startT = 1789830000, price = 100) {
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const o = price + i * 0.01;
+    out.push({ time: startT + i * periodSec, enterValue: o, maxValue: o + 0.05, minValue: o - 0.05, exitValue: o + 0.02 });
+  }
+  return out;
+}
+
 const deal = (id, { profit = 0, isDemo = 1, close = 1789464960, command = 1, openPrice = 256.5, percentProfit = 85 } = {}) => ({
   id, asset: "USDDZD_otc", amount: 2000, profit, isDemo, command, openPrice, percentProfit,
   openTimestamp: close - 60, closeTimestamp: close,
@@ -95,7 +105,20 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
     return nativeClearInterval(id);
   };
   window.PointerEvent = window.MouseEvent; // not implemented by jsdom
-  window.HTMLCanvasElement.prototype.getContext = () => null;
+  const ctxCalls = [];
+  window.HTMLCanvasElement.prototype.getContext = () => ({
+    setTransform: () => ctxCalls.push("setTransform"),
+    clearRect: () => ctxCalls.push("clearRect"),
+    beginPath: () => {},
+    moveTo: () => {},
+    lineTo: () => {},
+    stroke: () => ctxCalls.push("stroke"),
+    fillRect: () => ctxCalls.push("fillRect"),
+    lineWidth: 1, strokeStyle: "", fillStyle: "", globalAlpha: 1,
+  });
+  // jsdom has no layout; give canvases a size so drawing isn't skipped.
+  Object.defineProperty(window.HTMLCanvasElement.prototype, "clientWidth", { get: () => 260, configurable: true });
+  Object.defineProperty(window.HTMLCanvasElement.prototype, "clientHeight", { get: () => 88, configurable: true });
 
   const listeners = new Set();
   const sentMessages = [];
@@ -128,7 +151,12 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
   // Optional Quotex store: attach a React fiber to the chart canvas and load the real chart_reader.js.
   if (store) {
     const canvas = window.document.querySelector("#graph canvas.layer.plot");
-    const plot = { chartId: "c1", pointsManager: { candles: [] }, store: { getState: () => store } };
+    const plot = {
+      chartId: "c1",
+      pointsManager: { candles: store.__candles || [] },
+      store: { getState: () => store },
+    };
+    store.__plot = plot; // tests can swap candles/pair through this
     canvas["__reactFiber$test"] = { stateNode: null, return: { stateNode: { plot }, return: null } };
     window.eval(CHART_READER);
   }
@@ -143,6 +171,7 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
     sentMessages,
     observers,
     intervals,
+    ctxCalls,
     isRunning: () => typeof window.__tcCleanup === "function",
     panelRoot: () => shadowRoots.filter((r) => r.host.isConnected).at(-1),
     async navigate(p) {
@@ -942,6 +971,90 @@ test("health: lists that aren't open right now read as idle, not broken", async 
   }
 });
 
+// ── v1.26.0: multi-timeframe panel ─────────────────────────────────────────────────────────────────
+
+const mtfStorage = {
+  ...slStorage(10000),
+  __tradeCalc_mtf_on: "1",
+  __tradeCalc_mtf_count: "40",
+  __tradeCalc_mtf_tfs: JSON.stringify(["15s", "1m", "5m"]),
+};
+const mtfCap = (qx, tf) => qx.panelRoot().querySelector('.tcMtfCell[data-tf="' + tf + '"] .tcMtfCap').textContent;
+// Point the fake chart at a pair and a timeframe, the way switching pair/timeframe does on the site.
+function setChart(store, symbol, periodSec, count = 200) {
+  store.chartSettings.chartById.c1.currentAsset.symbol = symbol;
+  store.__plot.pointsManager.candles = makeCandles(count, periodSec, 1789830000, symbol === "USDDZD_otc" ? 100 : 200);
+}
+
+test("MTF: candles collected for one pair survive switching pairs (v1.26.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15); // chart starts on 15s
+  const qx = await boot({ storage: mtfStorage, store });
+  try {
+    await sleep(900);
+    assert.ok(!/visit once/.test(mtfCap(qx, "15s")), "15s collected while the chart is on 15s");
+    // Move the chart to 1m: 15s can no longer be derived, only recalled.
+    setChart(store, "USDDZD_otc", 60);
+    await sleep(900);
+    // Switch to another pair, then back.
+    setChart(store, "EURUSD_otc", 60);
+    await sleep(900);
+    setChart(store, "USDDZD_otc", 60);
+    await sleep(900);
+    assert.ok(!/visit once/.test(mtfCap(qx, "15s")), "15s data is still there after coming back: " + mtfCap(qx, "15s"));
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: the cache keeps several pairs (v2 format)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 60);
+  const qx = await boot({ storage: mtfStorage, store });
+  try {
+    await sleep(900);
+    setChart(store, "EURUSD_otc", 60);
+    await sleep(1200);
+    const cache = JSON.parse(qx.window.localStorage.getItem("__tradeCalc_mtf_cache"));
+    assert.equal(cache.v, 2);
+    assert.deepEqual(Object.keys(cache.symbols).sort().join(","), "EURUSD_otc,USDDZD_otc");
+    // Only what the charts can show is stored.
+    const kept = cache.symbols.USDDZD_otc["USDDZD_otc@60"].candles.length;
+    assert.ok(kept <= 200, "stored candles are trimmed, got " + kept);
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: a timeframe derived from finer candles says how many bars it has", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(60, 60); // 1 hour of 1m candles
+  const qx = await boot({ storage: mtfStorage, store });
+  try {
+    await sleep(900);
+    // 60 x 1m -> 12 bars of 5m, against a requested 40.
+    assert.match(mtfCap(qx, "5m"), /\d+\/40 bars · ↻/);
+    assert.match(mtfCap(qx, "5m"), /^≈/, "marked as derived");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: header shows the pair label and marks the chart's own timeframe", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 60);
+  const qx = await boot({ storage: mtfStorage, store });
+  try {
+    await sleep(900);
+    const root = qx.panelRoot();
+    assert.equal(root.querySelector('[data-mtf="pair"]').textContent, "USD/DZD (OTC)");
+    const label = (tf) => root.querySelector('.tcMtfCell[data-tf="' + tf + '"] .tcMtfTf').style.color;
+    assert.match(label("1m"), /accent/, "1m is the chart timeframe");
+    assert.equal(label("5m"), "");
+  } finally {
+    qx.close();
+  }
+});
 test("no uncaught errors while the panel runs", async () => {
   const qx = await boot();
   try {

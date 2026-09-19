@@ -6186,6 +6186,11 @@
     let chartReqSeq = 0;
     const MTF_MAX_CANDLES = 1500,
       MTF_STALE_SEC = 3;
+    const MTF_MAX_SYMBOLS = 6;
+    // Candles per pair (v1.26.0). Switching pairs used to wipe every timeframe, so each pair needed a
+    // fresh sync; now the last few pairs are kept and restored when you come back.
+    let mtfArchive = {};
+    let mtfChartSec = 0;
     let mtfEntries = {},
       mtfSymbol = null,
       mtfColors = {
@@ -6195,18 +6200,44 @@
       mtfLastPull = 0,
       mtfLastSave = 0,
       mtfDirty = false;
+    // Newest pairs first; keep MTF_MAX_SYMBOLS of them.
+    function trimMtfArchive() {
+      const symbols = Object.keys(mtfArchive);
+      if (symbols.length <= MTF_MAX_SYMBOLS) {
+        return;
+      }
+      const newest = (entries) =>
+        Object.values(entries || {}).reduce((max, e) => Math.max(max, (e && e.capturedAt) || 0), 0);
+      symbols
+        .sort((a, b) => newest(mtfArchive[b]) - newest(mtfArchive[a]))
+        .slice(MTF_MAX_SYMBOLS)
+        .forEach((sym) => delete mtfArchive[sym]);
+    }
+    // Only what the charts can show is stored, so the cache stays small (v1.26.0).
+    function trimEntriesForStorage(entries) {
+      const keep = Math.max(200, getMtfCount() * 4);
+      const out = {};
+      for (const key in entries) {
+        const e = entries[key];
+        if (e && e.candles && e.candles.length) {
+          out[key] = { ...e, candles: e.candles.slice(-keep) };
+        }
+      }
+      return out;
+    }
     function saveMtfCache(t) {
       if (!mtfDirty || !mtfSymbol) {
         return;
       }
       const e = Date.now();
-      if (!(!t && e - mtfLastSave < 10000)) {
+      if (!(!t && e - mtfLastSave < 30000)) {
         mtfLastSave = e;
         mtfDirty = false;
-        writeJson(KEY_MTF_CACHE, {
-          symbol: mtfSymbol,
-          entries: mtfEntries,
-        });
+        const symbols = { [mtfSymbol]: trimEntriesForStorage(mtfEntries) };
+        for (const sym in mtfArchive) {
+          symbols[sym] = trimEntriesForStorage(mtfArchive[sym]);
+        }
+        writeJson(KEY_MTF_CACHE, { v: 2, symbols });
       }
     }
     function pullChartSnapshot() {
@@ -6246,9 +6277,17 @@
         if (!(t && t.symbol && t.periodSeconds && t.candles && t.candles.length)) {
           return;
         }
+        mtfChartSec = t.periodSeconds;
         if (t.symbol !== mtfSymbol) {
-          mtfEntries = {};
+          if (mtfSymbol && Object.keys(mtfEntries).length) {
+            mtfArchive[mtfSymbol] = mtfEntries;
+          }
+          mtfEntries = mtfArchive[t.symbol] || {};
+          delete mtfArchive[t.symbol];
+          trimMtfArchive();
           mtfSymbol = t.symbol;
+          mtfDirty = true;
+          saveMtfCache(true); // persist immediately; the throttle could otherwise drop the old pair
           const e = byId("__tcMTF");
           if (e) {
             e.querySelectorAll(".tcMtfCell").forEach((t) => {
@@ -6430,7 +6469,8 @@
       const e = t._tcTfs || getMtfTfs(),
         n = getMtfCount(),
         o = t.querySelector('[data-mtf="pair"]'),
-        r = mtfSymbol || "—";
+        assets = readQuotexAssets(),
+        r = (mtfSymbol && assets && assets[mtfSymbol] && assets[mtfSymbol].label) || mtfSymbol || "—";
       if (o && o.textContent !== r) {
         o.textContent = r;
       }
@@ -6467,6 +6507,17 @@
           continue;
         }
         s.classList.remove("tcMtfEmpty");
+        // v1.26.0: show which cell matches the platform chart's own timeframe.
+        const tfLabel = s.querySelector(".tcMtfTf");
+        if (tfLabel) {
+          const isChartTf = mtfChartSec > 0 && p === mtfChartSec;
+          const wanted = isChartTf ? "var(--tc-accent)" : "";
+          if (tfLabel._tcActive !== wanted) {
+            tfLabel._tcActive = wanted;
+            tfLabel.style.color = wanted;
+            tfLabel.title = isChartTf ? "The platform chart is on this timeframe" : "";
+          }
+        }
         const h = defaultFutureSlots(n),
           f = sliceMtfWindow(m.rows, n, s._tcPanEndT, s._tcFuture, h);
         s._tcRows = m.rows;
@@ -6501,8 +6552,10 @@
         }
         if (d) {
           const t = Math.max(0, c - (m.capturedAt || 0)),
+            // v1.26.0: a derived timeframe often has far fewer bars than asked for; say so and point at ↻.
+            short = m.rows.length < n ? " · " + m.rows.length + "/" + n + " bars · ↻" : "",
             e = f.atLive
-              ? (m.native ? "" : "≈ ") + (y ? fmtAgo(t) : "live") + (s._tcNoPan ? " · ↻ for history" : "")
+              ? (m.native ? "" : "≈ ") + (y ? fmtAgo(t) : "live") + short
               : "◀ " + fmtHHMM(g.t) + " · dbl-click for live";
           if (d.textContent !== e) {
             d.textContent = e;
@@ -6606,7 +6659,19 @@
               n = getActiveTimeframe();
             mtfSyncBusy = true;
             t.classList.add("tcMtfBusy");
-            const o = (t) => {
+            // v1.26.0: give each timeframe up to 2.5 s to deliver candles, instead of assuming 260 ms is
+            // enough — that was why a sync often left the higher timeframes nearly empty.
+            const collect = (tfSec, deadline, done) => {
+                pullChartSnapshot();
+                const entry = mtfSymbol && mtfEntries[mtfSymbol + "@" + tfSec];
+                const enough = entry && entry.candles && entry.candles.length >= Math.min(getMtfCount(), 50);
+                if (enough || Date.now() > deadline) {
+                  done();
+                  return;
+                }
+                setTimeout(() => collect(tfSec, deadline, done), 150);
+              },
+              o = (t) => {
                 if (t >= e.length) {
                   if (n && n !== e[e.length - 1]) {
                     selectTimeframe(n, r);
@@ -6615,8 +6680,7 @@
                   }
                 } else {
                   selectTimeframe(e[t], () => {
-                    pullChartSnapshot();
-                    setTimeout(() => o(t + 1), 260);
+                    collect(tfSeconds(e[t]), Date.now() + 2500, () => o(t + 1));
                   });
                 }
               },
@@ -7348,22 +7412,38 @@
     })();
     (function () {
       const t = readJson(KEY_MTF_CACHE, null);
-      if (!t || !t.symbol || !t.entries) {
+      if (!t) {
         return;
       }
-      const e = Math.floor(Date.now() / 1000),
-        n = {};
-      for (const o in t.entries) {
-        const r = t.entries[o];
-        if (r && r.candles && r.candles.length) {
-          if (!(e - (r.capturedAt || 0) > 1800)) {
-            n[o] = r;
+      const now = Math.floor(Date.now() / 1000);
+      const fresh = (entries) => {
+        const out = {};
+        for (const key in entries || {}) {
+          const e = entries[key];
+          if (e && e.candles && e.candles.length && now - (e.capturedAt || 0) <= 1800) {
+            out[key] = e;
           }
         }
+        return out;
+      };
+      // v2 keeps several pairs; v1 (one pair) is still read so nothing is lost on upgrade.
+      const bySymbol = t.v === 2 && t.symbols ? t.symbols : t.symbol && t.entries ? { [t.symbol]: t.entries } : null;
+      if (!bySymbol) {
+        return;
       }
-      if (Object.keys(n).length) {
-        mtfEntries = n;
-        mtfSymbol = t.symbol;
+      for (const sym in bySymbol) {
+        const entries = fresh(bySymbol[sym]);
+        if (Object.keys(entries).length) {
+          mtfArchive[sym] = entries;
+        }
+      }
+      trimMtfArchive();
+      // The first snapshot picks the live pair out of the archive.
+      const first = t.v === 2 ? null : t.symbol;
+      if (first && mtfArchive[first]) {
+        mtfEntries = mtfArchive[first];
+        delete mtfArchive[first];
+        mtfSymbol = first;
       }
     })();
     applyLayoutMode();
