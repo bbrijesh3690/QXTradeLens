@@ -805,3 +805,25 @@ test("MTF: dragging moves back through older candles (v1.44.0)", async () => {
     qx.close();
   }
 });
+
+test("MTF: a wheel gesture moves one step, not to the cap (v1.44.1)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(900, 15);
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1400);
+    const cell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="1m"]');
+    const started = cell._tcCount;
+    // A trackpad flick: a stream of small deltas, together about one notch.
+    for (let i = 0; i < 8; i++) wheelOver(qx, "1m", 6);
+    await sleep(300);
+    assert.ok(cell._tcCount > started, "it did zoom: " + cell._tcCount);
+    assert.ok(cell._tcCount < started * 1.5, "but one gesture is one step, not a leap: " + cell._tcCount);
+    // Ten full notches still cannot run past the cap.
+    for (let i = 0; i < 40; i++) wheelOver(qx, "1m", 100);
+    await sleep(300);
+    assert.equal(cell._tcCount, 240, "and the cap holds: " + cell._tcCount);
+  } finally {
+    qx.close();
+  }
+});

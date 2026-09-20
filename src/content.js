@@ -7016,9 +7016,18 @@
             return;
           }
           ev.preventDefault();
+          // v1.44.1: one turn of a wheel arrives as a burst of events, and a trackpad as a long stream of
+          // small ones. Applying a step to each ran a chart from 40 candles to the 240 cap in a single
+          // gesture. Delta is accumulated instead, one step per notch's worth, with a gentler factor.
+          const unit = ev.deltaMode === 1 ? 16 : ev.deltaMode === 2 ? 100 : 1;
+          cell._tcWheelAcc = (cell._tcWheelAcc || 0) + ev.deltaY * unit;
+          if (Math.abs(cell._tcWheelAcc) < 40) {
+            return;
+          }
+          const out = cell._tcWheelAcc > 0;
+          cell._tcWheelAcc = 0;
           const now = cellCount(cell),
-            out = ev.deltaY > 0,
-            next = clampZoom(out ? Math.max(now + 1, now * 1.25) : Math.min(now - 1, now * 0.8));
+            next = clampZoom(out ? Math.max(now + 1, now * 1.12) : Math.min(now - 1, now * 0.89));
           if (next === now) {
             return;
           }

@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.44.1] - 2026-09-20
+
+### Fixed
+- **One scroll ran a chart straight to the zoom cap.** A turn of a wheel arrives as a burst of events and
+  a trackpad as a stream of small ones; a step was being applied to each, so a single gesture took a chart
+  from 40 candles to the 240 limit. Seen in a live session: two charts sitting at exactly 240. The delta is
+  now accumulated and one step taken per notch worth of it, with a gentler factor.
+
 ## [1.44.0] - 2026-09-20
 
 ### Added
