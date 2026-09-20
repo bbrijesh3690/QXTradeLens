@@ -6580,6 +6580,7 @@
           trimMtfArchive();
           mtfSymbol = t.symbol;
           mtfSymbolSince = Date.now();
+          mtfFillPendingFor = t.symbol; // opening a pair queues its fill (v1.35.0)
           mtfDirty = true;
           saveMtfCache(true); // persist immediately; the throttle could otherwise drop the old pair
           const e = byId("__tcMTF");
@@ -6775,6 +6776,7 @@
       }
       mtfSymbol = symbol;
       mtfSymbolSince = Date.now();
+      mtfFillPendingFor = symbol; // the pair you land on after a reload counts as opening it (v1.35.0)
       if (mtfArchive[symbol]) {
         mtfEntries = mtfArchive[symbol];
         delete mtfArchive[symbol];
@@ -6874,16 +6876,11 @@
         mtfLastPull = 0;
       });
     }
-    // v1.30.0: a pair you have never watched has nothing to draw, and the old panel just said
-    // "visit once" until you pressed ↻. Once per pair — and only when the tab is in front, no trade
-    // is open and nothing else is walking the menus — do that walk for you. From then on the rolling
-    // 1m base keeps the cells current, so this runs once and gets out of the way.
-    const MTF_AUTOFILL_AGAIN_MS = 600000,
-      // v1.32.0: a chart with six of the forty bars you asked for looks empty on screen, and folding a
-      // short 1m history cannot make it longer — only the platform's own bars for that timeframe can.
-      // Judging "does it need filling?" on whether ANY row exists said "ready" for exactly the charts
-      // that looked emptiest. Measured live: 97 folded 1m bars = 6 bars of 15m, reported as nothing to do.
-      MTF_AUTOFILL_MIN_RATIO = 0.6;
+    // v1.30.0, rewritten in v1.35.0: opening a pair runs the ↻ walk for you — only when the tab is in
+    // front, no trade is open and nothing else is driving the menus. From then on the rolling 1m base
+    // keeps the charts current, so this runs once per pair you open and gets out of the way.
+    // Only a guard against a walk repeating while you flick between two pairs (v1.35.0).
+    const MTF_AUTOFILL_AGAIN_MS = 60000;
     const mtfAutofilledAt = {};
     function setMtfAutofill(on) {
       mtfAutofill = !!on;
@@ -6894,6 +6891,11 @@
     // v1.31.0: every gate below writes down why it stopped, and the health check reports it. "It just
     // isn't working" is otherwise impossible to tell apart from "a trade was open the whole time".
     let mtfAutofillReason = "starting up";
+    // v1.35.0: opening a pair IS the trigger — the same walk the ↻ button does, run for you. Until now it
+    // measured how full each chart was and filled only what looked thin, which behaved differently
+    // depending on what the fold happened to have collected: sometimes a walk, sometimes nothing, with no
+    // way to tell which from the outside. A pair you open gets a walk; that is the whole rule.
+    let mtfFillPendingFor = null;
     function maybeAutofillMtf() {
       const stop = (why) => {
         mtfAutofillReason = why;
@@ -6915,10 +6917,18 @@
       if (!sym || !mtfSymbolSince) {
         return stop("no pair read yet");
       }
+      if (mtfFillPendingFor !== sym) {
+        return stop(
+          mtfAutofilledAt[sym]
+            ? "filled this pair " + fmtAgo(Math.round((now - mtfAutofilledAt[sym]) / 1000))
+            : "ready — fills when you open a pair",
+        );
+      }
       const settleMs = getMtfSettle() * 1000;
       if (now - mtfSymbolSince < settleMs) {
         return stop("settling (" + Math.ceil((settleMs - (now - mtfSymbolSince)) / 1000) + "s)");
       }
+      // Only to stop a walk repeating while you flick back and forth between two pairs.
       if (mtfAutofilledAt[sym] && now - mtfAutofilledAt[sym] < MTF_AUTOFILL_AGAIN_MS) {
         return stop("filled this pair " + fmtAgo(Math.round((now - mtfAutofilledAt[sym]) / 1000)));
       }
@@ -6929,31 +6939,20 @@
       if (!panel) {
         return stop("charts are hidden (press C)");
       }
-      const tfs = panel._tcTfs || getMtfTfs(),
-        nowSec = Math.floor(now / 1000);
-      // v1.30.1: ANY chart needing bars is reason enough. Requiring every one to be blank meant it never
-      // ran for the way this is actually used: on a 15s chart a new pair has 15s bars at once, the 1m
-      // chart fills from the fold, and the 5m/15m charts were left with almost nothing.
-      const want = Math.max(5, Math.ceil(getMtfCount() * MTF_AUTOFILL_MIN_RATIO));
-      const blank = tfs.filter((tf) => {
-        const m = resolveMtfRows(mtfEntries, sym, tfSeconds(tf), nowSec, MTF_STALE_SEC);
-        return !m || m.rows.length < want;
-      });
-      if (!blank.length) {
-        return stop("ready — charts filled");
-      }
-      stop("filling " + blank.join(", "));
+      const tfs = panel._tcTfs || getMtfTfs();
+      mtfFillPendingFor = null;
       mtfAutofilledAt[sym] = now;
+      stop("filling " + tfs.join(", "));
       mtfFlash("filling …", 2500);
       runMtfSync(() => {
-        // v1.31.0: judge the walk by the charts it was sent to fill. A walk that changed nothing must not
-        // cost the pair its ten minutes — try again in half a minute instead.
-        const sec = Math.floor(Date.now() / 1000);
-        const stillBlank = blank.filter((tf) => {
-          const m = resolveMtfRows(mtfEntries, sym, tfSeconds(tf), sec, MTF_STALE_SEC);
-          return !m || m.rows.length < want;
+        // A walk that came back with nothing (the menu could not be driven, say) is not a fill: put the
+        // pair back in the queue rather than leaving the charts empty until you switch away and back.
+        const gotSomething = tfs.some((tf) => {
+          const e = mtfEntries[sym + "@" + tfSeconds(tf)];
+          return !!(e && e.candles && e.candles.length);
         });
-        if (stillBlank.length === blank.length) {
+        if (!gotSomething) {
+          mtfFillPendingFor = sym;
           mtfAutofilledAt[sym] = now - (MTF_AUTOFILL_AGAIN_MS - 30000);
           mtfAutofillReason = "walk came back empty, retrying";
         }
@@ -8036,7 +8035,7 @@
       add("Currency", state && state.currency ? "ok" : "fallback", state && state.currency ? "store" : "page", detectCurrency());
       add(
         "Charts auto-fill",
-        !mtfAutofill ? "idle" : /^(ready|filling)/.test(mtfAutofillReason) ? "ok" : "fallback",
+        !mtfAutofill ? "idle" : /^(ready|filling|filled)/.test(mtfAutofillReason) ? "ok" : "fallback",
         byId("__tcMTF") ? "charts open" : "charts hidden",
         mtfAutofillReason,
       );

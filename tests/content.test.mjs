@@ -1370,7 +1370,7 @@ test("health: the auto-fill says what it is waiting for (v1.31.0)", async () => 
   }
 });
 
-test("health: auto-fill reports ready when the charts are full (v1.31.0)", async () => {
+test("health: after the fill, the status says when it ran (v1.31.0)", async () => {
   const now = Math.floor(Date.now() / 1000);
   const full = (sec) => ({
     candles: rows(60, sec, Math.floor(now / sec) * sec),
@@ -1385,10 +1385,11 @@ test("health: auto-fill reports ready when the charts are full (v1.31.0)", async
   store.__candles = [];
   const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
   try {
-    await sleep(3600);
+    await sleep(5200); // settle, walk, and land on the resting state
     const row = healthRow(qx, "Charts auto-fill");
     assert.equal(row.status, "ok");
-    assert.match(row.value, /ready/, row.value);
+    // v1.35.0: opening a pair always fills, so the resting state is "filled this pair N ago".
+    assert.match(row.value, /filled this pair|filling/, row.value);
   } finally {
     qx.close();
   }
@@ -1605,6 +1606,40 @@ test("chips: the win total adds up every open trade (v1.34.0)", async () => {
     const nums = (text.match(/[0-9][0-9,]*[.][0-9]{2}/g) || []).map((n) => parseFloat(n.replace(/,/g, "")));
     assert.equal(nums.length, 2, "balance and win: " + text);
     assert.equal(Math.round((nums[1] - nums[0]) * 100) / 100, 5600, "both payouts counted: " + text);
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.35.0: opening a pair is the trigger ──────────────────────────────────
+
+test("MTF: opening a pair fills it even when its charts already have bars (v1.35.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // Charts that the old "is it thin?" test would have called full, so no walk would have run.
+  const full = (sec) => ({ candles: rows(60, sec, Math.floor(now / sec) * sec), capturedAt: now, periodSeconds: sec });
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": full(60), "USDDZD_otc@300": full(300), "USDDZD_otc@900": full(900) } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(4200);
+    const row = healthRow(qx, "Charts auto-fill");
+    assert.match(row.value, /filling|filled this pair/, "the pair was opened, so it gets a walk: " + row.value);
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: a pair already filled is not walked again straight away (v1.35.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15);
+  const qx = await boot({ storage: bigTfStorage, store });
+  try {
+    await sleep(4200);
+    assert.match(healthRow(qx, "Charts auto-fill").value, /filling|filled/, "filled on open");
+    await sleep(9000); // the walk gives each timeframe up to 2.5 s to deliver
+    const row = healthRow(qx, "Charts auto-fill");
+    assert.match(row.value, /filled this pair/, "and then it leaves the pair alone: " + row.value);
   } finally {
     qx.close();
   }

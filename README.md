@@ -68,9 +68,10 @@ The stop loss never blocks trading (changed in v1.21.0); it is tracked and displ
 - **Multi-timeframe charts** — up to 4 mini candle charts (default 1m, 5m, 15m) drawn from Quotex's own
   candle data. Drag to pan, drag edges to resize, double-click to return to live. The header shows the pair
   and highlights the timeframe your chart is on, and each cell says how many bars it has.
-  **Click a cell's timeframe label** to put the platform chart on that timeframe. A pair you have never
-  watched is **filled in automatically, once** (only with the tab in front and no trade open; switch it off
-  in the popup), and the ↻ button does the same walk on demand. From then on a **rolling 1-minute history**
+  **Click a cell's timeframe label** to put the platform chart on that timeframe. Opening a pair
+  **runs that walk for you** — the chart visits each of your timeframes once and comes back (only with the
+  tab in front, no trade open, and after the pair has stayed put for the wait; switch it off in the popup),
+  and the ↻ button does the same on demand. From then on a **rolling 1-minute history**
   per pair keeps the cells current as you trade, and collected candles are kept per pair (last 6) so
   switching pairs does not lose them. Press **C** to show or hide the panel.
 - **Entry balance tags** — each row in the trade history is tagged with the balance you had when you

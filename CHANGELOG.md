@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.35.0] - 2026-09-20
+
+### Changed
+- **Opening a pair now runs the refresh walk, full stop.** The panel used to measure how full each chart
+  was and fill only what looked thin — which behaved differently depending on what the 1m fold happened
+  to have collected, so it ran sometimes and not others with no way to tell which from the outside. There
+  is no measuring now: a pair you open gets a walk. The conditions that remain are the ones you can
+  predict — tab in front, no trade open, and the pair has stayed on screen for the wait (default 15 s).
+- The repeat guard is **one minute** instead of ten: it exists only to stop a second walk while you flick
+  between two pairs, not to ration fills.
+- The popup switch is now **Fill Charts On Opening A Pair** (same setting, clearer name), and the health
+  check reports `ready — fills when you open a pair` when it is simply waiting for you to open one.
+
 ## [1.34.0] - 2026-09-20
 
 ### Fixed
