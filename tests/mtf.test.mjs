@@ -927,3 +927,28 @@ test("S/R: a level price has fallen through is resistance, not support (v1.46.1)
     qx.close();
   }
 });
+
+test("S/R: a level off the chart is flagged at the edge, not dropped (v1.47.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // A swing high early on, then a long fall: the level ends far above what the window shows.
+  // The swing high needs three bars either side, so it sits at index 4 rather than at the very start.
+  const shape = [80,85,90,95,99,95,90,85,80,75,70,65,60,55,50,45,40,35,30,25,20,18,16,15,14,13,12,11,10,9,8,7,6,5,4,3];
+  const t0 = Math.floor(now / 60) * 60 - shape.length * 60;
+  const bars = shape.map((v, i) => ({ t: t0 + i * 60, o: 100 + v * 0.001, h: 100 + v * 0.001 + 0.0004, l: 100 + v * 0.001 - 0.0004, c: 100 + v * 0.001 }));
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  // A tight window, so the early swing high is far outside the visible price range.
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_count: "10", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    const labels = printed(qx);
+    const edge = labels.filter((x) => /^[↑↓] [RS] - /.test(x));
+    assert.ok(edge.length, "an off-chart level is named at the edge: " + labels.slice(0, 8).join(" | "));
+    assert.ok(edge.some((x) => x.startsWith("↑")), "pointing up, where the level is: " + edge.join(" "));
+  } finally {
+    qx.close();
+  }
+});

@@ -6916,9 +6916,40 @@
           // through is resistance from underneath, and the research's own example is a broken high that
           // later held as support. Labelling by origin put "S" above price, which reads as a mistake.
           const ref = e[e.length - 1] && isFinite(e[e.length - 1].c) ? e[e.length - 1].c : NaN;
+          let aboveN = 0,
+            belowN = 0;
           for (const line of srLines) {
-            if (!isFinite(line.price) || line.price > p || line.price < u) {
-              continue; // off this chart's price range - drawing it at the edge would be a lie
+            if (!isFinite(line.price)) {
+              continue;
+            }
+            // v1.47.0: a level outside what this chart is showing used to be dropped, so finding it meant
+            // zooming out until it appeared. A LINE at the edge would be a lie about where it is, but a
+            // tag at the edge is not: it names the level and points the way, and the line returns as soon
+            // as the level is in range.
+            if (line.price > p || line.price < u) {
+              if (typeof d.fillText != "function") {
+                continue;
+              }
+              const above = line.price > p,
+                slot = above ? aboveN++ : belowN++;
+              if (slot > 1) {
+                continue; // two a side is enough to say which way to look
+              }
+              const size = Math.max(7, Math.min(10, Math.round(0.11 * i))),
+                tag = (above ? "↑ " : "↓ ") + (line.price >= (isFinite(ref) ? ref : line.price) ? "R" : "S") + " - " + line.price.toFixed(priceDecimals(e));
+              d.font = "700 " + size + "px " + "'DM Sans', system-ui, sans-serif";
+              const tw = typeof d.measureText == "function" ? d.measureText(tag).width : 5.5 * tag.length;
+              d.fillStyle = line.colour;
+              d.globalAlpha = 0.6;
+              if (typeof d.textBaseline == "string") {
+                d.textBaseline = above ? "top" : "bottom";
+              }
+              d.fillText(tag, Math.max(6, a - tw - 3), above ? 3 + slot * (size + 2) : i - 3 - slot * (size + 2));
+              if (typeof d.textBaseline == "string") {
+                d.textBaseline = "middle";
+              }
+              d.globalAlpha = 1;
+              continue;
             }
             const role = !isFinite(ref) ? line.kind : line.price >= ref ? "R" : "S";
             const ly = Math.round(v(line.price)) + 0.5;

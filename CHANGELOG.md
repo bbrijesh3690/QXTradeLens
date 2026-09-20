@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.47.0] - 2026-09-20
+
+### Added
+- **A level outside what a chart is showing is named at its edge** — `↑ R - 1.60850` at the top, `↓ S -
+  1.59900` at the bottom, in that timeframe colour, up to two a side. Until now such a level was dropped,
+  so the only way to find one was to zoom out until it appeared. A LINE at the edge would misstate where
+  the level is; a tag names it and points the way, and the line comes back the moment the level is in
+  range.
+
 ## [1.46.1] - 2026-09-20
 
 ### Fixed
