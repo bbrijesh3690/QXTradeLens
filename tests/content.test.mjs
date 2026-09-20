@@ -1352,6 +1352,69 @@ test("MTF: auto-fill runs when only some cells are blank (v1.30.1)", async () =>
   }
 });
 
+// ── v1.31.0: saying why, instead of quietly doing nothing ────────────────────────────
+
+test("health: the auto-fill says what it is waiting for (v1.31.0)", async () => {
+  const store = quotexStore({ opened: [deal("a")] }); // a trade is running
+  store.__candles = [];
+  const qx = await boot({ storage: bigTfStorage, store });
+  try {
+    await sleep(3600);
+    const row = healthRow(qx, "Charts auto-fill");
+    assert.ok(row, "the check reports on it at all");
+    assert.match(row.value, /trade is open/, "and names the reason: " + row.value);
+  } finally {
+    qx.close();
+  }
+});
+
+test("health: auto-fill reports ready when there is nothing blank (v1.31.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(400, 15); // every chart can be folded from this
+  const qx = await boot({ storage: bigTfStorage, store });
+  try {
+    await sleep(3600);
+    const row = healthRow(qx, "Charts auto-fill");
+    assert.equal(row.status, "ok");
+    assert.match(row.value, /ready/, row.value);
+  } finally {
+    qx.close();
+  }
+});
+
+test("health: a walk that fills nothing does not cost the pair its cooldown (v1.31.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // 5m bars only, and no live chart: the 1m chart is blank and the walk has nothing to collect.
+  const cache = {
+    v: 2,
+    symbols: {
+      USDDZD_otc: {
+        "USDDZD_otc@300": { candles: rows(100, 300, Math.floor(now / 300) * 300), capturedAt: now, periodSeconds: 300 },
+      },
+    },
+  };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(4600); // settle, walk, and come back empty
+    const row = healthRow(qx, "Charts auto-fill");
+    assert.ok(!/filled this pair/.test(row.value), "not marked done for ten minutes: " + row.value);
+  } finally {
+    qx.close();
+  }
+});
+
+test("health: the report says which build the tab is running (v1.31.0)", async () => {
+  const qx = await boot();
+  try {
+    const report = qx.askPanel({ type: "GET_HEALTH" });
+    assert.match(String(report.build), /^\d+\.\d+\.\d+$/, "a real version, not the placeholder: " + report.build);
+  } finally {
+    qx.close();
+  }
+});
+
 // ── v1.28.0: how the trade click is produced ───────────────────────────────────────────────────────
 
 const hkStorage = { ...slStorage(10000), __tradeCalc_hk_updown: "true" };

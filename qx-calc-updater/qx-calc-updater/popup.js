@@ -777,7 +777,10 @@ async function runHealthCheck() {
          <span title="${healthEscape(r.via)}">${healthEscape(r.name)} <span style="opacity:0.55;font-size:10px;">${healthEscape(r.via)}</span></span>
          <span style="font-family:'DM Mono',monospace;opacity:0.8;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${healthEscape(r.value)}</span>
        </div>`).join('') +
-    `<div style="opacity:0.5;font-size:10px;margin-top:4px;">v${healthEscape(report.version)} · ${healthEscape(report.url)}</div></div>`;
+    (report.build && report.build !== report.version
+      ? `<div style="color:#ffb454;font-size:10px;margin-top:6px;">This tab is running v${healthEscape(report.build)} while v${healthEscape(report.version)} is installed — refresh the Quotex tab.</div>`
+      : '') +
+    `<div style="opacity:0.5;font-size:10px;margin-top:4px;">v${healthEscape(report.version)}${report.build ? ' · tab ' + healthEscape(report.build) : ''} · ${healthEscape(report.url)}</div></div>`;
 }
 
 if (healthCheckBtn) healthCheckBtn.addEventListener('click', runHealthCheck);

@@ -20,7 +20,11 @@ if (pkg.version !== manifest.version) {
   fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
 }
 
-const source = fs.readFileSync("src/content.js", "utf8");
+// The running script says which build it is, so a tab that was never refreshed after an extension
+// reload can be told apart from a fix that did not work.
+const source = fs
+  .readFileSync("src/content.js", "utf8")
+  .replace("__TC_BUILD_VERSION__", manifest.version);
 const result = await esbuild.transform(source, {
   loader: "js",
   // Whitespace + identifier minification only. Syntax minification is off on purpose: it rewrites

@@ -169,6 +169,11 @@ Two layers deal with that:
 
 If you ever see ❌, send a screenshot of that list; it names exactly what moved.
 
+The list also reports the **charts auto-fill** in plain words (`ready — nothing blank`, `waiting: a
+trade is open`, `filled this pair 4m ago`, `switched off in the popup`), and **which build the tab is
+running** next to the installed version. If those two differ, the tab was never refreshed after the
+extension was reloaded, and it is still running the old code.
+
 ## Good to know
 
 - **"Live Account" is displayed as "Demo Account"**, and the tab title says "Demo trading", on every

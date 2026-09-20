@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.31.0] - 2026-09-20
+
+### Added
+- **The health check now says what the auto-fill is doing**, in words: `ready — nothing blank`,
+  `waiting: a trade is open`, `filled this pair 4m ago`, `tab is in the background`, `switched off in the
+  popup`, or which charts it is filling right now. It refused to run silently before, which was
+  indistinguishable from it being broken.
+- **The health check reports which build the tab is running**, next to the version that is installed. If
+  the extension was reloaded but the Quotex tab never refreshed, the tab keeps running the old code — the
+  popup now says so in orange instead of leaving you to wonder why a fix changed nothing.
+
+### Fixed
+- **A fill that collected nothing used up the pair's ten-minute cooldown.** The walk is now judged by the
+  charts it was sent to fill: if they are still blank afterwards it tries again in thirty seconds.
+
 ## [1.30.1] - 2026-09-20
 
 ### Fixed

@@ -794,6 +794,10 @@
       parsePct = parseNum,
       AudioCtor = window.AudioContext || window.webkitAudioContext,
       isMobileWidth = () => window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
+    // Stamped by tools/build.mjs at build time. The manifest version says which extension is
+    // INSTALLED; this says which code the tab is actually running. They differ when the extension was
+    // reloaded but the Quotex tab was never refreshed — which looks exactly like "the fix did nothing".
+    const BUILD_VERSION = "__TC_BUILD_VERSION__";
     function normKey(t) {
       return t ? t.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
     }
@@ -6719,17 +6723,26 @@
     }
     // Visits each configured timeframe once, collecting candles, then puts the chart back where it was.
     // Extracted from the ↻ button in v1.30.0 so the auto-fill can use the very same walk.
-    function runMtfSync() {
+    function runMtfSync(done) {
+      const bail = (why) => {
+        if (why) {
+          mtfFlash(why);
+        }
+        if (done) {
+          try {
+            done();
+          } catch (e) {}
+        }
+      };
       if (mtfSyncBusy || otcRebuildBusy) {
-        return;
+        return bail("");
       }
       if (getOpenTradePnlEls().length) {
-        mtfFlash("not while a trade is open");
-        return;
+        return bail("not while a trade is open");
       }
       const panel = byId("__tcMTF");
       if (!panel) {
-        return;
+        return bail("");
       }
       const tfs = (panel._tcTfs || getMtfTfs()).slice(),
         back = getActiveTimeframe();
@@ -6752,6 +6765,11 @@
         panel.classList.remove("tcMtfBusy");
         mtfLastPull = 0;
         saveMtfCache(true);
+        if (done) {
+          try {
+            done();
+          } catch (e) {}
+        }
       };
       const step = (i) => {
         if (i >= tfs.length) {
@@ -6799,36 +6817,65 @@
         prefSet(KEY_MTF_AUTOFILL, mtfAutofill ? "1" : "0");
       } catch (t) {}
     }
+    // v1.31.0: every gate below writes down why it stopped, and the health check reports it. "It just
+    // isn't working" is otherwise impossible to tell apart from "a trade was open the whole time".
+    let mtfAutofillReason = "starting up";
     function maybeAutofillMtf() {
-      if (!mtfAutofill || mtfSyncBusy || otcRebuildBusy || document.hidden) {
-        return;
+      const stop = (why) => {
+        mtfAutofillReason = why;
+      };
+      if (!mtfAutofill) {
+        return stop("switched off in the popup");
+      }
+      if (document.hidden) {
+        return stop("tab is in the background");
+      }
+      if (mtfSyncBusy) {
+        return stop("filling now");
+      }
+      if (otcRebuildBusy) {
+        return stop("busy with the pair list");
       }
       const sym = mtfSymbol,
         now = Date.now();
-      if (!sym || !mtfSymbolSince || now - mtfSymbolSince < MTF_AUTOFILL_SETTLE_MS) {
-        return;
+      if (!sym || !mtfSymbolSince) {
+        return stop("no pair read yet");
+      }
+      if (now - mtfSymbolSince < MTF_AUTOFILL_SETTLE_MS) {
+        return stop("pair just changed");
       }
       if (mtfAutofilledAt[sym] && now - mtfAutofilledAt[sym] < MTF_AUTOFILL_AGAIN_MS) {
-        return;
+        return stop("filled this pair " + fmtAgo(Math.round((now - mtfAutofilledAt[sym]) / 1000)));
       }
       if (getOpenTradePnlEls().length || openTradeCount() > 0) {
-        return;
+        return stop("waiting: a trade is open");
       }
       const panel = byId("__tcMTF");
       if (!panel) {
-        return;
+        return stop("charts are hidden (press C)");
       }
       const tfs = panel._tcTfs || getMtfTfs(),
         nowSec = Math.floor(now / 1000);
-      // v1.30.1: ANY blank cell is reason enough. Requiring every cell to be blank meant it never ran
+      // v1.30.1: ANY blank chart is reason enough. Requiring every one to be blank meant it never ran
       // for the way this is actually used: on a 15s chart a new pair has 15s bars at once, the 1m cell
       // fills from the fold, and the 5m/15m cells were left empty with no walk to fill them.
-      if (!tfs.some((tf) => !resolveMtfRows(mtfEntries, sym, tfSeconds(tf), nowSec, MTF_STALE_SEC))) {
-        return;
+      const blank = tfs.filter((tf) => !resolveMtfRows(mtfEntries, sym, tfSeconds(tf), nowSec, MTF_STALE_SEC));
+      if (!blank.length) {
+        return stop("ready — nothing blank");
       }
+      stop("filling " + blank.join(", "));
       mtfAutofilledAt[sym] = now;
       mtfFlash("filling …", 2500);
-      runMtfSync();
+      runMtfSync(() => {
+        // v1.31.0: judge the walk by the charts it was sent to fill. A walk that changed nothing must not
+        // cost the pair its ten minutes — try again in half a minute instead.
+        const sec = Math.floor(Date.now() / 1000);
+        const stillBlank = blank.filter((tf) => !resolveMtfRows(mtfEntries, sym, tfSeconds(tf), sec, MTF_STALE_SEC));
+        if (stillBlank.length === blank.length) {
+          mtfAutofilledAt[sym] = now - (MTF_AUTOFILL_AGAIN_MS - 30000);
+          mtfAutofillReason = "walk came back empty, retrying";
+        }
+      });
     }
     function renderMtf(t) {
       ensureMtfSymbol();
@@ -7854,9 +7901,15 @@
         expiryItems.length ? expiryItems.length + " items" : "not open",
       );
       add("Currency", state && state.currency ? "ok" : "fallback", state && state.currency ? "store" : "page", detectCurrency());
+      add(
+        "Charts auto-fill",
+        !mtfAutofill ? "idle" : /^(ready|filling)/.test(mtfAutofillReason) ? "ok" : "fallback",
+        byId("__tcMTF") ? "charts open" : "charts hidden",
+        mtfAutofillReason,
+      );
       const version =
         typeof chrome != "undefined" && chrome.runtime && chrome.runtime.getManifest ? chrome.runtime.getManifest().version : "";
-      return { version, url: location.pathname, rows };
+      return { version, build: BUILD_VERSION, url: location.pathname, rows };
     }
     if (typeof chrome != "undefined" && chrome.runtime && chrome.runtime.onMessage) {
       // Kept on window so cleanup can remove it (hotfix v1.20.1): otherwise a torn-down panel's
