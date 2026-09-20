@@ -101,3 +101,32 @@ test("chips: the win total adds up every open trade (v1.34.0)", async () => {
     qx.close();
   }
 });
+
+test("chips: the tab title does not count down with nothing open (v1.50.0)", async () => {
+  const store = quotexStore(); // Quotex says no deals are open
+  const qx = await boot({ store });
+  try {
+    // What the live page has beside the chart: a pair name next to the platform session clock.
+    const block = qx.window.document.createElement("div");
+    block.innerHTML = '<span>AUD/USD (OTC)</span><span class="jHgax">00:06:17</span>';
+    qx.window.document.body.appendChild(block);
+    await sleep(900);
+    assert.ok(!/[⏱]/.test(qx.window.document.title), "no countdown in the title: " + qx.window.document.title);
+  } finally {
+    qx.close();
+  }
+});
+
+test("chips: an open deal still counts down in the tab title (v1.50.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const open = { id: "t1", asset: "USDDZD_otc", amount: 1000, profit: 0, isDemo: 1, command: 0, openPrice: 100, percentProfit: 85, openTimestamp: now - 10, closeTimestamp: now + 40 };
+  const qx = await boot({ store: quotexStore({ opened: [open] }) });
+  try {
+    await sleep(900);
+    const title = qx.window.document.title;
+    assert.equal(title.charCodeAt(0), 0x23f1, "the title starts with the timer mark: " + title);
+    assert.ok(/[0-9]:[0-9][0-9]/.test(title), "and carries the countdown: " + title);
+  } finally {
+    qx.close();
+  }
+});

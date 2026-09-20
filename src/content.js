@@ -3968,11 +3968,13 @@
       if (!TIMERS_ENABLED) {
         return "";
       }
-      const t = getOpenTradeRows();
-      if (!t.length) {
-        // v1.25.0: Quotex's data carries each open deal's close time.
-        const fromStore = storeOpenTrades();
-        if (!fromStore || !fromStore.length) {
+      // v1.50.0: Quotex's data decides, and the markup is read only when the bridge cannot answer -
+      // the same order the chips have used since v1.34.0. Reading the rows first left the tab counting
+      // with nothing open: a block holding the platform's session clock ("00:06:17") parses as a
+      // perfectly plausible 6m17s and is not caught by the four-hour sanity bound.
+      const fromStore = storeOpenTrades();
+      if (fromStore) {
+        if (!fromStore.length) {
           return "";
         }
         let soonest = Infinity;
@@ -3982,6 +3984,10 @@
           }
         }
         return fmtTitleCountdown(soonest, fromStore.length);
+      }
+      const t = getOpenTradeRows();
+      if (!t.length) {
+        return "";
       }
       let e = 1 / 0;
       for (let n = 0, o = t.length; n < o; n++) {

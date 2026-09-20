@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.50.0] - 2026-09-21
+
+### Fixed
+- **The tab title counted down with no trade open**, and counted UP: `⏱0:17`, `⏱3:51`, `⏱6:17`. The
+  title read the deal rows first and Quotex own data only as a fallback — the inversion fixed for the
+  chart chips in v1.34.0, left in place here. With no readable rows the panel looks for a pair name beside
+  a clock and found the platform session clock, `00:06:17`, which parses as a plausible six-minute
+  countdown and so slips past the four-hour sanity bound. The title now follows the platform data and
+  reads the markup only when the bridge cannot answer.
+
 ## [1.49.1] - 2026-09-21
 
 ### Added
