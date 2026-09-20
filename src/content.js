@@ -6732,11 +6732,11 @@
         return { highs, lows };
       }
       const done = rows.slice(0, -1); // the newest bar is still running
-      for (
-        let i = done.length - 1 - SR_STRENGTH;
-        i >= SR_STRENGTH && (highs.length < SR_KEEP || lows.length < SR_KEEP);
-        i--
-      ) {
+      // v1.47.1: every swing in the history, newest first. Stopping at the newest three a side is what
+      // the strategy rule does, and for a signal that is right - but for a CHART it means a market making
+      // new lows shows six levels, all of them overhead, and nothing under the price. Which three to draw
+      // is decided below, from this full list.
+      for (let i = done.length - 1 - SR_STRENGTH; i >= SR_STRENGTH && (highs.length < 60 || lows.length < 60); i--) {
         const c = done[i];
         let isHigh = true,
           isLow = true;
@@ -6749,14 +6749,36 @@
           }
         }
         const conf = done[i + SR_STRENGTH].t + (periodSec > 0 ? periodSec : 0);
-        if (isHigh && highs.length < SR_KEEP) {
+        if (isHigh && highs.length < 60) {
           highs.push({ price: c.h, at: c.t, conf });
         }
-        if (isLow && lows.length < SR_KEEP) {
+        if (isLow && lows.length < 60) {
           lows.push({ price: c.l, at: c.t, conf });
         }
       }
       return { highs, lows };
+    }
+    // What a chart shows: the SR_KEEP nearest levels above the price and the SR_KEEP nearest below it,
+    // whichever kind of swing produced each one - a broken swing low overhead is resistance, and a broken
+    // swing high underfoot is support. A side with nothing on it simply shows nothing.
+    function srNearest(levels, price) {
+      const all = levels.highs.concat(levels.lows);
+      if (!isFinite(price)) {
+        return all.slice(0, 2 * SR_KEEP);
+      }
+      const byDistance = (a, b) => Math.abs(a.price - price) - Math.abs(b.price - price);
+      const above = all.filter((l) => l.price >= price).sort(byDistance).slice(0, SR_KEEP);
+      const below = all.filter((l) => l.price < price).sort(byDistance).slice(0, SR_KEEP);
+      // One price can be both a swing high and a swing low across timeframes; draw it once.
+      const seen = new Set();
+      return above.concat(below).filter((l) => {
+        const key = l.price.toFixed(8);
+        if (seen.has(key)) {
+          return false;
+        }
+        seen.add(key);
+        return true;
+      });
     }
     // Recomputed only when a new candle has closed on that timeframe.
     const srCache = new Map();
@@ -6958,9 +6980,22 @@
             if (typeof d.setLineDash == "function") {
               d.setLineDash(role === "R" ? [] : [4, 3]);
             }
+            // v1.48.0: a level runs from the candle that made it to the newest one, growing as candles
+            // arrive. Drawing it across the whole chart put it over candles from before it existed, and
+            // the rule it comes from is explicit that a level only counts once its swing has formed.
+            let x0 = 6;
+            if (isFinite(line.at)) {
+              for (let bi = 0; bi < e.length; bi++) {
+                if (e[bi].t >= line.at) {
+                  x0 = bi === 0 ? 6 : y(bi);
+                  break;
+                }
+              }
+            }
+            const x1 = y(e.length - 1) + _ / 2;
             d.beginPath();
-            d.moveTo(6, ly);
-            d.lineTo(6 + h, ly);
+            d.moveTo(Math.min(x0, x1), ly);
+            d.lineTo(x1, ly);
             d.stroke();
             if (typeof d.setLineDash == "function") {
               d.setLineDash([]);
@@ -6977,7 +7012,7 @@
               if (typeof d.textBaseline == "string") {
                 d.textBaseline = "bottom";
               }
-              d.fillText(tag, Math.max(6, a - tw - 3), ly - 2);
+              d.fillText(tag, Math.max(6, Math.min(a - tw - 3, x1 + 4)), ly - 2);
               if (typeof d.textBaseline == "string") {
                 d.textBaseline = "middle";
               }
@@ -7647,9 +7682,15 @@
           srLines = srOn(r)
             ? (() => {
                 const lv = srFor(mtfSymbol, p, m.rows);
-                return lv.highs
-                  .map((x) => ({ price: x.price, kind: "R", tf: r, colour: srColour(r) }))
-                  .concat(lv.lows.map((x) => ({ price: x.price, kind: "S", tf: r, colour: srColour(r) })));
+                const at = m.rows[m.rows.length - 1] ? m.rows[m.rows.length - 1].c : NaN;
+                return srNearest(lv, at).map((x) => ({
+                  price: x.price,
+                  kind: x.price >= at ? "R" : "S",
+                  tf: r,
+                  colour: srColour(r),
+                  at: x.at, // the swing that made it: where its line starts
+                  conf: x.conf,
+                }));
               })()
             : [],
           _ =

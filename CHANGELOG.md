@@ -5,6 +5,24 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.48.0] - 2026-09-20
+
+### Fixed
+- **A chart could show six levels on one side and none on the other.** The rule keeps the last three swing
+  highs and the last three swing lows, which is right for a signal but wrong for a chart: in a market
+  making new lows, the three recent lows are overhead too, so everything was above the price and nothing
+  under it. Each chart now draws the **three nearest levels above the price and the three nearest below**,
+  taken from every swing in its history rather than only the newest few. A side with nothing on it shows
+  nothing, which is the honest answer when price is at a new extreme.
+- **A level was drawn across the whole chart, including candles from before it existed.** It now runs from
+  the swing that made it to the newest candle, growing as candles arrive, and its label follows the end of
+  its own line. The rule this comes from is explicit that a level counts only once its swing has formed.
+
+### Added
+- Tests that hold the rule to the same behaviour on **any instrument**, whatever it is priced in — a
+  5-decimal FX pair, a 3-decimal JPY cross, a four-figure rate and a near-zero minor: at most three levels
+  a side, every label agreeing with where price stands, no level drawn twice, and none missed entirely.
+
 ## [1.47.0] - 2026-09-20
 
 ### Added

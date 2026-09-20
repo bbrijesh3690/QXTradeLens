@@ -952,3 +952,88 @@ test("S/R: a level off the chart is flagged at the edge, not dropped (v1.47.0)",
     qx.close();
   }
 });
+
+test("S/R: levels are taken from both sides of the price, nearest first (v1.47.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // Swings up and down, ending between them: there are levels above AND below the last price.
+  const shape = [20,24,28,24,20,26,32,28,24,30,36,32,28,34,40,36,32,28,24,20,16,20,24,20,16,12,16,20,16,12,8,12,16,20,24,22];
+  const t0 = Math.floor(now / 60) * 60 - shape.length * 60;
+  const bars = shape.map((v, i) => ({ t: t0 + i * 60, o: 100 + v * 0.001, h: 100 + v * 0.001 + 0.0004, l: 100 + v * 0.001 - 0.0004, c: 100 + v * 0.001 }));
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_count: "120", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    const labels = [...new Set(printed(qx).filter((x) => /^[RS] - /.test(x)))];
+    assert.ok(labels.some((x) => x.startsWith("S - ")), "something under the price: " + labels.join(" "));
+    assert.ok(labels.some((x) => x.startsWith("R - ")), "and something over it: " + labels.join(" "));
+  } finally {
+    qx.close();
+  }
+});
+
+test("S/R: at a new low, the overhead levels are not multiplied to fill the gap (v1.47.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // A fall to a fresh low: every swing is overhead, so only the nearest few are worth drawing.
+  const shape = [20,24,28,24,20,26,32,28,24,30,36,32,28,34,40,36,32,28,24,20,16,20,24,20,16,12,16,20,16,12,8,12,16,12,8,4];
+  const t0 = Math.floor(now / 60) * 60 - shape.length * 60;
+  const bars = shape.map((v, i) => ({ t: t0 + i * 60, o: 100 + v * 0.001, h: 100 + v * 0.001 + 0.0004, l: 100 + v * 0.001 - 0.0004, c: 100 + v * 0.001 }));
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_count: "120", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    const labels = [...new Set(printed(qx).filter((x) => /^[RS] - /.test(x)))];
+    assert.ok(labels.length && labels.every((x) => x.startsWith("R - ")), "nothing below exists to draw: " + labels.join(" "));
+    assert.ok(labels.length <= 3, "and only the nearest three overhead, not all six: " + labels.join(" "));
+  } finally {
+    qx.close();
+  }
+});
+
+// Invariants that must hold for ANY instrument, whatever it is priced in: a 5-decimal FX pair, a
+// 3-decimal JPY cross, a four-figure exchange rate, a near-zero minor. Same rule, no tuning per asset.
+const SCALES = [
+  { name: "FX 5dp", base: 0.5613, tick: 0.00002 },
+  { name: "JPY 3dp", base: 158.147, tick: 0.004 },
+  { name: "four figures", base: 1327.05, tick: 0.35 },
+  { name: "near zero", base: 0.00734, tick: 0.0000008 },
+];
+
+for (const scale of SCALES) {
+  test("S/R: the rule holds on " + scale.name + " (v1.48.0)", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const shape = [20,24,28,24,20,26,32,28,24,30,36,32,28,34,40,36,32,28,24,20,16,20,24,20,16,12,16,20,16,12,8,12,16,20,24,22];
+    const t0 = Math.floor(now / 60) * 60 - shape.length * 60;
+    const bars = shape.map((v, i) => ({ t: t0 + i * 60, o: scale.base + v * scale.tick, h: scale.base + v * scale.tick + scale.tick, l: scale.base + v * scale.tick - scale.tick, c: scale.base + v * scale.tick }));
+    const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+    const store = quotexStore();
+    store.__candles = [];
+    const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_count: "120", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+    try {
+      await sleep(1400);
+      qx.ctxCalls.length = 0;
+      await sleep(1400);
+      const labels = [...new Set(printed(qx).filter((x) => /^[RS] - /.test(x)))];
+      assert.ok(labels.length, scale.name + ": levels were found at all");
+      const last = bars[bars.length - 1].c;
+      const R = labels.filter((x) => x.startsWith("R")), S = labels.filter((x) => x.startsWith("S"));
+      assert.ok(R.length <= 3, scale.name + ": at most three above - " + R.join(" "));
+      assert.ok(S.length <= 3, scale.name + ": at most three below - " + S.join(" "));
+      for (const l of labels) {
+        const price = parseFloat(l.slice(4));
+        assert.ok(isFinite(price), scale.name + ": a readable price in " + l);
+        assert.equal(price >= last, l.startsWith("R"), scale.name + ": " + l + " against last " + last);
+      }
+      assert.equal(new Set(labels.map((l) => l.slice(4))).size, labels.length, scale.name + ": no level drawn twice");
+    } finally {
+      qx.close();
+    }
+  });
+}
