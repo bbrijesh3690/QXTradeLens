@@ -8238,6 +8238,29 @@
             autofill: mtfAutofill ? mtfAutofillReason : "switched off in the popup",
             openTrades: openTradeCount(),
             charts: byId("__tcMTF") ? (byId("__tcMTF")._tcTfs || getMtfTfs()).join(",") : "hidden",
+            // v1.50.1: what each chart is actually showing - the zoom it is on, how many candles it has
+            // to draw from, where it has been dragged to, and whether it is at the live edge. Reported
+            // because "zoom and pan are not working" cannot be told apart from "this pair has less
+            // history" without it.
+            cells: (() => {
+              const panel = byId("__tcMTF");
+              if (!panel) {
+                return null;
+              }
+              const out = {};
+              panel.querySelectorAll(".tcMtfCell").forEach((cell) => {
+                const tf = cell.getAttribute("data-tf");
+                out[tf] = {
+                  zoom: cellCount(cell),
+                  have: cell._tcRows ? cell._tcRows.length : 0,
+                  drawn: cell._tcDrawn ? cell._tcDrawn.length : 0,
+                  pannedTo: cell._tcPanEndT || null,
+                  atLive: !cell._tcPanEndT,
+                  canPan: !cell._tcNoPan,
+                };
+              });
+              return out;
+            })(),
           }),
         );
       } catch (t) {}

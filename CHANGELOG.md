@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.50.1] - 2026-09-21
+
+### Added
+- **Each chart now reports its own zoom and pan state** in the diagnostics line: the zoom it is on, how
+  many candles it has to draw from, how many it is drawing, where it has been dragged to and whether it
+  is at the live edge. "Zoom and pan are not working" cannot be told apart from "this pair holds less
+  history" without it.
+- Five specs covering the cases that differ between assets: a chart with less history than the zoom asks
+  for, dragging back then zooming, dragging past the oldest candle, switching pair while panned, and the
+  level set following the zoom.
+
 ## [1.50.0] - 2026-09-21
 
 ### Fixed

@@ -1117,3 +1117,138 @@ test("S/R: a line runs from its own swing to the newest candle (v1.49.1)", async
     qx.close();
   }
 });
+
+// ── v1.50.1: zoom and pan across different assets ─────────────────────────────────
+
+// A pair's worth of 1m candles, with its own shape so two pairs are distinguishable.
+function pairBars(count, now, seed) {
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const v = 20 + 8 * Math.sin((i + seed) / 3.3) + 4 * Math.sin((i + seed) / 9);
+    out.push({ t: Math.floor(now / 60) * 60 - (count - i) * 60, o: 100 + v * 0.001, h: 100 + v * 0.001 + 0.0006, l: 100 + v * 0.001 - 0.0006, c: 100 + v * 0.001 });
+  }
+  return out;
+}
+const cellOf = (qx, tf) => qx.panelRoot().querySelector('.tcMtfCell[data-tf="' + tf + '"]');
+const dragBack = (qx, cell, px) => {
+  const canvas = cell.querySelector(".tcMtfCv");
+  canvas.setPointerCapture = () => {};
+  const send = (type, x) => {
+    const ev = new qx.window.Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(ev, "clientX", { value: x });
+    Object.defineProperty(ev, "target", { value: canvas });
+    Object.defineProperty(ev, "pointerId", { value: 1 });
+    canvas.dispatchEvent(ev);
+  };
+  send("pointerdown", 200);
+  send("pointermove", 200 + px);
+  send("pointerup", 200 + px);
+};
+
+test("zoom: a chart with less history than the zoom asks for still draws (v1.50.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // 70 candles on a 15m chart is what a real pair holds; the zoom asks for far more.
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@900": { candles: pairBars(70, now, 0), capturedAt: now, periodSeconds: 900 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({
+    storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_zoom: JSON.stringify({ "15m": 240 }), __tradeCalc_mtf_cache: JSON.stringify(cache) },
+    store,
+  });
+  try {
+    await sleep(1400);
+    const cell = cellOf(qx, "15m");
+    assert.ok(cell._tcDrawn && cell._tcDrawn.length, "the chart drew candles rather than going blank");
+    assert.ok(cell._tcDrawn.length <= 70, "it cannot draw more than it has: " + cell._tcDrawn.length);
+    assert.ok(!/visit once/.test(mtfCap(qx, "15m")), "and does not claim to be empty: " + mtfCap(qx, "15m"));
+  } finally {
+    qx.close();
+  }
+});
+
+test("pan: dragging back then zooming keeps the chart where it was put (v1.50.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: pairBars(400, now, 0), capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...oneCell, __tradeCalc_mtf_count: "40", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    const cell = cellOf(qx, "1m");
+    dragBack(qx, cell, 120);
+    await sleep(300);
+    const anchored = cell._tcPanEndT;
+    assert.ok(anchored, "the drag moved it back");
+    const shownBefore = cell._tcDrawn.length;
+    wheelOver(qx, "1m", 120); // zoom out while panned
+    await sleep(400);
+    assert.equal(cell._tcPanEndT, anchored, "still anchored at the same moment");
+    assert.ok(cell._tcDrawn.length >= shownBefore, "and showing at least as many candles: " + cell._tcDrawn.length);
+    assert.ok(cell._tcDrawn.length, "not blank");
+  } finally {
+    qx.close();
+  }
+});
+
+test("pan: dragging past the oldest candle stops there (v1.50.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const bars = pairBars(60, now, 0);
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...oneCell, __tradeCalc_mtf_count: "40", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    const cell = cellOf(qx, "1m");
+    dragBack(qx, cell, 4000); // far further back than the history goes
+    await sleep(400);
+    assert.ok(cell._tcDrawn && cell._tcDrawn.length, "the chart is still drawing: " + (cell._tcDrawn || []).length);
+    assert.ok(cell._tcPanEndT >= bars[0].t, "it stops at the oldest candle rather than running off the end");
+  } finally {
+    qx.close();
+  }
+});
+
+test("pan: switching pair returns the chart to live (v1.50.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const store = quotexStore();
+  store.__candles = makeCandles(300, 60);
+  const qx = await boot({ storage: { ...oneCell, __tradeCalc_mtf_count: "40" }, store });
+  try {
+    await sleep(1400);
+    const cell = cellOf(qx, "1m");
+    dragBack(qx, cell, 120);
+    await sleep(300);
+    assert.ok(cell._tcPanEndT, "panned back on the first pair");
+    setChart(store, "EURUSD_otc", 60, 300); // the trader switches pair
+    await sleep(1200);
+    assert.equal(cell._tcPanEndT, null, "the new pair opens at the live edge");
+    assert.ok(cell._tcDrawn && cell._tcDrawn.length, "and is drawing the new pair");
+  } finally {
+    qx.close();
+  }
+});
+
+test("zoom: the level set follows the zoom, on every asset (v1.50.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: pairBars(400, now, 0), capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...oneCell, __tradeCalc_mtf_count: "40", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    const tight = [...new Set(printed(qx).filter((x) => /^[RS] - /.test(x)))];
+    wheelOver(qx, "1m", 120);
+    wheelOver(qx, "1m", 120);
+    await sleep(1500);
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    const wide = [...new Set(printed(qx).filter((x) => /^[RS] - /.test(x)))];
+    assert.ok(tight.length && wide.length, "levels at both zooms: " + tight.length + " then " + wide.length);
+    assert.notDeepEqual(wide, tight, "a wider window sees different levels");
+  } finally {
+    qx.close();
+  }
+});
