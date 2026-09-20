@@ -137,7 +137,9 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
     // can read what the chart would have printed.
     setLineDash: () => ctxCalls.push("setLineDash"),
     measureText: (t) => ({ width: String(t).length * 5 }),
-    fillText: (t) => ctxCalls.push("fillText:" + t),
+    // The y is recorded separately so a spec can check that two labels never land on each other,
+    // while `printed()` keeps returning plain text (v1.49.0).
+    fillText: (t, x, y) => { ctxCalls.push("fillText:" + t); ctxCalls.push("textY:" + Math.round(y)); },
     lineWidth: 1, strokeStyle: "", fillStyle: "", globalAlpha: 1, font: "", textBaseline: "alphabetic",
   });
   // jsdom has no layout; give canvases a size so drawing isn't skipped.

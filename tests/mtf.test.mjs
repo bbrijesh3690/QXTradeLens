@@ -928,30 +928,7 @@ test("S/R: a level price has fallen through is resistance, not support (v1.46.1)
   }
 });
 
-test("S/R: a level off the chart is flagged at the edge, not dropped (v1.47.0)", async () => {
-  const now = Math.floor(Date.now() / 1000);
-  // A swing high early on, then a long fall: the level ends far above what the window shows.
-  // The swing high needs three bars either side, so it sits at index 4 rather than at the very start.
-  const shape = [80,85,90,95,99,95,90,85,80,75,70,65,60,55,50,45,40,35,30,25,20,18,16,15,14,13,12,11,10,9,8,7,6,5,4,3];
-  const t0 = Math.floor(now / 60) * 60 - shape.length * 60;
-  const bars = shape.map((v, i) => ({ t: t0 + i * 60, o: 100 + v * 0.001, h: 100 + v * 0.001 + 0.0004, l: 100 + v * 0.001 - 0.0004, c: 100 + v * 0.001 }));
-  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
-  const store = quotexStore();
-  store.__candles = [];
-  // A tight window, so the early swing high is far outside the visible price range.
-  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_count: "10", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
-  try {
-    await sleep(1400);
-    qx.ctxCalls.length = 0;
-    await sleep(1400);
-    const labels = printed(qx);
-    const edge = labels.filter((x) => /^[↑↓] [RS] - /.test(x));
-    assert.ok(edge.length, "an off-chart level is named at the edge: " + labels.slice(0, 8).join(" | "));
-    assert.ok(edge.some((x) => x.startsWith("↑")), "pointing up, where the level is: " + edge.join(" "));
-  } finally {
-    qx.close();
-  }
-});
+
 
 test("S/R: levels are taken from both sides of the price, nearest first (v1.47.1)", async () => {
   const now = Math.floor(Date.now() / 1000);
@@ -1037,3 +1014,68 @@ for (const scale of SCALES) {
     }
   });
 }
+
+// Where a level begins, and that two of them never print on top of each other.
+// Each fillText records its text then its y, so a level label can be paired with where it landed.
+const srLabelRows = (qx) => {
+  const out = [];
+  for (let i = 0; i < qx.ctxCalls.length - 1; i++) {
+    const t = qx.ctxCalls[i];
+    if (t.startsWith("fillText:") && /^[RS] - /.test(t.slice(9)) && qx.ctxCalls[i + 1].startsWith("textY:")) {
+      out.push(parseInt(qx.ctxCalls[i + 1].slice(6), 10));
+    }
+  }
+  return out;
+};
+
+test("S/R: every level starts at a candle on the chart (v1.49.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // Far more history than the window shows: the old code picked levels from all of it.
+  const bars = [];
+  for (let i = 0; i < 400; i++) { const v = 20 + 8 * Math.sin(i / 3) + 4 * Math.sin(i / 11); bars.push({ t: Math.floor(now/60)*60 - (400 - i) * 60, o: 100 + v * 0.001, h: 100 + v * 0.001 + 0.0006, l: 100 + v * 0.001 - 0.0006, c: 100 + v * 0.001 }); }
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...oneCell, __tradeCalc_mtf_count: "40", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    const cell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="1m"]');
+    const shown = cell._tcDrawn;
+    assert.ok(shown && shown.length, "the chart is drawing candles");
+    const firstVisible = shown[0].t, lastVisible = shown[shown.length - 1].t;
+    // Every level the chart draws must come from a swing inside that window.
+    const labels = [...new Set(printed(qx).filter((x) => /^[RS] - /.test(x)))].map((x) => parseFloat(x.slice(4)));
+    assert.ok(labels.length, "levels drawn");
+    for (const price of labels) {
+      const born = shown.some((b) => Math.abs(b.h - price) < 1e-5 || Math.abs(b.l - price) < 1e-5);
+      assert.ok(born, price + " comes from a candle between " + firstVisible + " and " + lastVisible);
+    }
+  } finally {
+    qx.close();
+  }
+});
+
+test("S/R: levels in the same zone are drawn once, and labels never overlap (v1.49.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // Three swing highs a hair apart - one zone, not three levels.
+  const shape = [10,14,18,14,10,14,18.02,14,10,14,18.04,14,10,12,14,12,10,8,6,8,10,12,14,12,10,8,6,4,6,8,10,12,10,8,6,7];
+  const t0 = Math.floor(now / 60) * 60 - shape.length * 60;
+  const bars = shape.map((v, i) => ({ t: t0 + i * 60, o: 100 + v * 0.001, h: 100 + v * 0.001 + 0.0006, l: 100 + v * 0.001 - 0.0006, c: 100 + v * 0.001 }));
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...oneCell, __tradeCalc_mtf_count: "120", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    const labels = [...new Set(printed(qx).filter((x) => /^[RS] - /.test(x)))].map((x) => parseFloat(x.slice(4)));
+    const zone = labels.filter((v) => v > 100.017 && v < 100.021);
+    assert.ok(zone.length <= 1, "three swings a hair apart are one level: " + zone.join(" "));
+    const rows = srLabelRows(qx).sort((a, b) => a - b);
+    const distinct = [...new Set(rows)].sort((x, y) => x - y);
+    for (let i = 1; i < distinct.length; i++) assert.ok(distinct[i] - distinct[i - 1] >= 8, "labels are not printed on each other: " + distinct.join(" "));
+  } finally {
+    qx.close();
+  }
+});

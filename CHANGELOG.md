@@ -5,6 +5,25 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.49.0] - 2026-09-20
+
+### Fixed
+- **Levels came from all the history behind a chart, not the part it is showing.** Picking the nearest by
+  price across 800 bars kept choosing swings from hours ago, whose line then had to begin at the left edge
+  — which is why the 1m and 5m looked like full-width lines while the 15m, covering far more time, did
+  not. Levels are now found in the candles the chart is drawing, so each one starts at a candle you can
+  see and grows with the newest, and zooming out brings older levels in by itself.
+- **Three lines through one zone.** Swings within half a typical bar range of each other described the
+  same level — seen live as 289.175 / 289.096 / 289.058 on a 5m chart — and drew three lines that crowded
+  out anything genuinely elsewhere. They are now merged, keeping the newest touch. The tolerance comes
+  from the chart own candles, so it scales with the instrument and with how much it is moving.
+- **Labels printed on top of each other** when two levels were close. Each label now steps down until it
+  has room.
+
+### Removed
+- The edge tags added in v1.47.0. With levels taken from the visible candles, a level cannot be off the
+  chart, so the code could never run.
+
 ## [1.48.0] - 2026-09-20
 
 ### Fixed

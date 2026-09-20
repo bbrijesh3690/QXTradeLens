@@ -6761,43 +6761,58 @@
     // What a chart shows: the SR_KEEP nearest levels above the price and the SR_KEEP nearest below it,
     // whichever kind of swing produced each one - a broken swing low overhead is resistance, and a broken
     // swing high underfoot is support. A side with nothing on it simply shows nothing.
-    function srNearest(levels, price) {
-      const all = levels.highs.concat(levels.lows);
+    // v1.49.0: how far apart two prices have to be to be different levels. Taken from the chart's own
+    // candles - half a typical bar's range - so it scales with the instrument and with how much it is
+    // moving, rather than from a percentage that would be wrong for something quiet or something wild.
+    function srTolerance(rows) {
+      if (!Array.isArray(rows) || !rows.length) {
+        return 0;
+      }
+      const spans = [];
+      for (let i = Math.max(0, rows.length - 60); i < rows.length; i++) {
+        const r = rows[i];
+        if (r && isFinite(r.h) && isFinite(r.l) && r.h >= r.l) {
+          spans.push(r.h - r.l);
+        }
+      }
+      if (!spans.length) {
+        return 0;
+      }
+      spans.sort((a, b) => a - b);
+      const median = spans[Math.floor(spans.length / 2)];
+      return median > 0 ? median * 0.5 : 0;
+    }
+    // Swings within a tolerance of each other describe ONE level, not several. Drawn as three lines they
+    // crowd out anything genuinely elsewhere and print their labels on top of each other - seen live with
+    // 289.175 / 289.096 / 289.058, which is one zone by any reading. The survivor is the newest, since
+    // that is the touch a chart is about.
+    function srMerge(levels, tol) {
+      if (!(tol > 0)) {
+        return levels.slice();
+      }
+      const sorted = levels.slice().sort((a, b) => a.price - b.price);
+      const out = [];
+      for (const level of sorted) {
+        const last = out[out.length - 1];
+        if (last && Math.abs(level.price - last.price) <= tol) {
+          if ((level.at || 0) > (last.at || 0)) {
+            out[out.length - 1] = level;
+          }
+          continue;
+        }
+        out.push(level);
+      }
+      return out;
+    }
+    function srNearest(levels, price, tol) {
+      const all = srMerge(levels.highs.concat(levels.lows), tol);
       if (!isFinite(price)) {
         return all.slice(0, 2 * SR_KEEP);
       }
       const byDistance = (a, b) => Math.abs(a.price - price) - Math.abs(b.price - price);
       const above = all.filter((l) => l.price >= price).sort(byDistance).slice(0, SR_KEEP);
       const below = all.filter((l) => l.price < price).sort(byDistance).slice(0, SR_KEEP);
-      // One price can be both a swing high and a swing low across timeframes; draw it once.
-      const seen = new Set();
-      return above.concat(below).filter((l) => {
-        const key = l.price.toFixed(8);
-        if (seen.has(key)) {
-          return false;
-        }
-        seen.add(key);
-        return true;
-      });
-    }
-    // Recomputed only when a new candle has closed on that timeframe.
-    const srCache = new Map();
-    function srFor(symbol, periodSec, rows) {
-      if (!symbol || !rows || rows.length < 2) {
-        return { highs: [], lows: [] };
-      }
-      const key = symbol + "@" + periodSec,
-        lastDone = rows[rows.length - 2].t,
-        hit = srCache.get(key);
-      if (hit && hit.lastT === lastDone) {
-        return hit.levels;
-      }
-      const levels = srLevels(rows, periodSec);
-      srCache.set(key, { lastT: lastDone, levels });
-      if (srCache.size > 24) {
-        srCache.delete(srCache.keys().next().value);
-      }
-      return levels;
+      return above.concat(below);
     }
     function priceDecimals(candles) {
       // The string form of a JS number carries exactly the digits it needs: 0.57192 -> 5, 190.8 -> 1.
@@ -6938,39 +6953,15 @@
           // through is resistance from underneath, and the research's own example is a broken high that
           // later held as support. Labelling by origin put "S" above price, which reads as a mistake.
           const ref = e[e.length - 1] && isFinite(e[e.length - 1].c) ? e[e.length - 1].c : NaN;
-          let aboveN = 0,
-            belowN = 0;
+          // v1.49.0: where labels have already been printed, so a second one never lands on the first.
+          const usedRows = [];
           for (const line of srLines) {
             if (!isFinite(line.price)) {
               continue;
             }
-            // v1.47.0: a level outside what this chart is showing used to be dropped, so finding it meant
-            // zooming out until it appeared. A LINE at the edge would be a lie about where it is, but a
-            // tag at the edge is not: it names the level and points the way, and the line returns as soon
-            // as the level is in range.
+            // A level is taken from the candles on screen, so its price is always inside their range;
+            // this guard only catches a level left over from a window that has since moved (v1.49.0).
             if (line.price > p || line.price < u) {
-              if (typeof d.fillText != "function") {
-                continue;
-              }
-              const above = line.price > p,
-                slot = above ? aboveN++ : belowN++;
-              if (slot > 1) {
-                continue; // two a side is enough to say which way to look
-              }
-              const size = Math.max(7, Math.min(10, Math.round(0.11 * i))),
-                tag = (above ? "↑ " : "↓ ") + (line.price >= (isFinite(ref) ? ref : line.price) ? "R" : "S") + " - " + line.price.toFixed(priceDecimals(e));
-              d.font = "700 " + size + "px " + "'DM Sans', system-ui, sans-serif";
-              const tw = typeof d.measureText == "function" ? d.measureText(tag).width : 5.5 * tag.length;
-              d.fillStyle = line.colour;
-              d.globalAlpha = 0.6;
-              if (typeof d.textBaseline == "string") {
-                d.textBaseline = above ? "top" : "bottom";
-              }
-              d.fillText(tag, Math.max(6, a - tw - 3), above ? 3 + slot * (size + 2) : i - 3 - slot * (size + 2));
-              if (typeof d.textBaseline == "string") {
-                d.textBaseline = "middle";
-              }
-              d.globalAlpha = 1;
               continue;
             }
             const role = !isFinite(ref) ? line.kind : line.price >= ref ? "R" : "S";
@@ -7012,7 +7003,15 @@
               if (typeof d.textBaseline == "string") {
                 d.textBaseline = "bottom";
               }
-              d.fillText(tag, Math.max(6, Math.min(a - tw - 3, x1 + 4)), ly - 2);
+              let labelY = ly - 2;
+              for (let guard = 0; guard < 8; guard++) {
+                if (!usedRows.some((used) => Math.abs(used - labelY) < size + 1)) {
+                  break;
+                }
+                labelY += size + 2;
+              }
+              usedRows.push(labelY);
+              d.fillText(tag, Math.max(6, Math.min(a - tw - 3, x1 + 4)), Math.max(size, Math.min(i - 1, labelY)));
               if (typeof d.textBaseline == "string") {
                 d.textBaseline = "middle";
               }
@@ -7679,11 +7678,17 @@
         const g = f.candles[f.candles.length - 1],
           barLeft = s._tcPanEndT ? null : barTimeLeft(p),
           // v1.45.0: this chart's own levels. Each timeframe shows what it can see.
+          // v1.49.0: levels come from the candles THIS CHART IS SHOWING, not from all the history behind
+          // it. Picking by nearest price across 800 bars kept choosing swings from hours ago, whose line
+          // then had to start at the left edge - which is why the 1m and 5m looked like full-width lines
+          // while the 15m, covering far more time, did not. From the visible window, every level begins
+          // at a candle you can see, and zooming out brings older levels in by itself.
           srLines = srOn(r)
             ? (() => {
-                const lv = srFor(mtfSymbol, p, m.rows);
-                const at = m.rows[m.rows.length - 1] ? m.rows[m.rows.length - 1].c : NaN;
-                return srNearest(lv, at).map((x) => ({
+                const win = f.candles;
+                const lv = srLevels(win, p);
+                const at = win.length ? win[win.length - 1].c : NaN;
+                return srNearest(lv, at, srTolerance(win)).map((x) => ({
                   price: x.price,
                   kind: x.price >= at ? "R" : "S",
                   tf: r,
@@ -7879,7 +7884,6 @@
           const tf = cell && cell.getAttribute("data-tf");
           if (tf) {
             setSrShown(tf, !srOn(tf));
-            srCache.clear();
             cell._tcSig = "";
             renderMtf(ev.currentTarget);
           }
