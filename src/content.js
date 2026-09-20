@@ -6877,6 +6877,31 @@
         }
       });
     }
+    // v1.31.1: "visit once" on its own is a dead end — it does not say whether something is coming.
+    // The caption carries the short version of why the auto-fill is holding off, so the answer is on the
+    // chart instead of behind a popup. Long reasons are shortened; the popup's health check has them in full.
+    function autofillHint() {
+      const r = mtfAutofillReason || "";
+      if (/^filling/.test(r)) {
+        return " · filling…";
+      }
+      if (/trade is open/.test(r)) {
+        return " · trade open";
+      }
+      if (/switched off/.test(r)) {
+        return "";
+      }
+      if (/came back empty/.test(r)) {
+        return " · retrying";
+      }
+      if (/filled this pair/.test(r)) {
+        return " · ↻ to retry";
+      }
+      if (/background/.test(r) || /hidden/.test(r)) {
+        return "";
+      }
+      return "";
+    }
     function renderMtf(t) {
       ensureMtfSymbol();
       const e = t._tcTfs || getMtfTfs(),
@@ -6914,8 +6939,9 @@
           if (u) {
             u.textContent = "";
           }
-          if (d && d.textContent !== "visit once") {
-            d.textContent = "visit once";
+          const blankCap = "visit once" + autofillHint();
+          if (d && d.textContent !== blankCap) {
+            d.textContent = blankCap;
           }
           continue;
         }

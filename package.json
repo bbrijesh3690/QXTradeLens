@@ -1,6 +1,6 @@
 {
   "name": "qxtradelens",
-  "version": "1.31.0",
+  "version": "1.31.1",
   "private": true,
   "description": "QXTradeLens Controller Chrome extension - source and build tooling",
   "type": "module",

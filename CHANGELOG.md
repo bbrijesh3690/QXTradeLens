@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.31.1] - 2026-09-20
+
+### Changed
+- **A blank chart now says why it is blank.** `visit once` on its own is a dead end: it never said whether
+  anything was coming. The caption carries the short reason the auto-fill is holding off — `visit once ·
+  trade open`, `· filling…`, `· retrying`, `· ↻ to retry` — so the answer is on the chart you are already
+  looking at rather than behind the popup. The health check still has the full wording.
+
 ## [1.31.0] - 2026-09-20
 
 ### Added

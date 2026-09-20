@@ -1415,6 +1415,18 @@ test("health: the report says which build the tab is running (v1.31.0)", async (
   }
 });
 
+test("MTF: a blank chart says why it is still blank (v1.31.1)", async () => {
+  const store = quotexStore({ opened: [deal("a")] }); // a trade is running, so no walk
+  store.__candles = [];
+  const qx = await boot({ storage: bigTfStorage, store });
+  try {
+    await sleep(3600);
+    assert.match(mtfCap(qx, "5m"), /visit once . trade open/, mtfCap(qx, "5m"));
+  } finally {
+    qx.close();
+  }
+});
+
 // ── v1.28.0: how the trade click is produced ───────────────────────────────────────────────────────
 
 const hkStorage = { ...slStorage(10000), __tradeCalc_hk_updown: "true" };
