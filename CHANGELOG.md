@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.51.0] - 2026-09-21
+
+### Fixed
+- **The bar countdown printed through a level label.** A level sitting within a pixel or two of the price
+  shares its row with the price pill and the countdown — seen live as `03:47` drawn straight over a
+  label. Level labels now treat that row as taken and step clear of it, on every chart.
+- **`201/240 bars · ↻ to retry` on a chart that has everything it can get.** Once the fill has run, the
+  platform has given what it holds for that timeframe; suggesting another walk sends you after history
+  that does not exist. A short chart now states its count and leaves it there.
+
 ## [1.50.1] - 2026-09-21
 
 ### Added

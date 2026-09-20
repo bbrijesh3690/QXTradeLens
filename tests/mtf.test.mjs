@@ -1252,3 +1252,41 @@ test("zoom: the level set follows the zoom, on every asset (v1.50.1)", async () 
     qx.close();
   }
 });
+
+test("S/R: a level label never lands on the price or countdown row (v1.51.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // A swing high a hair above the final close: on an 88px cell that level sits within two pixels of
+  // the price line, exactly where the price pill and the bar countdown are drawn.
+  const shape = [10,14,18,14,10,14,30,14,10,14,18,14,10,14,18,14,12,16,20,16,12,16,20,16,12,16,20,16,14,18,20,18,16,18,20,20];
+  const t0 = Math.floor(now / 60) * 60 - shape.length * 60;
+  const bars = shape.map((v, i) => ({ t: t0 + i * 60, o: 100 + v * 0.001, h: 100 + v * 0.001 + (i === 30 ? 0.00006 : 0.0004), l: 100 + v * 0.001 - 0.0004, c: 100 + v * 0.001 }));
+  bars[bars.length - 1].c = bars[30].h - 0.00002; // price finishing right on that level
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...oneCell, __tradeCalc_mtf_count: "120", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    // Pair every printed text with the y recorded right after it.
+    const printedAt = [];
+    for (let i = 0; i < qx.ctxCalls.length - 1; i++) {
+      if (qx.ctxCalls[i].startsWith("fillText:") && qx.ctxCalls[i + 1].startsWith("textY:")) {
+        printedAt.push({ text: qx.ctxCalls[i].slice(9), y: parseInt(qx.ctxCalls[i + 1].slice(6), 10) });
+      }
+    }
+    const levels = printedAt.filter((x) => /^[RS] - /.test(x.text));
+    const priceRow = printedAt.filter((x) => /^[0-9]+[.][0-9]+$/.test(x.text));
+    const clocks = printedAt.filter((x) => /^[0-9][0-9]:[0-9][0-9]$/.test(x.text));
+    assert.ok(levels.length, "levels were labelled");
+    assert.ok(priceRow.length, "the price was labelled");
+    for (const l of levels) {
+      for (const other of priceRow.concat(clocks)) {
+        assert.ok(Math.abs(l.y - other.y) >= 7, l.text + " at " + l.y + " clashes with " + other.text + " at " + other.y);
+      }
+    }
+  } finally {
+    qx.close();
+  }
+});

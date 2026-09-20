@@ -6960,7 +6960,12 @@
           // later held as support. Labelling by origin put "S" above price, which reads as a mistake.
           const ref = e[e.length - 1] && isFinite(e[e.length - 1].c) ? e[e.length - 1].c : NaN;
           // v1.49.0: where labels have already been printed, so a second one never lands on the first.
+          // v1.51.0: seeded with the last-price row, because the price pill and the bar countdown both
+          // sit on it - seen live with 03:47 printed straight through a level's label.
           const usedRows = [];
+          if (isFinite(ref)) {
+            usedRows.push(Math.round(v(ref)) - 2);
+          }
           for (const line of srLines) {
             if (!isFinite(line.price)) {
               continue;
@@ -7535,7 +7540,9 @@
         return " · retrying";
       }
       if (/filled this pair/.test(r)) {
-        return " · ↻ to retry";
+        // v1.51.0: the walk has already been and fetched what the platform holds. Telling you to press
+        // it again sends you after history that does not exist - the count alone is the honest answer.
+        return "";
       }
       if (/background/.test(r) || /hidden/.test(r)) {
         return "";
