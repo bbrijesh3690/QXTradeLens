@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.39.0] - 2026-09-20
+
+### Added
+- **A chart is marked when it turns.** When the direction of a chart last closed bars reverses, an arrow
+  appears in that cell header for two minutes, coloured up or down, with the reason on hover. Direction is
+  read from CLOSED bars only — the newest bar is still moving and would flip back and forth on its own —
+  and a turn is remembered per pair and timeframe, so coming back to a pair does not announce one that
+  happened while you were away.
+- Nothing is marked on a chart that is **panned back**, has **gaps**, or is **too short to have a**
+  **direction**: no signal is taken from data the panel has already admitted is incomplete.
+- Two settings in the popup: **Trend Flip Marks** (on by default) and **Bars Per Trend** (2–10, default 3).
+  Fewer bars reacts sooner and calls more turns; more is steadier.
+
 ## [1.38.1] - 2026-09-20
 
 ### Fixed

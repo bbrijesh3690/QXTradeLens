@@ -426,3 +426,87 @@ test("MTF: one noisy close does not stretch the price label (v1.38.1)", async ()
     qx.close();
   }
 });
+
+// ── v1.39.0: marking a chart when it turns ────────────────────────────────────────
+
+const flipMark = (qx, tf) => qx.panelRoot().querySelector('.tcMtfCell[data-tf="' + tf + '"] .tcMtfFlip').textContent;
+// A 1m feed in the platform's shape, rising then falling.
+const feed = (count, from, step, startT = 1789830000) => {
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const o = from + i * step;
+    out.push({ time: startT + i * 60, enterValue: o, maxValue: o + 0.05, minValue: o - 0.05, exitValue: o + step });
+  }
+  return out;
+};
+
+test("MTF: a chart that turns is marked, and a steady one is not (v1.39.0)", async () => {
+  const store = quotexStore();
+  store.__candles = feed(40, 100, 0.05); // rising
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1200);
+    assert.equal(flipMark(qx, "1m"), "", "the first look records the direction, it does not announce one");
+    // The same feed, carrying on downwards.
+    const falling = feed(40, 100, 0.05).concat(
+      feed(6, 101.95, -0.08, 1789830000 + 40 * 60).map((c) => c),
+    );
+    store.__plot.pointsManager.candles = falling;
+    await sleep(900);
+    assert.equal(flipMark(qx, "1m"), "▼", "it turned down");
+    const cell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="1m"] .tcMtfFlip');
+    assert.match(cell.title, /turned down over its last 3 closed bars/, cell.title);
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: the mark can be switched off (v1.39.0)", async () => {
+  const store = quotexStore();
+  store.__candles = feed(40, 100, 0.05);
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_flip: "0" }, store });
+  try {
+    await sleep(1200);
+    store.__plot.pointsManager.candles = feed(40, 100, 0.05).concat(feed(6, 101.95, -0.08, 1789830000 + 40 * 60));
+    await sleep(900);
+    assert.equal(flipMark(qx, "1m"), "", "switched off: nothing is marked");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: a chart with gaps in it is never marked (v1.39.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // A 1m history that turns, but with a stretch nobody was watching.
+  const bars = rows(60, 60, Math.floor(now / 60) * 60).map((b, i) => ({
+    ...b,
+    c: i < 50 ? 100 + i * 0.05 : 102.5 - (i - 50) * 0.08,
+  }));
+  for (let i = 20; i < 30; i++) bars[i].part = true;
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60, derived: true } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1200);
+    assert.match(mtfCap(qx, "15m"), /gaps/, "the 15m chart has holes: " + mtfCap(qx, "15m"));
+    assert.equal(flipMark(qx, "15m"), "", "so no signal is taken from it");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: the bars per trend is a setting, clamped (v1.39.0)", async () => {
+  const qx = await boot({ storage: bigTfStorage });
+  try {
+    assert.equal(qx.askPanel({ type: "GET_STATE" }).mtfFlipBars, 3, "default");
+    await qx.sendToPanel({ type: "SET_MTF", flipBars: 99 });
+    assert.equal(qx.askPanel({ type: "GET_STATE" }).mtfFlipBars, 10, "clamped at the top");
+    await qx.sendToPanel({ type: "SET_MTF", flipBars: 1 });
+    assert.equal(qx.askPanel({ type: "GET_STATE" }).mtfFlipBars, 2, "and at the bottom");
+    await qx.sendToPanel({ type: "SET_MTF", flip: false });
+    assert.equal(qx.askPanel({ type: "GET_STATE" }).mtfFlip, false, "and the switch carries");
+  } finally {
+    qx.close();
+  }
+});

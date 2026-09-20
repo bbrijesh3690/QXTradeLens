@@ -651,6 +651,17 @@
         </label>
       </div>
       <div class="ctrl-row">
+        <span class="ctrl-label" title="Marks a chart when it turns: the arrow appears for two minutes when the direction of its last closed bars reverses. Nothing is marked on a chart that is panned back, has gaps, or is too short to have a direction.">Trend Flip Marks</span>
+        <label class="switch">
+          <input type="checkbox" id="mtfFlipToggle" checked>
+          <span class="sw-track"></span>
+        </label>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label" title="How many closed bars decide which way a chart is pointing. Fewer reacts sooner and calls more turns; more is steadier. 2 to 10.">Bars Per Trend</span>
+        <span><input type="number" id="mtfFlipBarsInput" class="text-input" style="width:52px;text-align:right;" min="2" max="10" step="1" value="3"></span>
+      </div>
+      <div class="ctrl-row">
         <span class="ctrl-label" title="How long a pair has to stay on screen before its charts are filled. 0 fills the moment you open it. Raise it if you would rather it held off while you look through pairs. 0 to 120 seconds.">Wait Before Filling</span>
         <span><input type="number" id="mtfSettleInput" class="text-input" style="width:52px;text-align:right;" min="0" max="120" step="1" value="0"> s</span>
       </div>

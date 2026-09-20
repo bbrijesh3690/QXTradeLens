@@ -31,6 +31,8 @@ const mtfCountSlider = document.getElementById('mtfCountSlider');
 const mtfCountVal = document.getElementById('mtfCountVal');
 const mtfAutofillToggle = document.getElementById('mtfAutofillToggle');
 const mtfSettleInput = document.getElementById('mtfSettleInput');
+const mtfFlipToggle = document.getElementById('mtfFlipToggle');
+const mtfFlipBarsInput = document.getElementById('mtfFlipBarsInput');
 const chipPosSelect = document.getElementById('chipPosSelect');
 const maxTradesSelect = document.getElementById('maxTradesSelect');
 const relabelDemoToggle = document.getElementById('relabelDemoToggle');
@@ -57,7 +59,7 @@ function updateSheetStatus(url) {
 
 async function init() {
   // Load sheet URL and SL toggle from storage directly — doesn't need an active tab
-  const stored = await chrome.storage.sync.get(['sheetUrl', '__tradeCalc_sl_enabled', '__tradeCalc_sl_post_tp_gap', '__tradeCalc_sys_lock_disabled', '__tradeCalc_chip_pos', '__tradeCalc_max_trades', '__tradeCalc_max_two', 'sectionVisibility', '__tradeCalc_hk_updown', '__tradeCalc_hk_leftright', '__tradeCalc_marquee_msg', '__tradeCalc_marquee_speed', '__tradeCalc_mtf_tfs', '__tradeCalc_mtf_count', '__tradeCalc_mtf_autofill', '__tradeCalc_mtf_settle', '__tradeCalc_relabel_demo', '__tradeCalc_entry_tags', '__tradeCalc_hk_focus_mode']);
+  const stored = await chrome.storage.sync.get(['sheetUrl', '__tradeCalc_sl_enabled', '__tradeCalc_sl_post_tp_gap', '__tradeCalc_sys_lock_disabled', '__tradeCalc_chip_pos', '__tradeCalc_max_trades', '__tradeCalc_max_two', 'sectionVisibility', '__tradeCalc_hk_updown', '__tradeCalc_hk_leftright', '__tradeCalc_marquee_msg', '__tradeCalc_marquee_speed', '__tradeCalc_mtf_tfs', '__tradeCalc_mtf_count', '__tradeCalc_mtf_autofill', '__tradeCalc_mtf_settle', '__tradeCalc_mtf_flip', '__tradeCalc_mtf_flip_bars', '__tradeCalc_relabel_demo', '__tradeCalc_entry_tags', '__tradeCalc_hk_focus_mode']);
   const savedUrl = stored.sheetUrl || '';
   sheetUrlInput.value = savedUrl;
   updateSheetStatus(savedUrl);
@@ -100,6 +102,8 @@ async function init() {
     // On by default, so only an explicit false unticks it.
     if (mtfAutofillToggle) mtfAutofillToggle.checked = stored['__tradeCalc_mtf_autofill'] !== false;
     if (mtfSettleInput) mtfSettleInput.value = clampSettle(stored['__tradeCalc_mtf_settle']);
+    if (mtfFlipToggle) mtfFlipToggle.checked = stored['__tradeCalc_mtf_flip'] !== false;
+    if (mtfFlipBarsInput) mtfFlipBarsInput.value = clampFlipBars(stored['__tradeCalc_mtf_flip_bars']);
   }
   if (stored.sectionVisibility && Array.isArray(stored.sectionVisibility)) {
     updateUI(undefined, undefined, stored.sectionVisibility, undefined);
@@ -127,6 +131,8 @@ async function init() {
       if (state.mtfCount !== undefined) { if (mtfCountSlider) mtfCountSlider.value = state.mtfCount; if (mtfCountVal) mtfCountVal.textContent = state.mtfCount; }
       if (state.mtfAutofill !== undefined && mtfAutofillToggle) mtfAutofillToggle.checked = state.mtfAutofill === true;
       if (state.mtfSettle !== undefined && mtfSettleInput) mtfSettleInput.value = clampSettle(state.mtfSettle);
+      if (state.mtfFlip !== undefined && mtfFlipToggle) mtfFlipToggle.checked = state.mtfFlip === true;
+      if (state.mtfFlipBars !== undefined && mtfFlipBarsInput) mtfFlipBarsInput.value = clampFlipBars(state.mtfFlipBars);
       if (state.relabelDemo !== undefined && relabelDemoToggle) relabelDemoToggle.checked = state.relabelDemo !== false;
       if (state.entryTags !== undefined && entryTagsToggle) entryTagsToggle.checked = state.entryTags !== false;
     }
@@ -335,6 +341,10 @@ if (mtfCountSlider) {
     broadcastMessage({ type: 'SET_MTF', count: n });
   });
 }
+function clampFlipBars(v) {
+  const n = parseInt(v, 10);
+  return isNaN(n) ? 3 : Math.min(10, Math.max(2, n));
+}
 function clampSettle(v) {
   const n = parseInt(v, 10);
   return isNaN(n) ? 0 : Math.min(120, Math.max(0, n));
@@ -344,6 +354,22 @@ if (mtfAutofillToggle) {
     chrome.storage.sync.set({ '__tradeCalc_mtf_autofill': mtfAutofillToggle.checked });
     broadcastMessage({ type: 'SET_MTF', autofill: mtfAutofillToggle.checked });
   });
+}
+if (mtfFlipToggle) {
+  mtfFlipToggle.addEventListener('change', () => {
+    chrome.storage.sync.set({ '__tradeCalc_mtf_flip': mtfFlipToggle.checked });
+    broadcastMessage({ type: 'SET_MTF', flip: mtfFlipToggle.checked });
+  });
+}
+if (mtfFlipBarsInput) {
+  const saveFlipBars = () => {
+    const n = clampFlipBars(mtfFlipBarsInput.value);
+    mtfFlipBarsInput.value = n;
+    chrome.storage.sync.set({ '__tradeCalc_mtf_flip_bars': n });
+    broadcastMessage({ type: 'SET_MTF', flipBars: n });
+  };
+  mtfFlipBarsInput.addEventListener('change', saveFlipBars);
+  mtfFlipBarsInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveFlipBars(); });
 }
 if (mtfSettleInput) {
   const saveSettle = () => {
