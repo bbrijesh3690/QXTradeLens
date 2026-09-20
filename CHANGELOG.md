@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.46.0] - 2026-09-20
+
+### Removed
+- **The S/R list on the platform chart.** It was a second place to look and a second set of numbers to
+  keep in step; the levels on the mini charts are the feature. The rule, the per-timeframe colours and
+  the switch on each chart all stay.
+
+### Changed
+- **A level is labelled with its side and price, at the right**: `R - 0.56330`, `S - 0.56164`. The
+  timeframe is not repeated — the chart it is drawn on already says that — and the label sits on the
+  right where the rest of this panel puts prices.
+
 ## [1.45.1] - 2026-09-20
 
 ### Changed

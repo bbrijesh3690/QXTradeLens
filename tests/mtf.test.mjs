@@ -837,7 +837,9 @@ function swingSeries(now) {
   return shape.map((v, i) => ({ t: t0 + i * 60, o: 100 + v * 0.001, h: 100 + v * 0.001 + 0.0005, l: 100 + v * 0.001 - 0.0005, c: 100 + v * 0.001 }));
 }
 
-test("S/R: levels are the frozen rule - strength 3, last 3 a side, completed candles (v1.45.0)", async () => {
+const srCellStrokes = (qx, tf) => qx.ctxCalls.filter((c) => c === "stroke:" + ({ "1m": "#5aa9ff", "5m": "#ffb454", "15m": "#c792ea" })[tf]).length;
+
+test("S/R: the levels are drawn on each chart, in that timeframe colour (v1.45.0)", async () => {
   const now = Math.floor(Date.now() / 1000);
   const bars = swingSeries(now);
   const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
@@ -846,16 +848,15 @@ test("S/R: levels are the frozen rule - strength 3, last 3 a side, completed can
   const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
   try {
     await sleep(1400);
-    const rail = qx.window.document.querySelector('#graph > div[id^="x"]');
-    const text = [...qx.window.document.querySelectorAll('#graph > div')].map(d=>d.textContent||"").join(" ");
-    assert.ok(text.includes("S/R"), "the rail is on the chart: " + text.slice(0,120));
-    assert.match(text, /1m (R|S)/, "with a level from the 1m chart: " + text.slice(0,160));
+    qx.ctxCalls.length = 0;
+    await sleep(1400); // one redraw
+    assert.ok(srCellStrokes(qx, "1m") > 0, "the 1m chart drew its levels");
   } finally {
     qx.close();
   }
 });
 
-test("S/R: a timeframe is switched off from its own chart in the panel (v1.45.1)", async () => {
+test("S/R: a timeframe is switched off from its own chart (v1.45.1)", async () => {
   const now = Math.floor(Date.now() / 1000);
   const bars = swingSeries(now);
   const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
@@ -864,16 +865,37 @@ test("S/R: a timeframe is switched off from its own chart in the panel (v1.45.1)
   const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
   try {
     await sleep(1400);
-    // v1.45.1: the switch is on the 1m chart in the panel, not in a box of its own on the page.
     const chip = qx.panelRoot().querySelector('.tcMtfCell[data-tf="1m"] [data-mtf="sr"]');
-    assert.ok(chip, "a 1m switch to click");
-    const before = [...qx.window.document.querySelectorAll('#graph > div')].map(d=>d.textContent||"").join(" ");
-    assert.match(before, /1m (R|S)/, "levels listed first");
+    assert.ok(chip, "a switch on the 1m chart");
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    assert.ok(srCellStrokes(qx, "1m") > 0, "levels drawn first");
     chip.click();
     await sleep(400);
-    const after = [...qx.window.document.querySelectorAll('#graph > div')].map(d=>d.textContent||"").join(" ");
-    assert.ok(!/1m (R|S)/.test(after), "and gone after one click: " + after.slice(0,160));
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    assert.equal(srCellStrokes(qx, "1m"), 0, "and gone after one click");
     assert.equal(JSON.parse(pref(qx, "__tradeCalc_sr_tfs"))["1m"], false, "the choice is remembered");
+  } finally {
+    qx.close();
+  }
+});
+
+test("S/R: a level is labelled with its side and price, not its timeframe (v1.46.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const bars = swingSeries(now);
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    const labels = printed(qx).filter((t) => /^[RS] - /.test(t));
+    assert.ok(labels.length, "levels are labelled: " + printed(qx).slice(0, 6).join(" | "));
+    assert.ok(labels.every((l) => /^[RS] - [0-9]+.[0-9]+$/.test(l)), "side and price only: " + labels.join(" "));
+    assert.ok(!labels.some((l) => /1m|5m|15m/.test(l)), "no timeframe repeated on the line: " + labels.join(" "));
   } finally {
     qx.close();
   }

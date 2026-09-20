@@ -167,10 +167,6 @@
       if (m) {
         m.remove();
       }
-      const srRail = document.getElementById(ids && ids.tcSrRail ? ids.tcSrRail : "");
-      if (srRail) {
-        srRail.remove();
-      }
       const h = byId("__tcMTF");
       if (h) {
         h.remove();
@@ -806,7 +802,6 @@
       "tcProjChip",
       "tcPlacedBal",
       "tcMonitored",
-      "tcSrRail",
     ].forEach((t, e) => {
       ids[t] = "x" + idToken + (e + 1).toString(36);
     });
@@ -5987,131 +5982,6 @@
         return f;
       }
     }
-    // v1.45.0: the levels, on the platform's own chart.
-    //
-    // They are listed rather than drawn across it, and that is a limit rather than a preference. The
-    // chart is a single WebGL canvas; its vertical scale is view state the page keeps to itself, and
-    // measuring against its own axis shows the visible span is NOT `maxValue - minValue` - the price
-    // axis zooms and pans on its own. A line placed from the readable numbers lands in the wrong place,
-    // and reading the real transform would mean calling obfuscated internals that break on their next
-    // release. So each level is given with its distance from price instead, which needs no mapping and
-    // cannot silently drift. The mini charts DO draw them, because there the scale is ours.
-    function srRailRows() {
-      const tfs = getMtfTfs(),
-        state = readQuotexState(),
-        price = state && state.quotes && mtfSymbol ? state.quotes[mtfSymbol] : NaN,
-        nowSec = Math.floor(Date.now() / 1000),
-        out = [];
-      if (!mtfSymbol) {
-        return { price: NaN, rows: [], tfs };
-      }
-      // v1.45.0: the live quote is the reference, but a chart's own newest close will do when the quote
-      // map is not there - the distances stay right and the rail does not go blank over a missing field.
-      let ref = price;
-      if (!isFinite(ref)) {
-        for (const tf of tfs.slice().sort((x, y) => tfSeconds(x) - tfSeconds(y))) {
-          const sec = tfSeconds(tf);
-          const m = sec > 0 ? resolveMtfRows(mtfEntries, mtfSymbol, sec, nowSec, MTF_STALE_SEC) : null;
-          if (m && m.rows.length) {
-            ref = m.rows[m.rows.length - 1].c;
-            break;
-          }
-        }
-      }
-      if (!isFinite(ref)) {
-        return { price: NaN, rows: [], tfs };
-      }
-      for (const tf of tfs) {
-        if (!srOn(tf)) {
-          continue;
-        }
-        const sec = tfSeconds(tf);
-        const m = sec > 0 ? resolveMtfRows(mtfEntries, mtfSymbol, sec, nowSec, MTF_STALE_SEC) : null;
-        if (!m || !m.rows.length) {
-          continue;
-        }
-        const lv = srFor(mtfSymbol, sec, m.rows);
-        for (const h of lv.highs) {
-          out.push({ tf, kind: "R", price: h.price, away: ((h.price - ref) / ref) * 100 });
-        }
-        for (const l of lv.lows) {
-          out.push({ tf, kind: "S", price: l.price, away: ((l.price - ref) / ref) * 100 });
-        }
-      }
-      out.sort((a, b) => Math.abs(a.away) - Math.abs(b.away));
-      return { price: ref, rows: out.slice(0, 6), tfs };
-    }
-    function renderSrRail() {
-      const graph = document.getElementById("graph");
-      if (!graph) {
-        return;
-      }
-      let rail = byId(ids.tcSrRail);
-      const { price, rows, tfs } = srRailRows();
-      const anyOn = tfs.some((tf) => srOn(tf));
-      if (!anyOn && !rows.length && !rail) {
-        return;
-      }
-      if (!rail) {
-        rail = document.createElement("div");
-        rail.id = ids.tcSrRail;
-        rail.style.cssText =
-          "position:absolute; left:10px; top:96px; z-index:28; font-family:inherit; font-size:11px; " +
-          "background:oklch(16% 0.02 257 / 0.88); border:1px solid oklch(100% 0 0 / 0.1); border-radius:8px; " +
-          "padding:5px 7px; min-width:118px; user-select:none;";
-        applyTokenVars(rail);
-        if (getComputedStyle(graph).position === "static") {
-          graph.style.position = "relative";
-          graph._tcWasStatic = true;
-        }
-        graph.appendChild(rail);
-      }
-      const sig = rows.map((r) => r.tf + r.kind + r.price.toFixed(6)).join(",") + "|" + (anyOn ? "1" : "0");
-      if (!anyOn) {
-        if (rail._tcSig !== "hidden") {
-          rail._tcSig = "hidden";
-          rail.style.display = "none";
-        }
-        return;
-      }
-      if (rail.style.display === "none") {
-        rail.style.display = "";
-      }
-      if (rail._tcSig === sig) {
-        return;
-      }
-      rail._tcSig = sig;
-      const dp = isFinite(price) ? Math.min(6, Math.max(2, String(Number(price.toPrecision(12))).split(".")[1] ? String(Number(price.toPrecision(12))).split(".")[1].length : 2)) : 5;
-
-      const list = rows.length
-        ? rows
-            .map(
-              (r) =>
-                '<div style="display:flex; gap:6px; align-items:baseline; font-variant-numeric:tabular-nums; margin-top:2px;">' +
-                '<span style="color:' +
-                srColour(r.tf) +
-                '; font-weight:800; font-size:10px; width:30px;">' +
-                r.tf +
-                " " +
-                r.kind +
-                "</span>" +
-                '<span style="color:var(--tc-text-pri);">' +
-                r.price.toFixed(dp) +
-                "</span>" +
-                '<span style="margin-left:auto; color:' +
-                (r.away >= 0 ? "var(--tc-grn)" : "var(--tc-red)") +
-                '; font-size:10px;">' +
-                (r.away >= 0 ? "+" : "") +
-                r.away.toFixed(2) +
-                "%</span></div>",
-            )
-            .join("")
-        : '<div style="color:var(--tc-text-mut); font-size:10px; margin-top:2px;">no levels yet</div>';
-      // v1.45.1: a readout, nothing more - the switch for each timeframe is on that timeframe's own
-      // chart in the panel, where the rest of its controls are.
-      rail.innerHTML =
-        '<div style="color:var(--tc-text-mut); font-size:9px; letter-spacing:0.06em; margin-bottom:2px;">S/R</div>' + list;
-    }
     function renderTradeTimers() {
       if (!TIMERS_ENABLED) {
         return;
@@ -7059,15 +6929,18 @@
               d.setLineDash([]);
             }
             if (typeof d.fillText == "function") {
-              const tag = line.tf + " " + line.kind,
+              // v1.46.0: the chart already says which timeframe it is, so the label is just the side and
+              // the price - "R - 0.56330" - sat at the right, where you read prices on this panel.
+              const tag = line.kind + " - " + line.price.toFixed(priceDecimals(e)),
                 size = Math.max(7, Math.min(10, Math.round(0.11 * i)));
               d.font = "700 " + size + "px " + "'DM Sans', system-ui, sans-serif";
+              const tw = typeof d.measureText == "function" ? d.measureText(tag).width : 5.5 * tag.length;
               d.fillStyle = line.colour;
               d.globalAlpha = 0.95;
               if (typeof d.textBaseline == "string") {
                 d.textBaseline = "bottom";
               }
-              d.fillText(tag, 8, ly - 1);
+              d.fillText(tag, Math.max(6, a - tw - 3), ly - 2);
               if (typeof d.textBaseline == "string") {
                 d.textBaseline = "middle";
               }
@@ -7931,11 +7804,6 @@
             srCache.clear();
             cell._tcSig = "";
             renderMtf(ev.currentTarget);
-            const rail = byId(ids.tcSrRail);
-            if (rail) {
-              rail._tcSig = "";
-            }
-            renderSrRail();
           }
           return;
         }
@@ -8245,7 +8113,6 @@
         return;
       }
       renderTradeTimers();
-      renderSrRail();
       (function () {
         const t = byId("__tcMTF");
         if (!t) {
