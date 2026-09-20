@@ -1079,3 +1079,41 @@ test("S/R: levels in the same zone are drawn once, and labels never overlap (v1.
     qx.close();
   }
 });
+
+test("S/R: a line runs from its own swing to the newest candle (v1.49.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const bars = [];
+  for (let i = 0; i < 200; i++) { const v = 20 + 8 * Math.sin(i / 3.3) + 4 * Math.sin(i / 9); bars.push({ t: Math.floor(now/60)*60 - (200 - i) * 60, o: 100 + v * 0.001, h: 100 + v * 0.001 + 0.0006, l: 100 + v * 0.001 - 0.0006, c: 100 + v * 0.001 }); }
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...oneCell, __tradeCalc_mtf_count: "40", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    const cell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="1m"]');
+    const shown = cell._tcDrawn, slot = cell._tcSlotDrawn;
+    assert.ok(shown && shown.length && slot > 0, "the chart drew candles");
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    // Segments stroked in the 1m colour, paired with the coordinates just before them.
+    const segs = [];
+    for (let i = 2; i < qx.ctxCalls.length; i++) {
+      if (qx.ctxCalls[i] !== "stroke:#5aa9ff") continue;
+      const a2 = qx.ctxCalls[i - 2], b2 = qx.ctxCalls[i - 1];
+      if (!a2.startsWith("moveTo:") || !b2.startsWith("lineTo:")) continue;
+      segs.push({ x0: +a2.slice(7).split(",")[0], y0: +a2.slice(7).split(",")[1], x1: +b2.slice(7).split(",")[0], y1: +b2.slice(7).split(",")[1] });
+    }
+    const level = segs.filter((sg) => sg.y0 === sg.y1); // horizontal: a level, not the bar-end upright
+    assert.ok(level.length, "level lines were stroked: " + segs.length + " segments");
+    const lastCandleRight = Math.round(6 + (shown.length - 0.5) * slot + slot / 2);
+    for (const sg of level) {
+      assert.ok(Math.abs(sg.x1 - lastCandleRight) <= 2, "ends at the newest candle (" + sg.x1 + " vs " + lastCandleRight + ")");
+      assert.ok(sg.x0 >= 5 && sg.x0 < sg.x1, "starts on the chart and before the end: " + sg.x0);
+      // its start must line up with one of the candles on screen
+      const onACandle = shown.some((b, idx) => Math.abs(sg.x0 - (6 + (idx + 0.5) * slot)) <= 2) || sg.x0 === 6;
+      assert.ok(onACandle, "starts at a candle, not an arbitrary x: " + sg.x0);
+    }
+  } finally {
+    qx.close();
+  }
+});

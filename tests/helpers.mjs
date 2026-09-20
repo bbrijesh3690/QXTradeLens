@@ -127,8 +127,9 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
     setTransform: () => ctxCalls.push("setTransform"),
     clearRect: () => ctxCalls.push("clearRect"),
     beginPath: () => {},
-    moveTo: () => {},
-    lineTo: () => {},
+    // Coordinates recorded so a spec can check WHERE a line was drawn, not just that it was (v1.49.1).
+    moveTo: (x, y) => ctxCalls.push("moveTo:" + Math.round(x) + "," + Math.round(y)),
+    lineTo: (x, y) => ctxCalls.push("lineTo:" + Math.round(x) + "," + Math.round(y)),
     // The colour is recorded with the stroke so a spec can tell two lines apart (v1.43.1).
     stroke: function () { ctxCalls.push("stroke:" + this.strokeStyle); },
     // Coordinates recorded too, so a spec can check the chart’s layout (v1.42.1).

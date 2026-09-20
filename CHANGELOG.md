@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.49.1] - 2026-09-21
+
+### Added
+- **The test harness records where a line is drawn, not just that it was drawn.** A spec now checks the
+  actual coordinates of every level: it ends at the newest candle and starts on one of the candles on
+  screen. The panel lives in a closed shadow root and a background tab does not render, so the drawing
+  cannot be inspected from outside the browser — this is the closest thing to looking at it.
+
 ## [1.49.0] - 2026-09-20
 
 ### Fixed
