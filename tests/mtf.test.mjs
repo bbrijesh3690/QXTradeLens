@@ -635,8 +635,10 @@ test("MTF: price on the right, countdown clear of the candles (v1.42.1)", async 
     const boxes = qx.ctxCalls.filter((c) => c.startsWith("fillRect:")).map((c) => c.slice(9).split(",").map(Number));
     assert.ok(boxes.length > 2, "candles and labels were drawn");
     // The two label boxes are the ones on the price line; the candles are thin and tall.
-    const labels = boxes.filter((b) => b[2] > 20);
-    assert.equal(labels.length, 2, "a price label and a countdown: " + JSON.stringify(labels));
+    const allLabels = boxes.filter((b) => b[2] > 20);
+    // The canvas redraws once a second for the countdown, so read the newest pair of labels.
+    const labels = allLabels.slice(-2);
+    assert.equal(labels.length, 2, "a price label and a countdown: " + JSON.stringify(allLabels));
     const [clock, price] = labels[0][0] < labels[1][0] ? labels : [labels[1], labels[0]];
     assert.ok(price[0] + price[2] >= 255, "the price sits against the right edge: " + price.join(","));
     assert.ok(clock[0] + clock[2] + 4 <= price[0], "with the countdown clear to its left: " + clock.join(","));
@@ -723,6 +725,82 @@ test("MTF: the crosshair does not look like the bar-end line (v1.43.1)", async (
     const colours = [...new Set(strokes)];
     assert.ok(colours.includes("#e8eefc"), "the crosshair is drawn in its own colour: " + colours.join(" "));
     assert.ok(colours.includes("#9fb3d9"), "the bar-end line keeps its own: " + colours.join(" "));
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.44.0: zoom and pan, per chart ────────────────────────────────────
+
+function wheelOver(qx, tf, deltaY) {
+  const cell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="' + tf + '"]');
+  const canvas = cell.querySelector(".tcMtfCv");
+  const ev = new qx.window.Event("wheel", { bubbles: true, cancelable: true });
+  Object.defineProperty(ev, "deltaY", { value: deltaY });
+  Object.defineProperty(ev, "target", { value: canvas });
+  canvas.dispatchEvent(ev);
+  return cell;
+}
+
+test("MTF: the wheel shows more or fewer candles on that chart alone (v1.44.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(900, 15);
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1400);
+    const oneCellEl = qx.panelRoot().querySelector('.tcMtfCell[data-tf="1m"]');
+    const other = qx.panelRoot().querySelector('.tcMtfCell[data-tf="5m"]');
+    const started = oneCellEl._tcCount;
+    assert.equal(started, 40, "the panel setting is where it starts");
+    wheelOver(qx, "1m", 120); // wheel down: zoom out
+    await sleep(300);
+    assert.ok(oneCellEl._tcCount > started, "more candles: " + oneCellEl._tcCount);
+    assert.equal(other._tcCount, started, "and the other charts are untouched");
+    const out = oneCellEl._tcCount;
+    wheelOver(qx, "1m", -120); // wheel up: zoom in
+    await sleep(300);
+    assert.ok(oneCellEl._tcCount < out, "fewer again: " + oneCellEl._tcCount);
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: the zoom is remembered per timeframe (v1.44.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(900, 15);
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1400);
+    wheelOver(qx, "15m", 120);
+    await sleep(300);
+    const saved = JSON.parse(pref(qx, "__tradeCalc_mtf_zoom"));
+    assert.ok(saved["15m"] > 40, "the 15m chart kept its own level: " + JSON.stringify(saved));
+    assert.equal(saved["1m"], undefined, "and nothing was written for the others");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: dragging moves back through older candles (v1.44.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(900, 15);
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1400);
+    const cell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="1m"]');
+    const canvas = cell.querySelector(".tcMtfCv");
+    canvas.setPointerCapture = () => {};
+    const send = (type, x) => { const ev = new qx.window.Event(type, { bubbles: true, cancelable: true }); Object.defineProperty(ev, "clientX", { value: x }); Object.defineProperty(ev, "target", { value: canvas }); Object.defineProperty(ev, "pointerId", { value: 1 }); canvas.dispatchEvent(ev); };
+    assert.equal(cell._tcPanEndT, null, "starts at the live edge");
+    send("pointerdown", 200);
+    send("pointermove", 260); // dragged right: back in time
+    await sleep(300);
+    assert.ok(cell._tcPanEndT, "the chart moved back to older candles");
+    send("pointerup", 260);
+    // Double-click returns to the live edge.
+    canvas.dispatchEvent(new qx.window.Event("dblclick", { bubbles: true }));
+    await sleep(300);
+    assert.equal(cell._tcPanEndT, null, "and double-click brings it back");
   } finally {
     qx.close();
   }

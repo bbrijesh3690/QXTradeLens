@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.44.0] - 2026-09-20
+
+### Added
+- **The wheel zooms a chart**, the way the platform own chart does: scroll over a cell to show more or
+  fewer candles. It applies to that chart only — the 1m can sit at twenty bars while the 15m shows eighty
+  — and each timeframe keeps its level between sessions. The panel "candles per chart" setting is the
+  starting point rather than a limit; the wheel ranges from 8 to 240.
+- The cache keeps enough bars to fill **the widest zoom you have set**, so scrolling out does not reveal a
+  chart that was trimmed to the old default.
+
+### Fixed
+- **The crosshair no longer fights a drag for the same pointer.** Dragging a chart back through older
+  candles already worked; with the crosshair added in v1.40.0 both were reacting to the same pointer move.
+
 ## [1.43.1] - 2026-09-20
 
 ### Fixed

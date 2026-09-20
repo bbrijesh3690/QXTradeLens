@@ -1237,6 +1237,13 @@
       },
       KEY_MTF_AUTOFILL = "__tradeCalc_mtf_autofill",
       KEY_MTF_SETTLE = "__tradeCalc_mtf_settle",
+      KEY_MTF_ZOOM = "__tradeCalc_mtf_zoom",
+      // v1.44.0: the wheel sets how many candles a chart shows, per timeframe. Wider than the panel's own
+      // "candles per chart" setting, which is the starting point rather than a limit.
+      clampZoom = (t) => {
+        const n = Math.round(t);
+        return isNaN(n) ? 40 : Math.min(240, Math.max(8, n));
+      },
       KEY_MTF_FLIP = "__tradeCalc_mtf_flip",
       KEY_MTF_FLIP_BARS = "__tradeCalc_mtf_flip_bars",
       // v1.39.0: how many closed bars decide which way a chart is pointing. Three is short enough to
@@ -1542,6 +1549,32 @@
     let hkFocusMode = readFlag(KEY_HK_FOCUS_MODE, false);
     // v1.30.0: fill a pair's empty charts once, by itself. On by default; one switch in the popup.
     let mtfAutofill = readFlag(KEY_MTF_AUTOFILL, true);
+    // { "1m": 60, "15m": 25 } — a timeframe with no entry uses the panel's own count.
+    let mtfZoom = readJson(KEY_MTF_ZOOM, {}) || {};
+    function cellCount(cell) {
+      const tf = cell && cell.getAttribute && cell.getAttribute("data-tf");
+      const z = tf && mtfZoom[tf];
+      return z > 0 ? clampZoom(z) : getMtfCount();
+    }
+    function setCellZoom(tf, n) {
+      if (!tf) {
+        return;
+      }
+      mtfZoom[tf] = clampZoom(n);
+      try {
+        writeJson(KEY_MTF_ZOOM, mtfZoom);
+      } catch (t) {}
+    }
+    function widestZoom() {
+      let most = 0;
+      for (const tf in mtfZoom) {
+        const z = clampZoom(mtfZoom[tf]);
+        if (z > most) {
+          most = z;
+        }
+      }
+      return most;
+    }
     // v1.39.0: mark a chart when it turns. On by default; it only ever adds a mark, never a trade.
     let mtfFlipOn = readFlag(KEY_MTF_FLIP, true);
     function setMtfFlip(on) {
@@ -6545,7 +6578,7 @@
     }
     // Only what the charts can show is stored, so the cache stays small (v1.26.0).
     function trimEntriesForStorage(entries) {
-      const count = getMtfCount();
+      const count = Math.max(getMtfCount(), widestZoom());
       // v1.30.0: a 1m entry has to hold COUNT x 15 bars for a 15m cell to have anything to fold. Keeping
       // a flat 200 everywhere is what made a restored cache draw three 15m bars and then say "visit once".
       const widest = getMtfTfs().reduce((max, tf) => Math.max(max, tfSeconds(tf) || 0), MTF_BASE_SEC);
@@ -6938,6 +6971,9 @@
       panel.addEventListener(
         "pointermove",
         (ev) => {
+          if (panel._tcPanning) {
+            return; // a drag is under way; the crosshair would fight it for the same pointer
+          }
           const canvas = ev.target.closest && ev.target.closest(".tcMtfCv");
           const cell = canvas && canvas.closest(".tcMtfCell");
           if (!cell || !cell._tcDrawn || !cell._tcDrawn.length) {
@@ -6969,6 +7005,29 @@
         { passive: true },
       );
       panel.addEventListener("pointerleave", clear, { passive: true });
+      // v1.44.0: the wheel changes how many candles this chart shows, the way the platform's own chart
+      // behaves. Not passive: the page must not scroll out from under the pointer while zooming.
+      panel.addEventListener(
+        "wheel",
+        (ev) => {
+          const canvas = ev.target.closest && ev.target.closest(".tcMtfCv");
+          const cell = canvas && canvas.closest(".tcMtfCell");
+          if (!cell) {
+            return;
+          }
+          ev.preventDefault();
+          const now = cellCount(cell),
+            out = ev.deltaY > 0,
+            next = clampZoom(out ? Math.max(now + 1, now * 1.25) : Math.min(now - 1, now * 0.8));
+          if (next === now) {
+            return;
+          }
+          setCellZoom(cell.getAttribute("data-tf"), next);
+          cell._tcSig = "";
+          renderMtf(panel);
+        },
+        { passive: false },
+      );
     }
     function attachMtfPan(t) {
       let e = null,
@@ -7005,6 +7064,7 @@
           return;
         }
         a = true;
+        t._tcPanning = true;
         const d = e._tcCount,
           u = (function (t, e, n, o, r, a, i) {
             if (!Array.isArray(t) || !t.length) {
@@ -7032,6 +7092,7 @@
       });
       const i = () => {
         e = null;
+        t._tcPanning = false; // the crosshair can take the pointer back (v1.44.0)
       };
       t.addEventListener("pointerup", i);
       t.addEventListener("pointercancel", i);
@@ -7386,16 +7447,17 @@
             tfLabel.title = isChartTf ? "The platform chart is on this timeframe" : "";
           }
         }
-        const h = defaultFutureSlots(n),
-          f = sliceMtfWindow(m.rows, n, s._tcPanEndT, s._tcFuture, h);
+        const count = cellCount(s), // v1.44.0: the wheel can set this per chart
+          h = defaultFutureSlots(count),
+          f = sliceMtfWindow(m.rows, count, s._tcPanEndT, s._tcFuture, h);
         s._tcRows = m.rows;
         s._tcDrawn = f.candles; // what is on screen right now, for the crosshair (v1.40.0)
         s._tcSlotDrawn = l._tcSlot;
         s._tcEndIdx = f.endIdx;
-        s._tcCount = n;
+        s._tcCount = count;
         s._tcFuture = f.future;
         s._tcFutureDef = h;
-        s._tcNoPan = m.rows.length <= n;
+        s._tcNoPan = m.rows.length <= count;
         s.classList.toggle("tcMtfNoPan", s._tcNoPan);
         if (f.atLive) {
           s._tcPanEndT = null;
@@ -7488,7 +7550,8 @@
           const t = Math.max(0, c - (m.capturedAt || 0)),
             // v1.26.0: a derived timeframe often has far fewer bars than asked for; say so and point at ↻.
             // v1.32.0: when the auto-fill is about to deal with this, say so instead of asking for a ↻.
-            short = m.rows.length < n ? " · " + m.rows.length + "/" + n + " bars" + (autofillHint() || " · ↻") : "",
+            short =
+              m.rows.length < count ? " · " + m.rows.length + "/" + count + " bars" + (autofillHint() || " · ↻") : "",
             e = f.atLive
               ? (m.native ? "" : "≈ ") + (y ? fmtAgo(t) : "live") + short + gaps
               : "◀ " + fmtHHMM(g.t) + " · dbl-click for live" + gaps;
