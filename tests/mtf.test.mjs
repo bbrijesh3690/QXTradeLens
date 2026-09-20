@@ -510,3 +510,55 @@ test("MTF: the bars per trend is a setting, clamped (v1.39.0)", async () => {
     qx.close();
   }
 });
+
+// ── v1.40.0: reading a single bar ────────────────────────────────────────
+
+// jsdom has no layout, so give the canvas a box the hover maths can use.
+function hoverBar(qx, tf, barsFromLeft) {
+  const cell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="' + tf + '"]');
+  const canvas = cell.querySelector(".tcMtfCv");
+  canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 260, height: 88, right: 260, bottom: 88 });
+  const slot = cell._tcSlotDrawn || 6;
+  const ev = new qx.window.Event("pointermove", { bubbles: true });
+  Object.defineProperty(ev, "clientX", { value: 6 + slot * (barsFromLeft + 0.5) });
+  Object.defineProperty(ev, "clientY", { value: 40 });
+  Object.defineProperty(ev, "target", { value: canvas });
+  canvas.dispatchEvent(ev);
+  return cell;
+}
+
+test("MTF: hovering a bar reads it out in the caption (v1.40.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15);
+  const qx = await boot({ storage: { ...mtfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1200);
+    const before = mtfCap(qx, "1m");
+    hoverBar(qx, "1m", 3);
+    const during = mtfCap(qx, "1m");
+    assert.notEqual(during, before, "the caption changed to the bar under the pointer");
+    assert.ok(/^[0-9][0-9]:[0-9][0-9] /.test(during), "it starts with the bar time: " + during);
+    assert.ok(during.includes(" H ") && during.includes(" L "), "and carries the high and low: " + during);
+    assert.ok(!/[0-9]{7}/.test(during.split(" ")[2] || ""), "without float noise: " + during);
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: the pointer leaving puts the chart status back (v1.40.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15);
+  const qx = await boot({ storage: { ...mtfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1200);
+    const before = mtfCap(qx, "1m");
+    hoverBar(qx, "1m", 5);
+    assert.notEqual(mtfCap(qx, "1m"), before);
+    const panel = qx.panelRoot().getElementById("__tcMTF");
+    panel.dispatchEvent(new qx.window.Event("pointerleave", { bubbles: false }));
+    await sleep(400);
+    assert.equal(mtfCap(qx, "1m"), before, "back to the chart status");
+  } finally {
+    qx.close();
+  }
+});

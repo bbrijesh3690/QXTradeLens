@@ -6669,8 +6669,12 @@
         if (!c || !isFinite(c.c)) {
           continue;
         }
-        const dot = String(c.c).indexOf(".");
-        const digits = dot < 0 ? 0 : String(c.c).length - dot - 1;
+        // v1.40.0: strip float noise before counting. 100.57 + 0.01 lands on 100.57000000000001 in
+        // binary floating point, and counting THAT gives six decimals for a two-decimal instrument.
+        // Twelve significant digits is far more than any quote carries and well inside double precision.
+        const clean = String(Number(c.c.toPrecision(12)));
+        const dot = clean.indexOf(".");
+        const digits = dot < 0 ? 0 : clean.length - dot - 1;
         counts.set(digits, (counts.get(digits) || 0) + 1);
         seen++;
       }
@@ -6696,7 +6700,7 @@
       }
       return Math.min(6, Math.max(2, best));
     }
-    function drawCandles(t, e, n, o, r) {
+    function drawCandles(t, e, n, o, r, hoverIdx) {
       const a = t.clientWidth,
         i = t.clientHeight;
       if (!(a && i && e && e.length)) {
@@ -6761,6 +6765,30 @@
         d.fillRect(y(t) - _ / 2, Math.min(c, s), _, Math.max(1, Math.abs(s - c)));
       }
       d.globalAlpha = 1;
+      // ── Crosshair (v1.40.0) ───────────────────────────────────────────────────────────────────────
+      // Drawn under the price label so the label stays readable when the two meet.
+      if (hoverIdx != null && hoverIdx >= 0 && hoverIdx < e.length) {
+        const bar = e[hoverIdx];
+        if (bar && isFinite(bar.c)) {
+          const x = Math.round(y(hoverIdx)) + 0.5,
+            lineY = Math.round(v(bar.c)) + 0.5;
+          d.globalAlpha = 0.45;
+          d.strokeStyle = "#9fb3d9";
+          if (typeof d.setLineDash == "function") {
+            d.setLineDash([2, 2]);
+          }
+          d.beginPath();
+          d.moveTo(x, 6);
+          d.lineTo(x, 6 + f);
+          d.moveTo(6, lineY);
+          d.lineTo(6 + h, lineY);
+          d.stroke();
+          if (typeof d.setLineDash == "function") {
+            d.setLineDash([]);
+          }
+          d.globalAlpha = 1;
+        }
+      }
       // ── Last price: a dashed line across the chart and a label at the right edge ──────────────────
       // Everything here is feature-checked and wrapped: a canvas without text metrics (the jsdom
       // harness, or a browser refusing the call) must not take the candles down with it.
@@ -6807,6 +6835,49 @@
         const e = new Date(1000 * t);
         return ("0" + e.getHours()).slice(-2) + ":" + ("0" + e.getMinutes()).slice(-2);
       };
+    // v1.40.0: which bar the pointer is over. The panel redraws on a 200 ms tick, which is visibly late
+    // for a crosshair, so a move redraws the one cell it is over straight away.
+    function attachMtfHover(panel) {
+      const clear = () => {
+        let changed = false;
+        panel.querySelectorAll(".tcMtfCell").forEach((cell) => {
+          if (cell._tcHoverIdx != null) {
+            cell._tcHoverIdx = null;
+            changed = true;
+          }
+        });
+        if (changed) {
+          renderMtf(panel);
+        }
+      };
+      panel.addEventListener(
+        "pointermove",
+        (ev) => {
+          const canvas = ev.target.closest && ev.target.closest(".tcMtfCv");
+          const cell = canvas && canvas.closest(".tcMtfCell");
+          if (!cell || !cell._tcDrawn || !cell._tcDrawn.length) {
+            clear();
+            return;
+          }
+          const rect = canvas.getBoundingClientRect(),
+            slot = cell._tcSlotDrawn || 6,
+            idx = Math.floor((ev.clientX - rect.left - 6) / slot);
+          const next = idx >= 0 && idx < cell._tcDrawn.length ? idx : null;
+          if (cell._tcHoverIdx === next) {
+            return;
+          }
+          panel.querySelectorAll(".tcMtfCell").forEach((other) => {
+            if (other !== cell) {
+              other._tcHoverIdx = null;
+            }
+          });
+          cell._tcHoverIdx = next;
+          renderMtf(panel);
+        },
+        { passive: true },
+      );
+      panel.addEventListener("pointerleave", clear, { passive: true });
+    }
     function attachMtfPan(t) {
       let e = null,
         n = 0,
@@ -7194,6 +7265,8 @@
         const h = defaultFutureSlots(n),
           f = sliceMtfWindow(m.rows, n, s._tcPanEndT, s._tcFuture, h);
         s._tcRows = m.rows;
+        s._tcDrawn = f.candles; // what is on screen right now, for the crosshair (v1.40.0)
+        s._tcSlotDrawn = l._tcSlot;
         s._tcEndIdx = f.endIdx;
         s._tcCount = n;
         s._tcFuture = f.future;
@@ -7208,10 +7281,11 @@
           continue;
         }
         const g = f.candles[f.candles.length - 1],
-          _ = f.candles.length + ":" + g.t + ":" + g.c + ":" + m.srcSec + ":" + f.future + ":" + a + i;
+          _ =
+            f.candles.length + ":" + g.t + ":" + g.c + ":" + m.srcSec + ":" + f.future + ":" + a + i + ":" + (s._tcHoverIdx == null ? "" : s._tcHoverIdx);
         if (s._tcSig !== _) {
           s._tcSig = _;
-          drawCandles(l, f.candles, a, i, f.future);
+          drawCandles(l, f.candles, a, i, f.future, s._tcHoverIdx);
         }
         const y = isStale(m.capturedAt, c, MTF_STALE_SEC) && f.atLive;
         s.classList.toggle("tcMtfStale", y);
@@ -7249,6 +7323,26 @@
           s.title = gaps
             ? "Faded bars cover time the panel was not watching this pair, so their high and low are built from part of the period. Press ↻ to fetch the platform's own bars."
             : "";
+        }
+        // v1.40.0: hovering a bar puts its numbers in the caption - the cells are too small for a
+        // floating readout, and the caption is already the line you look at for this chart's state.
+        if (d && s._tcHoverIdx != null && f.candles[s._tcHoverIdx]) {
+          const bar = f.candles[s._tcHoverIdx],
+            dp = priceDecimals(f.candles),
+            move = bar.o > 0 ? ((bar.c - bar.o) / bar.o) * 100 : NaN,
+            text =
+              fmtHHMM(bar.t) +
+              " · " +
+              bar.c.toFixed(dp) +
+              " · H " +
+              bar.h.toFixed(dp) +
+              " L " +
+              bar.l.toFixed(dp) +
+              (isNaN(move) ? "" : " · " + (move >= 0 ? "+" : "") + move.toFixed(2) + "%");
+          if (d.textContent !== text) {
+            d.textContent = text;
+          }
+          continue;
         }
         if (d) {
           const t = Math.max(0, c - (m.capturedAt || 0)),
@@ -7428,6 +7522,7 @@
         t.addEventListener("pointercancel", s);
       })(t);
       attachMtfPan(t);
+      attachMtfHover(t); // v1.40.0
       const o = t.querySelector('[data-mtf="drag"]');
       let r = false,
         a = 0,

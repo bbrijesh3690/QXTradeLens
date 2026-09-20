@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.40.0] - 2026-09-20
+
+### Added
+- **Hovering a bar reads it out.** A dashed crosshair follows the pointer through the bar it is over, and
+  the caption becomes that bar: time, close, high, low and the move across the bar. Leaving the chart puts
+  the status line back. The hovered cell redraws at once rather than waiting for the next 200 ms tick, so
+  it tracks the pointer instead of lagging behind it.
+
+### Fixed
+- **Float noise stretched the decimals again**, from a different direction than v1.38.1: 100.57 + 0.01 is
+  100.57000000000001 in binary floating point, so EVERY close carried extra digits and the "appears often
+  enough" rule could not filter them — a two-decimal instrument read 100.570000. Values are cleaned to
+  twelve significant digits before their decimals are counted, which drops the artefact and leaves a
+  genuinely long quote alone.
+
 ## [1.39.0] - 2026-09-20
 
 ### Added
