@@ -6743,7 +6743,29 @@
       p += m;
       const h = Math.max(1, a - 12),
         f = Math.max(1, i - 12),
-        g = h / (e.length + Math.max(0, 0 | r));
+        labelSize = Math.max(8, Math.min(11, Math.round(0.13 * i))),
+        LABEL_GAP = 6;
+      let future = Math.max(0, 0 | r);
+      // v1.42.1: the price label sits against the right edge and the countdown goes between it and the
+      // candles, both on the last-price line. On a 260 px cell the space the chart already leaves for the
+      // future is not enough for both, so widen it here - a few percent narrower candles beats a pill
+      // sitting on top of them.
+      if (barLeft != null && e.length && typeof d.measureText == "function") {
+        try {
+          d.font = "700 " + labelSize + "px " + "'DM Sans', system-ui, sans-serif";
+          const needed =
+            d.measureText(e[e.length - 1].c.toFixed(priceDecimals(e))).width +
+            8 +
+            d.measureText(fmtBarClock(barLeft, true)).width +
+            10 +
+            3 * LABEL_GAP;
+          const slot = h / (e.length + future);
+          if (needed > slot * future) {
+            future += Math.ceil((needed - slot * future) / slot);
+          }
+        } catch (t) {}
+      }
+      const g = h / (e.length + future);
       t._tcSlot = g;
       const _ = Math.max(1, g - Math.max(1, 0.22 * g)),
         y = (t) => 6 + (t + 0.5) * g,
@@ -6812,7 +6834,7 @@
           }
           d.globalAlpha = 1;
           const text = price.toFixed(priceDecimals(e)),
-            size = Math.max(8, Math.min(11, Math.round(0.13 * i)));
+            size = labelSize;
           d.font = "700 " + size + "px " + "'DM Sans', system-ui, sans-serif";
           const measure = (str) => (typeof d.measureText == "function" ? d.measureText(str).width : 6 * str.length);
           const height = size + 5,
@@ -6820,16 +6842,15 @@
           if (typeof d.textBaseline == "string") {
             d.textBaseline = "middle";
           }
-          // v1.42.0: the price sits at the LEFT end of its line, the way the platform's own chart puts it,
-          // leaving the right of the line free for the countdown.
-          const priceW = measure(text) + 8;
-          d.fillStyle = colour;
-          d.fillRect(1, boxY, priceW, height);
-          d.fillStyle = "#0b1020";
-          d.fillText(text, 5, boxY + height / 2 + 0.5);
-          // The bar now forming ends here: a dashed upright, then how long is left on it.
+          // v1.42.1: the price label belongs on the RIGHT, where a price axis sits. The countdown goes
+          // between the candles and that label, with a gap either side so the pill never looks stuck to
+          // the last candle or to the price.
+          const GAP = LABEL_GAP;
+          const priceW = measure(text) + 8,
+            priceX = Math.max(0, a - priceW - 1);
           if (barLeft != null && barLeft >= 0) {
-            const edge = Math.round(y(e.length - 1) + _ / 2) + 0.5;
+            // The bar now forming ends here: a dashed upright, clear of the last candle.
+            const edge = Math.round(y(e.length - 1) + _ / 2 + GAP) + 0.5;
             d.globalAlpha = 0.5;
             d.strokeStyle = "#9fb3d9";
             if (typeof d.setLineDash == "function") {
@@ -6844,13 +6865,24 @@
             }
             d.globalAlpha = 1;
             const clock = fmtBarClock(barLeft, true),
-              clockW = measure(clock) + 10,
-              clockX = Math.max(0, Math.min(a - clockW - 1, edge + 4));
-            d.fillStyle = "oklch(18% 0.02 257 / 0.95)";
-            d.fillRect(clockX, boxY, clockW, height);
-            d.fillStyle = "#e8eefc";
-            d.fillText(clock, clockX + 5, boxY + height / 2 + 0.5);
+              clockW = measure(clock) + 10;
+            // Just right of the upright. The reservation above means it fits; the clamp is only a guard
+            // for a cell too narrow to hold both, where the price label wins.
+            let clockX = edge + 4;
+            if (clockX + clockW > priceX - GAP) {
+              clockX = priceX - GAP - clockW;
+            }
+            if (clockX > y(e.length - 1)) {
+              d.fillStyle = "oklch(18% 0.02 257 / 0.95)";
+              d.fillRect(clockX, boxY, clockW, height);
+              d.fillStyle = "#e8eefc";
+              d.fillText(clock, clockX + 5, boxY + height / 2 + 0.5);
+            }
           }
+          d.fillStyle = colour;
+          d.fillRect(priceX, boxY, priceW, height);
+          d.fillStyle = "#0b1020";
+          d.fillText(text, priceX + 4, boxY + height / 2 + 0.5);
         }
       } catch (t) {}
       d.globalAlpha = 1;

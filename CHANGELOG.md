@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.42.1] - 2026-09-20
+
+### Fixed
+- **The price label is back on the right**, against the edge where a price axis belongs, with the
+  countdown between it and the candles.
+- **The countdown no longer touches the last candle.** There is a clear gap either side of it, and the
+  room for both labels is now worked out BEFORE the candles are placed: on a 260 px cell the space the
+  chart leaves for the future was not wide enough for a price and a countdown, so the pill was being
+  shoved back over the bars it was meant to follow. The candles give up a few percent of width instead.
+
 ## [1.42.0] - 2026-09-20
 
 ### Changed

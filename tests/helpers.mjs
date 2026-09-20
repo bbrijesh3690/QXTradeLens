@@ -130,7 +130,8 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
     moveTo: () => {},
     lineTo: () => {},
     stroke: () => ctxCalls.push("stroke"),
-    fillRect: () => ctxCalls.push("fillRect"),
+    // Coordinates recorded too, so a spec can check the chart’s layout (v1.42.1).
+    fillRect: (x, y, w, h) => ctxCalls.push("fillRect:" + [x, y, w, h].map((v) => Math.round(v)).join(",")),
     // Enough of a text API for the last-price label (v1.38.0); the text itself is recorded so a spec
     // can read what the chart would have printed.
     setLineDash: () => ctxCalls.push("setLineDash"),

@@ -623,3 +623,27 @@ test("MTF: panned back into history, there is no bar to count down (v1.41.0)", a
     qx.close();
   }
 });
+
+test("MTF: price on the right, countdown clear of the candles (v1.42.1)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15);
+  const qx = await boot({ storage: oneCell, store });
+  try {
+    await sleep(1200);
+    qx.ctxCalls.length = 0;
+    await sleep(1400); // one redraw, carrying both labels
+    const boxes = qx.ctxCalls.filter((c) => c.startsWith("fillRect:")).map((c) => c.slice(9).split(",").map(Number));
+    assert.ok(boxes.length > 2, "candles and labels were drawn");
+    // The two label boxes are the ones on the price line; the candles are thin and tall.
+    const labels = boxes.filter((b) => b[2] > 20);
+    assert.equal(labels.length, 2, "a price label and a countdown: " + JSON.stringify(labels));
+    const [clock, price] = labels[0][0] < labels[1][0] ? labels : [labels[1], labels[0]];
+    assert.ok(price[0] + price[2] >= 255, "the price sits against the right edge: " + price.join(","));
+    assert.ok(clock[0] + clock[2] + 4 <= price[0], "with the countdown clear to its left: " + clock.join(","));
+    const cell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="1m"]');
+    const lastCandleRight = 6 + (cell._tcDrawn.length - 0.5) * (cell._tcSlotDrawn || 6);
+    assert.ok(clock[0] >= lastCandleRight, "and a gap after the last candle: " + clock[0] + " vs " + Math.round(lastCandleRight));
+  } finally {
+    qx.close();
+  }
+});
