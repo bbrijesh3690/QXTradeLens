@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.41.0] - 2026-09-20
+
+### Added
+- **Each chart counts down to the close of the bar it is drawing.** The time left sits in the cell header
+  and turns the accent colour for the last tenth of the bar (or the last three seconds, whichever is
+  longer), so you can see a 1m or 5m bar about to close while you are deciding on a 15s entry.
+- The countdown is **arithmetic on the clock**, not a reading of the data: Quotex buckets a candle by
+  `floor(epoch / period)`, so the time left stays correct on a chart whose candles are behind, stale or
+  missing altogether. Panned back into history it shows nothing — there is no bar forming in the past.
+
 ## [1.40.0] - 2026-09-20
 
 ### Added

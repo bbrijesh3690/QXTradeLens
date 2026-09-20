@@ -562,3 +562,53 @@ test("MTF: the pointer leaving puts the chart status back (v1.40.0)", async () =
     qx.close();
   }
 });
+
+// ── v1.41.0: time left on the bar now forming ────────────────────────────
+
+const barClock = (qx, tf) => qx.panelRoot().querySelector('.tcMtfCell[data-tf="' + tf + '"] .tcMtfCd').textContent;
+
+test("MTF: each chart counts down to the close of its bar (v1.41.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15);
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1200);
+    const now = Math.floor(Date.now() / 1000);
+    const expect = (sec) => { const left = sec - (now % sec); return [Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0"), Math.floor((left - 1) / 60) + ":" + String((left - 1) % 60).padStart(2, "0")]; };
+    for (const [tf, sec] of [["1m", 60], ["5m", 300], ["15m", 900]]) {
+      const shown = barClock(qx, tf);
+      assert.ok(expect(sec).includes(shown), tf + " shows " + shown + ", expected one of " + expect(sec).join(" or "));
+    }
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: the countdown is clock-based, so an empty chart still has one (v1.41.0)", async () => {
+  const store = quotexStore();
+  store.__candles = []; // nothing to draw at all
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1200);
+    assert.match(mtfCap(qx, "15m"), /visit once/, "the chart has no candles");
+    assert.match(barClock(qx, "15m"), /^[0-9]+:[0-9][0-9]$/, "but it still knows when the bar ends: " + barClock(qx, "15m"));
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: panned back into history, there is no bar to count down (v1.41.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15);
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1200);
+    assert.ok(barClock(qx, "1m").length, "counting at first");
+    const cell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="1m"]');
+    cell._tcPanEndT = cell._tcRows[Math.max(0, cell._tcRows.length - 10)].t; // dragged back ten bars
+    await sleep(400);
+    assert.equal(barClock(qx, "1m"), "", "nothing is forming in the past");
+  } finally {
+    qx.close();
+  }
+});
