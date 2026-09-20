@@ -7390,15 +7390,31 @@
       panel.classList.add("tcMtfBusy");
       // v1.26.0: give each timeframe up to 2.5 s to deliver candles, instead of assuming 260 ms is
       // enough — that was why a sync often left the higher timeframes nearly empty.
+      // v1.52.0: wait until the candles STOP arriving, rather than leaving as soon as fifty have.
+      // Quotex delivers a timeframe's history progressively, so the old test took whatever happened to
+      // be loaded the moment the count crossed fifty - which is why a 15m chart came back with 68 bars
+      // while the 5m, which delivered its whole window at once, came back with 201.
       const collect = (tfSec, deadline, done) => {
-        pullChartSnapshot();
-        const entry = mtfSymbol && mtfEntries[mtfSymbol + "@" + tfSec];
-        const enough = entry && entry.candles && entry.candles.length >= Math.min(getMtfCount(), 50);
-        if (enough || Date.now() > deadline) {
-          done();
-          return;
-        }
-        setTimeout(() => collect(tfSec, deadline, done), 150);
+        let most = -1,
+          quiet = 0;
+        const step = () => {
+          pullChartSnapshot();
+          const entry = mtfSymbol && mtfEntries[mtfSymbol + "@" + tfSec];
+          const have = entry && entry.candles ? entry.candles.length : 0;
+          if (have > most) {
+            most = have;
+            quiet = 0;
+          } else {
+            quiet++;
+          }
+          // Three quiet polls is the platform saying it has finished with this timeframe.
+          if ((have > 0 && quiet >= 3) || Date.now() > deadline) {
+            done();
+            return;
+          }
+          setTimeout(step, 150);
+        };
+        step();
       };
       const finish = () => {
         mtfSyncBusy = false;
@@ -7421,7 +7437,7 @@
           return;
         }
         selectTimeframe(tfs[i], () => {
-          collect(tfSeconds(tfs[i]), Date.now() + 2500, () => step(i + 1));
+          collect(tfSeconds(tfs[i]), Date.now() + 3000, () => step(i + 1));
         });
       };
       step(0);

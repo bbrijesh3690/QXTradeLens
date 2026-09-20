@@ -302,3 +302,26 @@ test("MTF: the refresh button works while a trade is open (v1.36.0)", async () =
     qx.close();
   }
 });
+
+test("MTF: the walk waits while history is still arriving (v1.52.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(60, 60);
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_tfs: JSON.stringify(["1m"]) }, store });
+  try {
+    await sleep(1200);
+    // The platform keeps sending: a few more candles every poll, the way a timeframe loads in.
+    let n = 60;
+    const feed = setInterval(() => { n += 8; store.__plot.pointsManager.candles = makeCandles(n, 60); }, 120);
+    qx.panelRoot().querySelector('[data-mtf="sync"]').click();
+    await sleep(1800);
+    const panel = qx.panelRoot().getElementById("__tcMTF");
+    const busyWhileArriving = panel.classList.contains("tcMtfBusy");
+    clearInterval(feed);
+    // Leaving at fifty candles would have finished this long ago.
+    assert.ok(busyWhileArriving, "still collecting while candles keep arriving");
+    await sleep(2500);
+    assert.ok(!panel.classList.contains("tcMtfBusy"), "and stops once they stop");
+  } finally {
+    qx.close();
+  }
+});

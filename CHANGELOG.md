@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.52.0] - 2026-09-21
+
+### Fixed
+- **The fill walk left a timeframe as soon as fifty candles had arrived.** Quotex sends a timeframe
+  history progressively, so whatever happened to be loaded at that instant was all the chart ever got —
+  which is why a 15m chart came back with 68 bars while the 5m, which delivers its window in one go, came
+  back with 201. The walk now keeps collecting until the candles stop arriving (three quiet polls) or its
+  three-second limit, so each timeframe gives up everything the platform is willing to load.
+
 ## [1.51.0] - 2026-09-21
 
 ### Fixed
