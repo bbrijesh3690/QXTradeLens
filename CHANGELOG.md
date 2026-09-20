@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.45.1] - 2026-09-20
+
+### Changed
+- **The show/hide switch moved onto the chart it belongs to.** Each mini chart carries a small `S/R`
+  button in its own header, lit in that timeframe colour when its levels are shown. The rail on the
+  platform chart is a readout again rather than a second set of controls, and it hides itself when every
+  timeframe is off.
+
 ## [1.45.0] - 2026-09-20
 
 ### Added

@@ -855,7 +855,7 @@ test("S/R: levels are the frozen rule - strength 3, last 3 a side, completed can
   }
 });
 
-test("S/R: a timeframe can be switched off from the chart itself (v1.45.0)", async () => {
+test("S/R: a timeframe is switched off from its own chart in the panel (v1.45.1)", async () => {
   const now = Math.floor(Date.now() / 1000);
   const bars = swingSeries(now);
   const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
@@ -864,8 +864,9 @@ test("S/R: a timeframe can be switched off from the chart itself (v1.45.0)", asy
   const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
   try {
     await sleep(1400);
-    const chip = [...qx.window.document.querySelectorAll('#graph [data-sr-tf]')].find(c=>c.getAttribute("data-sr-tf")==="1m");
-    assert.ok(chip, "a 1m chip to click");
+    // v1.45.1: the switch is on the 1m chart in the panel, not in a box of its own on the page.
+    const chip = qx.panelRoot().querySelector('.tcMtfCell[data-tf="1m"] [data-mtf="sr"]');
+    assert.ok(chip, "a 1m switch to click");
     const before = [...qx.window.document.querySelectorAll('#graph > div')].map(d=>d.textContent||"").join(" ");
     assert.match(before, /1m (R|S)/, "levels listed first");
     chip.click();
