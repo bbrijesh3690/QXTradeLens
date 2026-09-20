@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.33.0] - 2026-09-20
+
+### Changed
+- **A pair must stay on screen for 15 seconds before its charts are filled** (was 3). Flicking through
+  pair tabs no longer sends the chart off on a walk for every pair you pass through — only one you settle
+  on. The wait is now a setting, **Wait Before Filling** in the popup (3–120 s), and the health check
+  counts it down: `settling (9s)`.
+
 ## [1.32.0] - 2026-09-20
 
 ### Fixed

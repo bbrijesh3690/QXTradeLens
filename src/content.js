@@ -1228,7 +1228,26 @@
         } catch (t) {}
       },
       KEY_MTF_AUTOFILL = "__tradeCalc_mtf_autofill",
+      KEY_MTF_SETTLE = "__tradeCalc_mtf_settle",
       KEY_DIAG = "__tradeCalc_diag",
+      // v1.33.0: how long a pair has to stay on screen before its charts are filled. Flicking through
+      // pair tabs should not send the chart off on a walk for every pair you pass through.
+      clampMtfSettle = (t) => {
+        const n = parseInt(t, 10);
+        return isNaN(n) ? 15 : Math.min(120, Math.max(3, n));
+      },
+      getMtfSettle = () => {
+        try {
+          return clampMtfSettle(prefGet(KEY_MTF_SETTLE));
+        } catch (t) {
+          return 15;
+        }
+      },
+      setMtfSettle = (t) => {
+        try {
+          prefSet(KEY_MTF_SETTLE, String(clampMtfSettle(t)));
+        } catch (t) {}
+      },
       parsePlainNumber = (t) => parseFloat(String(t).replace(/,/g, "")),
       fmtInputMoney = (t) => {
         const e = parseFloat(t);
@@ -5470,6 +5489,7 @@
           KEY_MTF_TFS,
           KEY_MTF_COUNT,
           KEY_MTF_AUTOFILL,
+          KEY_MTF_SETTLE,
         ],
         (t) => {
           if (!t) {
@@ -5524,6 +5544,9 @@
           }
           if (KEY_MTF_AUTOFILL in t && typeof t[KEY_MTF_AUTOFILL] == "boolean") {
             setMtfAutofill(t[KEY_MTF_AUTOFILL]);
+          }
+          if (KEY_MTF_SETTLE in t && t[KEY_MTF_SETTLE] != null) {
+            setMtfSettle(t[KEY_MTF_SETTLE]);
           }
           if (getMtfTfs().join(",") + "|" + getMtfCount() !== e) {
             rebuildMtf();
@@ -6813,8 +6836,7 @@
     // "visit once" until you pressed ↻. Once per pair — and only when the tab is in front, no trade
     // is open and nothing else is walking the menus — do that walk for you. From then on the rolling
     // 1m base keeps the cells current, so this runs once and gets out of the way.
-    const MTF_AUTOFILL_SETTLE_MS = 3000,
-      MTF_AUTOFILL_AGAIN_MS = 600000,
+    const MTF_AUTOFILL_AGAIN_MS = 600000,
       // v1.32.0: a chart with six of the forty bars you asked for looks empty on screen, and folding a
       // short 1m history cannot make it longer — only the platform's own bars for that timeframe can.
       // Judging "does it need filling?" on whether ANY row exists said "ready" for exactly the charts
@@ -6851,8 +6873,9 @@
       if (!sym || !mtfSymbolSince) {
         return stop("no pair read yet");
       }
-      if (now - mtfSymbolSince < MTF_AUTOFILL_SETTLE_MS) {
-        return stop("pair just changed");
+      const settleMs = getMtfSettle() * 1000;
+      if (now - mtfSymbolSince < settleMs) {
+        return stop("settling (" + Math.ceil((settleMs - (now - mtfSymbolSince)) / 1000) + "s)");
       }
       if (mtfAutofilledAt[sym] && now - mtfAutofilledAt[sym] < MTF_AUTOFILL_AGAIN_MS) {
         return stop("filled this pair " + fmtAgo(Math.round((now - mtfAutofilledAt[sym]) / 1000)));
@@ -8002,6 +8025,7 @@
             mtfTfs: getMtfTfs(),
             mtfCount: getMtfCount(),
             mtfAutofill,
+            mtfSettle: getMtfSettle(),
             relabelDemo,
             entryTags: entryTagsOn,
             hkFocusMode,
@@ -8127,6 +8151,9 @@
           }
           if ("autofill" in t) {
             setMtfAutofill(t.autofill);
+          }
+          if ("settle" in t) {
+            setMtfSettle(t.settle);
           }
           rebuildMtf();
         }

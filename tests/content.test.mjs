@@ -999,6 +999,7 @@ test("health: lists that aren't open right now read as idle, not broken", async 
 const mtfStorage = {
   ...slStorage(10000),
   __tradeCalc_mtf_on: "1",
+  __tradeCalc_mtf_settle: "3", // the shipped default is 15 s; tests use the minimum so they stay quick
   __tradeCalc_mtf_count: "40",
   __tradeCalc_mtf_tfs: JSON.stringify(["15s", "1m", "5m"]),
 };
@@ -1503,6 +1504,39 @@ test("MTF: a short chart says the fill is coming instead of asking for ↻ (v1.3
     assert.match(mtfCap(qx, "15m"), /bars . trade open/, mtfCap(qx, "15m"));
   } finally {
     qx.close();
+  }
+});
+
+// ── v1.33.0: how long a pair must stay put before it is filled ──────────────────────────────
+
+test("MTF: a pair passed through is not filled; one you stay on is (v1.33.0)", async () => {
+  const store = quotexStore();
+  store.__candles = [];
+  // Ten seconds of settling: long enough that a glance does not trigger a walk.
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_settle: "10" }, store });
+  try {
+    await sleep(4200);
+    let row = healthRow(qx, "Charts auto-fill");
+    assert.match(row.value, /settling/, "still counting down: " + row.value);
+    assert.ok(!/filling/.test(row.value), "and nothing has been fetched yet");
+    await sleep(7000);
+    row = healthRow(qx, "Charts auto-fill");
+    assert.match(row.value, /filling/, "once the pair has stayed put, it fills: " + row.value);
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: the wait defaults to 15 seconds and is clamped to sane values (v1.33.0)", async () => {
+  const plain = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_settle: undefined } });
+  try {
+    assert.equal(plain.askPanel({ type: "GET_STATE" }).mtfSettle, 15, "default");
+    await plain.sendToPanel({ type: "SET_MTF", settle: 999 });
+    assert.equal(plain.askPanel({ type: "GET_STATE" }).mtfSettle, 120, "clamped at the top");
+    await plain.sendToPanel({ type: "SET_MTF", settle: 0 });
+    assert.equal(plain.askPanel({ type: "GET_STATE" }).mtfSettle, 3, "and at the bottom");
+  } finally {
+    plain.close();
   }
 });
 

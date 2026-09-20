@@ -125,7 +125,7 @@ Amounts use your account's currency and number format.
 | **Hotkeys** | ↑↓ places trades, ←→ changes the trade amount (both off by default), and Hotkey Focus Mode (your Enter does the pressing, so the click comes from the browser) |
 | **Sections** | Show or hide the panel's Targets, Protections and Projection groups (the Log group appears once a sheet URL is set) |
 | **Marquee** | Message text and scroll speed |
-| **Multi-timeframe charts** | Which timeframes (up to 4), how many candles each chart shows, and whether a new pair is filled in automatically |
+| **Multi-timeframe charts** | Which timeframes (up to 4), how many candles each chart shows, whether a new pair is filled in automatically, and how long a pair must stay on screen first (default 15 s) |
 | **Activity log** | Your Google Apps Script URL |
 | **Health** | "Check Quotex compatibility" — see below |
 | **Deposits** | "Scan Deposits" — see below |
