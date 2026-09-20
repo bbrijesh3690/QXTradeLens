@@ -4359,11 +4359,15 @@
     function selectTimeframe(t, e) {
       const n = getTimeframeButton();
       if (n) {
-        n.click();
+        // v1.32.0: the timeframe menu is driven with the same realistic click the trade buttons get.
+        // A bare .click() sends one lone MouseEvent with no coordinates and no pointer sequence, which
+        // is the easiest kind of scripted click for a page to pick out - and the auto-fill made this
+        // walk happen without anyone pressing anything.
+        synthClick(n);
         setTimeout(() => {
           const n = getTimeframeItems().find((e) => normLabel(e.textContent) === normLabel(t));
           if (n) {
-            n.click();
+            synthClick(n);
           }
           setTimeout(() => {
             document.body.click();
@@ -6810,7 +6814,12 @@
     // is open and nothing else is walking the menus — do that walk for you. From then on the rolling
     // 1m base keeps the cells current, so this runs once and gets out of the way.
     const MTF_AUTOFILL_SETTLE_MS = 3000,
-      MTF_AUTOFILL_AGAIN_MS = 600000;
+      MTF_AUTOFILL_AGAIN_MS = 600000,
+      // v1.32.0: a chart with six of the forty bars you asked for looks empty on screen, and folding a
+      // short 1m history cannot make it longer — only the platform's own bars for that timeframe can.
+      // Judging "does it need filling?" on whether ANY row exists said "ready" for exactly the charts
+      // that looked emptiest. Measured live: 97 folded 1m bars = 6 bars of 15m, reported as nothing to do.
+      MTF_AUTOFILL_MIN_RATIO = 0.6;
     const mtfAutofilledAt = {};
     function setMtfAutofill(on) {
       mtfAutofill = !!on;
@@ -6857,12 +6866,16 @@
       }
       const tfs = panel._tcTfs || getMtfTfs(),
         nowSec = Math.floor(now / 1000);
-      // v1.30.1: ANY blank chart is reason enough. Requiring every one to be blank meant it never ran
-      // for the way this is actually used: on a 15s chart a new pair has 15s bars at once, the 1m cell
-      // fills from the fold, and the 5m/15m cells were left empty with no walk to fill them.
-      const blank = tfs.filter((tf) => !resolveMtfRows(mtfEntries, sym, tfSeconds(tf), nowSec, MTF_STALE_SEC));
+      // v1.30.1: ANY chart needing bars is reason enough. Requiring every one to be blank meant it never
+      // ran for the way this is actually used: on a 15s chart a new pair has 15s bars at once, the 1m
+      // chart fills from the fold, and the 5m/15m charts were left with almost nothing.
+      const want = Math.max(5, Math.ceil(getMtfCount() * MTF_AUTOFILL_MIN_RATIO));
+      const blank = tfs.filter((tf) => {
+        const m = resolveMtfRows(mtfEntries, sym, tfSeconds(tf), nowSec, MTF_STALE_SEC);
+        return !m || m.rows.length < want;
+      });
       if (!blank.length) {
-        return stop("ready — nothing blank");
+        return stop("ready — charts filled");
       }
       stop("filling " + blank.join(", "));
       mtfAutofilledAt[sym] = now;
@@ -6871,7 +6884,10 @@
         // v1.31.0: judge the walk by the charts it was sent to fill. A walk that changed nothing must not
         // cost the pair its ten minutes — try again in half a minute instead.
         const sec = Math.floor(Date.now() / 1000);
-        const stillBlank = blank.filter((tf) => !resolveMtfRows(mtfEntries, sym, tfSeconds(tf), sec, MTF_STALE_SEC));
+        const stillBlank = blank.filter((tf) => {
+          const m = resolveMtfRows(mtfEntries, sym, tfSeconds(tf), sec, MTF_STALE_SEC);
+          return !m || m.rows.length < want;
+        });
         if (stillBlank.length === blank.length) {
           mtfAutofilledAt[sym] = now - (MTF_AUTOFILL_AGAIN_MS - 30000);
           mtfAutofillReason = "walk came back empty, retrying";
@@ -6993,7 +7009,8 @@
         if (d) {
           const t = Math.max(0, c - (m.capturedAt || 0)),
             // v1.26.0: a derived timeframe often has far fewer bars than asked for; say so and point at ↻.
-            short = m.rows.length < n ? " · " + m.rows.length + "/" + n + " bars · ↻" : "",
+            // v1.32.0: when the auto-fill is about to deal with this, say so instead of asking for a ↻.
+            short = m.rows.length < n ? " · " + m.rows.length + "/" + n + " bars" + (autofillHint() || " · ↻") : "",
             e = f.atLive
               ? (m.native ? "" : "≈ ") + (y ? fmtAgo(t) : "live") + short
               : "◀ " + fmtHHMM(g.t) + " · dbl-click for live";

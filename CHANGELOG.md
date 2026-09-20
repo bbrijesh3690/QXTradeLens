@@ -5,6 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.32.0] - 2026-09-20
+
+### Fixed
+- **The auto-fill called a six-bar chart "ready".** It asked whether a chart had ANY bars, not whether it
+  had enough, so exactly the charts that looked emptiest were the ones it skipped. Measured live on a 15s
+  chart: 97 folded 1m bars is 6 bars of 15m out of the 40 asked for, reported as nothing to do. A chart
+  now counts as needing bars below 60% of your "candles per chart" setting, and folding cannot fix a short
+  history - only the platform own bars for that timeframe can, which is what the walk fetches.
+- **A short chart asked for a ↻ that was about to happen anyway.** It now says what the auto-fill is doing:
+  `6/40 bars · filling…`, `· trade open`, `· retrying`.
+
+### Changed
+- **The timeframe menu is driven with the same realistic click the trade buttons get** (focus, then the
+  full pointer sequence at the control own coordinates). A bare .click() is a lone MouseEvent with no
+  coordinates - the easiest kind of scripted click for a page to pick out - and the auto-fill makes this
+  walk happen without anyone pressing anything.
+
 ## [1.31.2] - 2026-09-20
 
 ### Added

@@ -1182,7 +1182,8 @@ test("MTF: clicking a cell's timeframe puts the platform chart on it (v1.30.0)",
 test("MTF: the pair name comes back after a message (v1.30.0)", async () => {
   const store = quotexStore();
   store.__candles = makeCandles(200, 15);
-  const qx = await boot({ storage: mtfStorage, store });
+  // Auto-fill off: its own "filling …" message would be the one on screen, not the one under test.
+  const qx = await boot({ storage: { ...mtfStorage, __tradeCalc_mtf_autofill: "0" }, store });
   try {
     await sleep(900);
     qx.panelRoot().querySelector('.tcMtfCell[data-tf="15s"] .tcMtfTf').click(); // already on 15s
@@ -1368,10 +1369,20 @@ test("health: the auto-fill says what it is waiting for (v1.31.0)", async () => 
   }
 });
 
-test("health: auto-fill reports ready when there is nothing blank (v1.31.0)", async () => {
+test("health: auto-fill reports ready when the charts are full (v1.31.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const full = (sec) => ({
+    candles: rows(60, sec, Math.floor(now / sec) * sec),
+    capturedAt: now,
+    periodSeconds: sec,
+  });
+  const cache = {
+    v: 2,
+    symbols: { USDDZD_otc: { "USDDZD_otc@60": full(60), "USDDZD_otc@300": full(300), "USDDZD_otc@900": full(900) } },
+  };
   const store = quotexStore();
-  store.__candles = makeCandles(400, 15); // every chart can be folded from this
-  const qx = await boot({ storage: bigTfStorage, store });
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
   try {
     await sleep(3600);
     const row = healthRow(qx, "Charts auto-fill");
@@ -1440,6 +1451,56 @@ test("diagnostics: the panel leaves a readable record of what it is doing (v1.31
     assert.match(diag.autofill, /trade is open/, diag.autofill);
     assert.ok(diag.openTrades >= 1, "and how many trades it can see");
     assert.ok(Date.now() - diag.at < 5000, "written just now");
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.32.0: "enough bars", not "any bars" ─────────────────────────────────────────
+
+test("MTF: a chart with a handful of bars is filled, not called ready (v1.32.0)", async () => {
+  // Exactly what was measured live: a short 1m history, which folds to six bars of 15m out of forty.
+  const now = Math.floor(Date.now() / 1000);
+  const cache = {
+    v: 2,
+    symbols: {
+      USDDZD_otc: {
+        "USDDZD_otc@60": { candles: rows(97, 60, Math.floor(now / 60) * 60), capturedAt: now, periodSeconds: 60, derived: true },
+      },
+    },
+  };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1200);
+    assert.ok(!/visit once/.test(mtfCap(qx, "15m")), "it does have bars, just not many: " + mtfCap(qx, "15m"));
+    assert.match(mtfCap(qx, "15m"), /\/40 bars/, mtfCap(qx, "15m"));
+    await sleep(3000);
+    const row = healthRow(qx, "Charts auto-fill");
+    assert.ok(!/ready/.test(row.value), "a six-bar chart is not 'ready': " + row.value);
+    assert.match(row.value, /filling/, "it goes and fills it: " + row.value);
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: a short chart says the fill is coming instead of asking for ↻ (v1.32.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const cache = {
+    v: 2,
+    symbols: {
+      USDDZD_otc: {
+        "USDDZD_otc@60": { candles: rows(97, 60, Math.floor(now / 60) * 60), capturedAt: now, periodSeconds: 60, derived: true },
+      },
+    },
+  };
+  const store = quotexStore({ opened: [deal("a")] }); // a trade is open, so the fill has to wait
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(3600);
+    assert.match(mtfCap(qx, "15m"), /bars . trade open/, mtfCap(qx, "15m"));
   } finally {
     qx.close();
   }
