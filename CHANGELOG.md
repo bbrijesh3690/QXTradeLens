@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.37.0] - 2026-09-20
+
+### Fixed
+- **A bar built from part of its period looked like any other bar.** Time you are not watching a pair is
+  missing from its 1m history, so a 15m bar covering that stretch is drawn from the few minutes that were
+  seen - same shape, wrong high and low. Three things stopped you noticing: the fold reset the count, so a
+  hole vanished as soon as it was folded up a level; the rolling 1m history dropped the flag when it saved;
+  and the newest bar, which is always part-formed because it is still running, was faded every time, which
+  taught you to ignore the fading. Incomplete bars are now faded and carried up through every fold, the
+  forming bar is left alone, and the caption says `gaps` with an explanation on hover.
+
 ## [1.36.0] - 2026-09-20
 
 ### Changed

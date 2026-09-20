@@ -327,3 +327,43 @@ test("MTF: auto-fill runs when only some cells are blank (v1.30.1)", async () =>
     qx.close();
   }
 });
+
+// ── v1.37.0: bars built from part of a period ──────────────────────────────
+
+// A 1m history with a hole in the middle: the panel was not watching for twenty of these minutes.
+function baseWithHole(now) {
+  const bars = rows(120, 60, Math.floor(now / 60) * 60);
+  for (let i = 40; i < 60; i++) bars[i].part = true; // folded from part of the minute
+  return { candles: bars, capturedAt: now, periodSeconds: 60, derived: true };
+}
+
+test("MTF: a chart built over a gap says so (v1.37.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": baseWithHole(now) } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1200);
+    assert.match(mtfCap(qx, "15m"), /gaps/, mtfCap(qx, "15m"));
+    const cell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="15m"]');
+    assert.match(cell.title, /part of the period/, "and explains it on hover");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: a complete history is not marked, and the forming bar alone is not a gap (v1.37.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: rows(120, 60, Math.floor(now / 60) * 60), capturedAt: now, periodSeconds: 60, derived: true } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1200);
+    const cap = mtfCap(qx, "15m");
+    assert.ok(!/gaps/.test(cap), "the newest bar is always part-formed; that is not a hole: " + cap);
+  } finally {
+    qx.close();
+  }
+});

@@ -6250,6 +6250,10 @@
           continue;
         }
         const bucket = Math.floor(c.t / dstSec) * dstSec;
+        // v1.37.0: `part` travels with the data. A 1m bar folded from two of the four 15s bars in that
+        // minute is incomplete, and so is any 5m or 15m bar built on top of it — before this, folding a
+        // second time reset the count and the hole vanished from view.
+        const short = !!(c.partial || c.part);
         if (cur && cur.t === bucket) {
           if (c.h > cur.h) {
             cur.h = c.h;
@@ -6259,18 +6263,21 @@
           }
           cur.c = c.c;
           cur.n++;
+          if (short) {
+            cur.short = true;
+          }
         } else {
           if (cur) {
             out.push(cur);
           }
-          cur = { t: bucket, o: c.o, h: c.h, l: c.l, c: c.c, n: 1 };
+          cur = { t: bucket, o: c.o, h: c.h, l: c.l, c: c.c, n: 1, short };
         }
       }
       if (cur) {
         out.push(cur);
       }
       for (let i = 0; i < out.length; i++) {
-        out[i].partial = out[i].n < per;
+        out[i].partial = out[i].n < per || !!out[i].short;
       }
       return out;
     }
@@ -6463,13 +6470,14 @@
         return;
       }
       const tail = src.candles.slice(-(MTF_BASE_WINDOW * (MTF_BASE_SEC / srcSec)));
-      const rolled = dropLeadingPartial(aggregateCandles(tail, srcSec, MTF_BASE_SEC)).map((c) => ({
-        t: c.t,
-        o: c.o,
-        h: c.h,
-        l: c.l,
-        c: c.c,
-      }));
+      const rolled = dropLeadingPartial(aggregateCandles(tail, srcSec, MTF_BASE_SEC)).map((c) => {
+        const bar = { t: c.t, o: c.o, h: c.h, l: c.l, c: c.c };
+        // Only when true, so the cache does not grow a field per bar for nothing.
+        if (c.partial) {
+          bar.part = true;
+        }
+        return bar;
+      });
       if (!rolled.length) {
         return;
       }
@@ -6667,7 +6675,7 @@
           a = r.c >= r.o ? n : o;
         d.strokeStyle = a;
         d.fillStyle = a;
-        d.globalAlpha = r.partial ? 0.5 : 1;
+        d.globalAlpha = r.partial && t !== e.length - 1 ? 0.5 : 1;
         const i = Math.round(y(t)) + 0.5;
         d.beginPath();
         d.moveTo(i, v(r.h));
@@ -7068,14 +7076,23 @@
           }
           u.style.color = isNaN(v) ? "" : v >= 0 ? a : i;
         }
+        // v1.37.0: faded bars cover minutes nobody was watching, so their high and low are built from
+        // part of the period. Worth saying out loud - the shape looks the same either way.
+        const gaps = f.candles.some((c, i) => c.partial && i !== f.candles.length - 1) ? " · gaps" : "";
+        if (s._tcGaps !== gaps) {
+          s._tcGaps = gaps;
+          s.title = gaps
+            ? "Faded bars cover time the panel was not watching this pair, so their high and low are built from part of the period. Press ↻ to fetch the platform's own bars."
+            : "";
+        }
         if (d) {
           const t = Math.max(0, c - (m.capturedAt || 0)),
             // v1.26.0: a derived timeframe often has far fewer bars than asked for; say so and point at ↻.
             // v1.32.0: when the auto-fill is about to deal with this, say so instead of asking for a ↻.
             short = m.rows.length < n ? " · " + m.rows.length + "/" + n + " bars" + (autofillHint() || " · ↻") : "",
             e = f.atLive
-              ? (m.native ? "" : "≈ ") + (y ? fmtAgo(t) : "live") + short
-              : "◀ " + fmtHHMM(g.t) + " · dbl-click for live";
+              ? (m.native ? "" : "≈ ") + (y ? fmtAgo(t) : "live") + short + gaps
+              : "◀ " + fmtHHMM(g.t) + " · dbl-click for live" + gaps;
           if (d.textContent !== e) {
             d.textContent = e;
           }
