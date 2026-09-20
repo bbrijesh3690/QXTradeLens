@@ -167,6 +167,10 @@
       if (m) {
         m.remove();
       }
+      const srRail = document.getElementById(ids && ids.tcSrRail ? ids.tcSrRail : "");
+      if (srRail) {
+        srRail.remove();
+      }
       const h = byId("__tcMTF");
       if (h) {
         h.remove();
@@ -573,9 +577,20 @@
     const TIME_TEXT_RE = /^\d{1,2}:\d{2}$/;
     const CLOCK_ONLY_RE = /^\d{1,2}:\d{2}(:\d{2})?$/;
     const textIn = (el) => (el && el.textContent ? el.textContent.trim() : "");
+    // v1.45.0: anything WE put on the page is not evidence about the platform. The S/R rail carries
+    // timeframe labels, and the semantic timeframe-menu finder promptly read its own chips as Quotex's
+    // menu. Our page-level pieces all carry ids built from one random token, so they are recognised by
+    // that prefix - no marker attribute, nothing new for the page to notice.
+    function isOurElement(el) {
+      try {
+        return !!(el && el.closest && el.closest('[id^="x' + idToken + '"]'));
+      } catch (t) {
+        return false;
+      }
+    }
     function leafMatches(root, re, extra) {
       return Array.from(root.querySelectorAll("div, span, button, li")).filter(
-        (el) => el.children.length === 0 && re.test(textIn(el)) && (!extra || extra(el)),
+        (el) => el.children.length === 0 && !isOurElement(el) && re.test(textIn(el)) && (!extra || extra(el)),
       );
     }
 
@@ -791,6 +806,7 @@
       "tcProjChip",
       "tcPlacedBal",
       "tcMonitored",
+      "tcSrRail",
     ].forEach((t, e) => {
       ids[t] = "x" + idToken + (e + 1).toString(36);
     });
@@ -1238,6 +1254,9 @@
       KEY_MTF_AUTOFILL = "__tradeCalc_mtf_autofill",
       KEY_MTF_SETTLE = "__tradeCalc_mtf_settle",
       KEY_MTF_ZOOM = "__tradeCalc_mtf_zoom",
+      KEY_SR_TFS = "__tradeCalc_sr_tfs",
+      // One colour per timeframe, so a level is read at a glance for what it is.
+      SR_COLOURS = { "1m": "#5aa9ff", "2m": "#5aa9ff", "3m": "#5aa9ff", "5m": "#ffb454", "10m": "#ffb454", "15m": "#c792ea", "30m": "#c792ea", "1h": "#ff7ab6", "4h": "#ff7ab6" },
       // v1.44.0: the wheel sets how many candles a chart shows, per timeframe. Wider than the panel's own
       // "candles per chart" setting, which is the starting point rather than a limit.
       clampZoom = (t) => {
@@ -1551,6 +1570,16 @@
     let mtfAutofill = readFlag(KEY_MTF_AUTOFILL, true);
     // { "1m": 60, "15m": 25 } — a timeframe with no entry uses the panel's own count.
     let mtfZoom = readJson(KEY_MTF_ZOOM, {}) || {};
+    // { "1m": true, "5m": false } - a timeframe with no entry is shown.
+    let srShown = readJson(KEY_SR_TFS, {}) || {};
+    const srOn = (tf) => srShown[tf] !== false;
+    function setSrShown(tf, on) {
+      srShown[tf] = !!on;
+      try {
+        writeJson(KEY_SR_TFS, srShown);
+      } catch (t) {}
+    }
+    const srColour = (tf) => SR_COLOURS[tf] || "#9fb3d9";
     function cellCount(cell) {
       const tf = cell && cell.getAttribute && cell.getAttribute("data-tf");
       const z = tf && mtfZoom[tf];
@@ -5958,6 +5987,157 @@
         return f;
       }
     }
+    // v1.45.0: the levels, on the platform's own chart.
+    //
+    // They are listed rather than drawn across it, and that is a limit rather than a preference. The
+    // chart is a single WebGL canvas; its vertical scale is view state the page keeps to itself, and
+    // measuring against its own axis shows the visible span is NOT `maxValue - minValue` - the price
+    // axis zooms and pans on its own. A line placed from the readable numbers lands in the wrong place,
+    // and reading the real transform would mean calling obfuscated internals that break on their next
+    // release. So each level is given with its distance from price instead, which needs no mapping and
+    // cannot silently drift. The mini charts DO draw them, because there the scale is ours.
+    function srRailRows() {
+      const tfs = getMtfTfs(),
+        state = readQuotexState(),
+        price = state && state.quotes && mtfSymbol ? state.quotes[mtfSymbol] : NaN,
+        nowSec = Math.floor(Date.now() / 1000),
+        out = [];
+      if (!mtfSymbol) {
+        return { price: NaN, rows: [], tfs };
+      }
+      // v1.45.0: the live quote is the reference, but a chart's own newest close will do when the quote
+      // map is not there - the distances stay right and the rail does not go blank over a missing field.
+      let ref = price;
+      if (!isFinite(ref)) {
+        for (const tf of tfs.slice().sort((x, y) => tfSeconds(x) - tfSeconds(y))) {
+          const sec = tfSeconds(tf);
+          const m = sec > 0 ? resolveMtfRows(mtfEntries, mtfSymbol, sec, nowSec, MTF_STALE_SEC) : null;
+          if (m && m.rows.length) {
+            ref = m.rows[m.rows.length - 1].c;
+            break;
+          }
+        }
+      }
+      if (!isFinite(ref)) {
+        return { price: NaN, rows: [], tfs };
+      }
+      for (const tf of tfs) {
+        if (!srOn(tf)) {
+          continue;
+        }
+        const sec = tfSeconds(tf);
+        const m = sec > 0 ? resolveMtfRows(mtfEntries, mtfSymbol, sec, nowSec, MTF_STALE_SEC) : null;
+        if (!m || !m.rows.length) {
+          continue;
+        }
+        const lv = srFor(mtfSymbol, sec, m.rows);
+        for (const h of lv.highs) {
+          out.push({ tf, kind: "R", price: h.price, away: ((h.price - ref) / ref) * 100 });
+        }
+        for (const l of lv.lows) {
+          out.push({ tf, kind: "S", price: l.price, away: ((l.price - ref) / ref) * 100 });
+        }
+      }
+      out.sort((a, b) => Math.abs(a.away) - Math.abs(b.away));
+      return { price: ref, rows: out.slice(0, 6), tfs };
+    }
+    function renderSrRail() {
+      const graph = document.getElementById("graph");
+      if (!graph) {
+        return;
+      }
+      let rail = byId(ids.tcSrRail);
+      const { price, rows, tfs } = srRailRows();
+      const anyOn = tfs.some((tf) => srOn(tf));
+      if (!anyOn && !rows.length && !rail) {
+        return;
+      }
+      if (!rail) {
+        rail = document.createElement("div");
+        rail.id = ids.tcSrRail;
+        rail.style.cssText =
+          "position:absolute; left:10px; top:96px; z-index:28; font-family:inherit; font-size:11px; " +
+          "background:oklch(16% 0.02 257 / 0.88); border:1px solid oklch(100% 0 0 / 0.1); border-radius:8px; " +
+          "padding:5px 7px; min-width:118px; user-select:none;";
+        applyTokenVars(rail);
+        if (getComputedStyle(graph).position === "static") {
+          graph.style.position = "relative";
+          graph._tcWasStatic = true;
+        }
+        rail.addEventListener("click", (ev) => {
+          const chip = ev.target.closest("[data-sr-tf]");
+          if (!chip) {
+            return;
+          }
+          ev.preventDefault();
+          ev.stopPropagation();
+          const tf = chip.getAttribute("data-sr-tf");
+          setSrShown(tf, !srOn(tf));
+          srCache.clear();
+          const panel = byId("__tcMTF");
+          if (panel) {
+            panel.querySelectorAll(".tcMtfCell").forEach((c) => {
+              c._tcSig = "";
+            });
+          }
+          rail._tcSig = "";
+          renderSrRail();
+        });
+        graph.appendChild(rail);
+      }
+      const sig =
+        tfs.map((tf) => tf + (srOn(tf) ? "1" : "0")).join(",") +
+        "|" +
+        rows.map((r) => r.tf + r.kind + r.price.toFixed(6)).join(",");
+      if (rail._tcSig === sig) {
+        return;
+      }
+      rail._tcSig = sig;
+      const dp = isFinite(price) ? Math.min(6, Math.max(2, String(Number(price.toPrecision(12))).split(".")[1] ? String(Number(price.toPrecision(12))).split(".")[1].length : 2)) : 5;
+      const chips = tfs
+        .map(
+          (tf) =>
+            '<span data-sr-tf="' +
+            tf +
+            '" style="cursor:pointer; padding:1px 5px; border-radius:4px; font-weight:800; font-size:10px; margin-right:3px; ' +
+            (srOn(tf)
+              ? "background:" + srColour(tf) + "; color:#0b1020;"
+              : "background:oklch(100% 0 0 / 0.08); color:var(--tc-text-mut);") +
+            '">' +
+            tf +
+            "</span>",
+        )
+        .join("");
+      const list = rows.length
+        ? rows
+            .map(
+              (r) =>
+                '<div style="display:flex; gap:6px; align-items:baseline; font-variant-numeric:tabular-nums; margin-top:2px;">' +
+                '<span style="color:' +
+                srColour(r.tf) +
+                '; font-weight:800; font-size:10px; width:30px;">' +
+                r.tf +
+                " " +
+                r.kind +
+                "</span>" +
+                '<span style="color:var(--tc-text-pri);">' +
+                r.price.toFixed(dp) +
+                "</span>" +
+                '<span style="margin-left:auto; color:' +
+                (r.away >= 0 ? "var(--tc-grn)" : "var(--tc-red)") +
+                '; font-size:10px;">' +
+                (r.away >= 0 ? "+" : "") +
+                r.away.toFixed(2) +
+                "%</span></div>",
+            )
+            .join("")
+        : '<div style="color:var(--tc-text-mut); font-size:10px; margin-top:2px;">no levels yet</div>';
+      rail.innerHTML =
+        '<div style="display:flex; align-items:center; margin-bottom:2px;"><span style="color:var(--tc-text-mut); font-size:9px; letter-spacing:0.06em; margin-right:5px;">S/R</span>' +
+        chips +
+        "</div>" +
+        list;
+    }
     function renderTradeTimers() {
       if (!TIMERS_ENABLED) {
         return;
@@ -6690,6 +6870,69 @@
         saveMtfCache(false);
       });
     }
+    // Support and resistance, exactly as fixed in Qx_Claude_Strategy (h013, frozen 2026-09-18):
+    //   * swing high = a candle whose high is above the 3 before it and at or above the 3 after it;
+    //     swing low is the mirror. Strength 3 each side.
+    //   * COMPLETED candles only - the bar still forming cannot set a level.
+    //   * a level counts only once its third confirming candle has closed.
+    //   * keep the last 3 highs and the last 3 lows; broken levels stay, and a level counts from
+    //     either side.
+    // Copied rather than imported: that project is a research harness with its own release cycle, and
+    // this panel must not depend on a file outside its own repository.
+    const SR_STRENGTH = 3,
+      SR_KEEP = 3;
+    function srLevels(rows, periodSec) {
+      const highs = [],
+        lows = [];
+      if (!Array.isArray(rows) || rows.length < 2 * SR_STRENGTH + 2) {
+        return { highs, lows };
+      }
+      const done = rows.slice(0, -1); // the newest bar is still running
+      for (
+        let i = done.length - 1 - SR_STRENGTH;
+        i >= SR_STRENGTH && (highs.length < SR_KEEP || lows.length < SR_KEEP);
+        i--
+      ) {
+        const c = done[i];
+        let isHigh = true,
+          isLow = true;
+        for (let k = 1; k <= SR_STRENGTH; k++) {
+          if (!(c.h > done[i - k].h && c.h >= done[i + k].h)) {
+            isHigh = false;
+          }
+          if (!(c.l < done[i - k].l && c.l <= done[i + k].l)) {
+            isLow = false;
+          }
+        }
+        const conf = done[i + SR_STRENGTH].t + (periodSec > 0 ? periodSec : 0);
+        if (isHigh && highs.length < SR_KEEP) {
+          highs.push({ price: c.h, at: c.t, conf });
+        }
+        if (isLow && lows.length < SR_KEEP) {
+          lows.push({ price: c.l, at: c.t, conf });
+        }
+      }
+      return { highs, lows };
+    }
+    // Recomputed only when a new candle has closed on that timeframe.
+    const srCache = new Map();
+    function srFor(symbol, periodSec, rows) {
+      if (!symbol || !rows || rows.length < 2) {
+        return { highs: [], lows: [] };
+      }
+      const key = symbol + "@" + periodSec,
+        lastDone = rows[rows.length - 2].t,
+        hit = srCache.get(key);
+      if (hit && hit.lastT === lastDone) {
+        return hit.levels;
+      }
+      const levels = srLevels(rows, periodSec);
+      srCache.set(key, { lastT: lastDone, levels });
+      if (srCache.size > 24) {
+        srCache.delete(srCache.keys().next().value);
+      }
+      return levels;
+    }
     function priceDecimals(candles) {
       // The string form of a JS number carries exactly the digits it needs: 0.57192 -> 5, 190.8 -> 1.
       // Taking the MOST decimals seen was wrong on live data: Quotex's own feed occasionally carries a
@@ -6733,7 +6976,7 @@
       }
       return Math.min(6, Math.max(2, best));
     }
-    function drawCandles(t, e, n, o, r, hoverIdx, barLeft) {
+    function drawCandles(t, e, n, o, r, hoverIdx, barLeft, srLines) {
       const a = t.clientWidth,
         i = t.clientHeight;
       if (!(a && i && e && e.length)) {
@@ -6820,6 +7063,45 @@
         d.fillRect(y(t) - _ / 2, Math.min(c, s), _, Math.max(1, Math.abs(s - c)));
       }
       d.globalAlpha = 1;
+      // ── Support and resistance (v1.45.0) ──────────────────────────────────────────────────────────
+      // Drawn under everything else: a level is context, not the thing you are reading.
+      if (srLines && srLines.length) {
+        try {
+          for (const line of srLines) {
+            if (!isFinite(line.price) || line.price > p || line.price < u) {
+              continue; // off this chart's price range - drawing it at the edge would be a lie
+            }
+            const ly = Math.round(v(line.price)) + 0.5;
+            d.globalAlpha = line.kind === "R" ? 0.75 : 0.75;
+            d.strokeStyle = line.colour;
+            if (typeof d.setLineDash == "function") {
+              d.setLineDash(line.kind === "R" ? [] : [4, 3]);
+            }
+            d.beginPath();
+            d.moveTo(6, ly);
+            d.lineTo(6 + h, ly);
+            d.stroke();
+            if (typeof d.setLineDash == "function") {
+              d.setLineDash([]);
+            }
+            if (typeof d.fillText == "function") {
+              const tag = line.tf + " " + line.kind,
+                size = Math.max(7, Math.min(10, Math.round(0.11 * i)));
+              d.font = "700 " + size + "px " + "'DM Sans', system-ui, sans-serif";
+              d.fillStyle = line.colour;
+              d.globalAlpha = 0.95;
+              if (typeof d.textBaseline == "string") {
+                d.textBaseline = "bottom";
+              }
+              d.fillText(tag, 8, ly - 1);
+              if (typeof d.textBaseline == "string") {
+                d.textBaseline = "middle";
+              }
+            }
+            d.globalAlpha = 1;
+          }
+        } catch (t) {}
+      }
       // ── Crosshair (v1.40.0) ───────────────────────────────────────────────────────────────────────
       // Drawn under the price label so the label stays readable when the two meet.
       if (hoverIdx != null && hoverIdx >= 0 && hoverIdx < e.length) {
@@ -7477,6 +7759,15 @@
         }
         const g = f.candles[f.candles.length - 1],
           barLeft = s._tcPanEndT ? null : barTimeLeft(p),
+          // v1.45.0: this chart's own levels. Each timeframe shows what it can see.
+          srLines = srOn(r)
+            ? (() => {
+                const lv = srFor(mtfSymbol, p, m.rows);
+                return lv.highs
+                  .map((x) => ({ price: x.price, kind: "R", tf: r, colour: srColour(r) }))
+                  .concat(lv.lows.map((x) => ({ price: x.price, kind: "S", tf: r, colour: srColour(r) })));
+              })()
+            : [],
           _ =
             f.candles.length +
             ":" +
@@ -7493,10 +7784,12 @@
             ":" +
             (s._tcHoverIdx == null ? "" : s._tcHoverIdx) +
             ":" +
-            (barLeft == null ? "" : barLeft);
+            (barLeft == null ? "" : barLeft) +
+            ":" +
+            srLines.length;
         if (s._tcSig !== _) {
           s._tcSig = _;
-          drawCandles(l, f.candles, a, i, f.future, s._tcHoverIdx, barLeft);
+          drawCandles(l, f.candles, a, i, f.future, s._tcHoverIdx, barLeft, srLines);
         }
         const y = isStale(m.capturedAt, c, MTF_STALE_SEC) && f.atLive;
         s.classList.toggle("tcMtfStale", y);
@@ -7949,6 +8242,7 @@
         return;
       }
       renderTradeTimers();
+      renderSrRail();
       (function () {
         const t = byId("__tcMTF");
         if (!t) {

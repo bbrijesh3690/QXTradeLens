@@ -5,6 +5,35 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.45.0] - 2026-09-20
+
+### Added
+- **Support and resistance levels**, using the rule frozen in the Qx_Claude_Strategy research (h013):
+  swing highs and lows of strength 3 on COMPLETED candles, the last three of each side, a level counting
+  only once its third confirming candle has closed, broken levels kept, and a level counting from either
+  side. The rule is copied rather than imported — that project has its own release cycle and this panel
+  must not depend on a file outside its own repository.
+- **Each mini chart draws its own levels**: resistance solid, support dashed, one colour per timeframe
+  (1m blue, 5m amber, 15m violet), tagged `1m R`, `15m S` and so on. A level outside that chart's price
+  range is left out rather than pinned to the edge.
+- **A level rail on the platform chart** listing the six levels nearest the price, each with its
+  timeframe, price and distance as a percentage, and **a chip per timeframe to show or hide it** with one
+  click on the chart. The choice is remembered.
+
+### Changed
+- **The panel's own page elements are invisible to its semantic finders.** The rail carries timeframe
+  labels, and the timeframe-menu finder promptly read its own chips as Quotex's menu. Anything built by
+  the panel is recognised by the random id prefix it already uses, so nothing new was added to the page.
+
+### Known limit
+- **The levels are listed on the platform chart, not drawn across it.** Its chart is a single WebGL
+  canvas whose vertical scale is view state the page keeps to itself: measured against its own axis, the
+  visible span is NOT `maxValue - minValue`, and the price axis zooms and pans independently. A line
+  placed from the readable numbers lands in the wrong place — measured about 1.35x too far apart — and
+  reading the real transform would mean calling obfuscated internals that break on their next release.
+  The distance readout needs no mapping and cannot silently drift. The mini charts draw the lines because
+  there the scale is ours.
+
 ## [1.44.1] - 2026-09-20
 
 ### Fixed

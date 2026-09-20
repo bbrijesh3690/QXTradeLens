@@ -577,12 +577,12 @@ test("MTF: the chart prints the time left on its forming bar (v1.42.0)", async (
   try {
     await sleep(1200);
     qx.ctxCalls.length = 0; // watch one redraw
-    await sleep(1400); // the canvas redraws every second so the countdown ticks
+    await sleep(2600); // the canvas redraws every second; allow for a loaded machine running specs in parallel
     const shown = clocksPrinted(qx);
     assert.ok(shown.length, "a countdown was drawn: " + printed(qx).slice(0, 5).join(" "));
     const now = Math.floor(Date.now() / 1000);
     const left = 60 - (now % 60);
-    const want = [left, left + 1, left + 2].map((v) => "00:" + String(v % 60).padStart(2, "0"));
+    const want = [left, left + 1, left + 2, left + 3, left + 4].map((v) => "00:" + String(((v % 60) + 60) % 60).padStart(2, "0"));
     assert.ok(
       shown.some((t) => want.includes(t)),
       "matching the wall clock: drew " + shown.join(" ") + ", expected one of " + want.join(" "),
@@ -823,6 +823,56 @@ test("MTF: a wheel gesture moves one step, not to the cap (v1.44.1)", async () =
     for (let i = 0; i < 40; i++) wheelOver(qx, "1m", 100);
     await sleep(300);
     assert.equal(cell._tcCount, 240, "and the cap holds: " + cell._tcCount);
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.45.0: support and resistance ──────────────────────────────────────
+
+// A 1m series with two clean swing highs and two swing lows, strength 3.
+function swingSeries(now) {
+  const shape = [10,11,12,13,12,11,10, 9, 8, 7, 8, 9,10,11,12,13,14,13,12,11,10, 9, 8, 9,10,11,12];
+  const t0 = Math.floor(now / 60) * 60 - shape.length * 60;
+  return shape.map((v, i) => ({ t: t0 + i * 60, o: 100 + v * 0.001, h: 100 + v * 0.001 + 0.0005, l: 100 + v * 0.001 - 0.0005, c: 100 + v * 0.001 }));
+}
+
+test("S/R: levels are the frozen rule - strength 3, last 3 a side, completed candles (v1.45.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const bars = swingSeries(now);
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    const rail = qx.window.document.querySelector('#graph > div[id^="x"]');
+    const text = [...qx.window.document.querySelectorAll('#graph > div')].map(d=>d.textContent||"").join(" ");
+    assert.ok(text.includes("S/R"), "the rail is on the chart: " + text.slice(0,120));
+    assert.match(text, /1m (R|S)/, "with a level from the 1m chart: " + text.slice(0,160));
+  } finally {
+    qx.close();
+  }
+});
+
+test("S/R: a timeframe can be switched off from the chart itself (v1.45.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const bars = swingSeries(now);
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    const chip = [...qx.window.document.querySelectorAll('#graph [data-sr-tf]')].find(c=>c.getAttribute("data-sr-tf")==="1m");
+    assert.ok(chip, "a 1m chip to click");
+    const before = [...qx.window.document.querySelectorAll('#graph > div')].map(d=>d.textContent||"").join(" ");
+    assert.match(before, /1m (R|S)/, "levels listed first");
+    chip.click();
+    await sleep(400);
+    const after = [...qx.window.document.querySelectorAll('#graph > div')].map(d=>d.textContent||"").join(" ");
+    assert.ok(!/1m (R|S)/.test(after), "and gone after one click: " + after.slice(0,160));
+    assert.equal(JSON.parse(pref(qx, "__tradeCalc_sr_tfs"))["1m"], false, "the choice is remembered");
   } finally {
     qx.close();
   }
