@@ -197,7 +197,7 @@ extension was reloaded, and it is still running the old code.
 |---|---|
 | `src/content.js` | **Source** of the main panel. Edit this, not the built file |
 | `tools/` | `build.mjs` (build), `verify-equivalence.mjs` (proof check), `unminify.mjs` + `rename-map.json` (one-off source recovery) |
-| `tests/` | jsdom behavior tests plus a fixture copied from the live Quotex DOM |
+| `tests/` | jsdom behavior specs plus a fixture copied from the live Quotex DOM. `helpers.mjs` holds the shared harness; the specs are split by area (`panel`, `platform`, `mtf`, `mtf-fill`, `chips`, `privacy`, `popup`) so Node can run them in parallel |
 | `qx-calc-updater/qx-calc-updater/` | The unpacked extension (load this folder in `chrome://extensions`) |
 | `…/manifest.json` | Extension manifest. `version` is the source of truth for releases |
 | `…/content.js` | Main panel, **generated** by `npm run build` from `src/content.js` (committed so the folder loads without building) |
@@ -221,7 +221,9 @@ npm install
 
 - `npm run build` rebuilds `content.js` from `src/content.js` (minified).
 - `npm run build:dev` builds an unminified `content.js`, which is easier to debug in DevTools.
-- `npm test` runs the jsdom behavior tests. `CONTENT_JS=path npm test` runs them against another build,
+- `npm test` runs the jsdom behavior specs (about 90 s; they are almost entirely waiting on the panel’s
+  timers, and Node runs the files in parallel). A single area is quicker: `node --test tests/mtf.test.mjs`,
+  or one test by name with `--test-name-pattern`. `CONTENT_JS=path npm test` runs them against another build,
   which is how each fix is shown to fail on the previous version and pass on the new one.
 - `npm run verify` checks that a build is the same program as the v1.19.0 release. Useful for refactors
   that should not change behavior; once a fix lands, a difference is expected.
