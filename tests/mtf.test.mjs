@@ -403,3 +403,26 @@ test("MTF: the price label keeps the decimals the instrument moves in (v1.38.0)"
     qx.close();
   }
 });
+
+test("MTF: one noisy close does not stretch the price label (v1.38.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // Live data from the platform: a five-decimal pair whose feed slips in 1.6146266 now and then.
+  const bars = rows(60, 60, Math.floor(now / 60) * 60).map((b, i) => ({
+    ...b,
+    o: 1.61441, h: 1.61472, l: 1.61402,
+    c: i === 57 ? 1.6146266 : Number((1.61441 + i * 0.00001).toFixed(5)),
+  }));
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1200);
+    const labels = printed(qx);
+    assert.ok(labels.length, "a label was printed");
+    const tooLong = labels.filter((l) => (l.split(".")[1] || "").length > 5);
+    assert.equal(tooLong.length, 0, "five decimals, not six: " + labels.slice(0, 4).join(" "));
+  } finally {
+    qx.close();
+  }
+});

@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.38.1] - 2026-09-20
+
+### Fixed
+- **One noisy close stretched the price label.** The number of decimals came from the MOST any recent
+  close carried, and Quotex own feed occasionally sends a value like 1.6146266 for a pair it quotes to
+  five places — seen live on EUR/AUD within minutes of shipping the label. A decimal length now has to
+  turn up in a fifth of the recent closes before it is believed.
+
 ## [1.38.0] - 2026-09-20
 
 ### Added

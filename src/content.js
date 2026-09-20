@@ -6622,20 +6622,43 @@
       });
     }
     function priceDecimals(candles) {
-      let most = 0;
+      // The string form of a JS number carries exactly the digits it needs: 0.57192 -> 5, 190.8 -> 1.
+      // Taking the MOST decimals seen was wrong on live data: Quotex's own feed occasionally carries a
+      // value like 1.6146266 for a pair it quotes to five places, and one such close dragged the whole
+      // label out to six. A length has to turn up in a fifth of the sample before it is believed (v1.38.1).
+      const counts = new Map();
+      let seen = 0;
       for (let i = Math.max(0, candles.length - 20); i < candles.length; i++) {
         const c = candles[i];
         if (!c || !isFinite(c.c)) {
           continue;
         }
-        // The string form of a JS number carries exactly the digits it needs: 0.57192 -> 5, 190.8 -> 1.
         const dot = String(c.c).indexOf(".");
         const digits = dot < 0 ? 0 : String(c.c).length - dot - 1;
-        if (digits > most) {
-          most = digits;
-        }
+        counts.set(digits, (counts.get(digits) || 0) + 1);
+        seen++;
       }
-      return Math.min(6, Math.max(2, most));
+      if (!seen) {
+        return 2;
+      }
+      const enough = Math.max(2, Math.ceil(0.2 * seen));
+      let best = 0;
+      counts.forEach((n, digits) => {
+        if (n >= enough && digits > best) {
+          best = digits;
+        }
+      });
+      if (!best) {
+        // Nothing repeats often enough (a very short or very noisy series): fall back to the commonest.
+        let top = 0;
+        counts.forEach((n, digits) => {
+          if (n > top || (n === top && digits > best)) {
+            top = n;
+            best = digits;
+          }
+        });
+      }
+      return Math.min(6, Math.max(2, best));
     }
     function drawCandles(t, e, n, o, r) {
       const a = t.clientWidth,
