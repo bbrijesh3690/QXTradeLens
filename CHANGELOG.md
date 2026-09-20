@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.31.2] - 2026-09-20
+
+### Added
+- **A diagnostics line in the site own storage**, written every two seconds by whichever tab is in front:
+  the build that tab is running, the pair, the chart timeframe, how many open trades it can see, and what
+  the auto-fill is waiting for. The popup health check can only be read by whoever is at the browser; this
+  can be read back from any tab on the site, which is what makes remote debugging of the panel possible.
+
 ## [1.31.1] - 2026-09-20
 
 ### Changed

@@ -1228,6 +1228,7 @@
         } catch (t) {}
       },
       KEY_MTF_AUTOFILL = "__tradeCalc_mtf_autofill",
+      KEY_DIAG = "__tradeCalc_diag",
       parsePlainNumber = (t) => parseFloat(String(t).replace(/,/g, "")),
       fmtInputMoney = (t) => {
         const e = parseFloat(t);
@@ -7396,6 +7397,30 @@
       if (byId("__tcMobileBar")) {
         renderMobileBar();
       }
+    });
+    // v1.31.2: a diagnostics line in the site's own storage. The health check lives in the popup, which
+    // can only be read by whoever is sitting at the browser — no help when the panel is misbehaving in a
+    // tab someone else has to reason about. This writes the same facts where any tab on qxbroker.com can
+    // read them back: which build is running, the pair, what the auto-fill is waiting for, and the chart's
+    // timeframe. Only the foreground tab writes, so it always describes the tab actually being watched.
+    every(2000, () => {
+      if (document.hidden) {
+        return;
+      }
+      try {
+        prefSet(
+          KEY_DIAG,
+          JSON.stringify({
+            build: BUILD_VERSION,
+            at: Date.now(),
+            pair: mtfSymbol || null,
+            chartSec: mtfChartSec || 0,
+            autofill: mtfAutofill ? mtfAutofillReason : "switched off in the popup",
+            openTrades: openTradeCount(),
+            charts: byId("__tcMTF") ? (byId("__tcMTF")._tcTfs || getMtfTfs()).join(",") : "hidden",
+          }),
+        );
+      } catch (t) {}
     });
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Mobile bar (≤ 640 px)

@@ -1427,6 +1427,24 @@ test("MTF: a blank chart says why it is still blank (v1.31.1)", async () => {
   }
 });
 
+test("diagnostics: the panel leaves a readable record of what it is doing (v1.31.2)", async () => {
+  const store = quotexStore({ opened: [deal("a")] });
+  store.__candles = [];
+  const qx = await boot({ storage: bigTfStorage, store });
+  try {
+    // The pair has to arrive from the store, then settle for three seconds, before the auto-fill judges it.
+    await sleep(5600);
+    const diag = JSON.parse(pref(qx, "__tradeCalc_diag"));
+    assert.match(String(diag.build), /^[0-9]+[.][0-9]+[.][0-9]+$/, "the build the tab is running: " + diag.build);
+    assert.equal(diag.pair, "USDDZD_otc");
+    assert.match(diag.autofill, /trade is open/, diag.autofill);
+    assert.ok(diag.openTrades >= 1, "and how many trades it can see");
+    assert.ok(Date.now() - diag.at < 5000, "written just now");
+  } finally {
+    qx.close();
+  }
+});
+
 // ── v1.28.0: how the trade click is produced ───────────────────────────────────────────────────────
 
 const hkStorage = { ...slStorage(10000), __tradeCalc_hk_updown: "true" };
