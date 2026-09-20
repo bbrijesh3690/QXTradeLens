@@ -131,7 +131,12 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
     lineTo: () => {},
     stroke: () => ctxCalls.push("stroke"),
     fillRect: () => ctxCalls.push("fillRect"),
-    lineWidth: 1, strokeStyle: "", fillStyle: "", globalAlpha: 1,
+    // Enough of a text API for the last-price label (v1.38.0); the text itself is recorded so a spec
+    // can read what the chart would have printed.
+    setLineDash: () => ctxCalls.push("setLineDash"),
+    measureText: (t) => ({ width: String(t).length * 5 }),
+    fillText: (t) => ctxCalls.push("fillText:" + t),
+    lineWidth: 1, strokeStyle: "", fillStyle: "", globalAlpha: 1, font: "", textBaseline: "alphabetic",
   });
   // jsdom has no layout; give canvases a size so drawing isn't skipped.
   Object.defineProperty(window.HTMLCanvasElement.prototype, "clientWidth", { get: () => 260, configurable: true });

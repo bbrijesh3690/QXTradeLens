@@ -367,3 +367,39 @@ test("MTF: a complete history is not marked, and the forming bar alone is not a 
     qx.close();
   }
 });
+
+// ── v1.38.0: a price to read the shape against ────────────────────────────
+
+const printed = (qx) => qx.ctxCalls.filter((c) => c.startsWith("fillText:")).map((c) => c.slice(9));
+
+test("MTF: each chart prints its last price (v1.38.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15); // closes run 100.02, 100.03, ...
+  const qx = await boot({ storage: { ...mtfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1200);
+    const labels = printed(qx);
+    assert.ok(labels.length, "something was printed on the charts");
+    // The fake feed ends at 100 + 199 x 0.01 + 0.02 = 102.01, to the decimals the data carries.
+    assert.ok(labels.some((l) => l.startsWith("102.0")), "the last close: " + labels.slice(0, 4).join(" "));
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: the price label keeps the decimals the instrument moves in (v1.38.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // A five-decimal pair, the way Quotex quotes FX.
+  const bars = rows(60, 60, Math.floor(now / 60) * 60).map((b, i) => ({ ...b, o: 0.57192, h: 0.57221, l: 0.5718, c: 0.57204 + i * 0.00001 }));
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1200);
+    const labels = printed(qx);
+    assert.ok(labels.some((l) => l.split(".")[1] && l.split(".")[1].length === 5), "five decimals, not rounded: " + labels.slice(0, 4).join(" "));
+  } finally {
+    qx.close();
+  }
+});

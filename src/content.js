@@ -6621,6 +6621,22 @@
         saveMtfCache(false);
       });
     }
+    function priceDecimals(candles) {
+      let most = 0;
+      for (let i = Math.max(0, candles.length - 20); i < candles.length; i++) {
+        const c = candles[i];
+        if (!c || !isFinite(c.c)) {
+          continue;
+        }
+        // The string form of a JS number carries exactly the digits it needs: 0.57192 -> 5, 190.8 -> 1.
+        const dot = String(c.c).indexOf(".");
+        const digits = dot < 0 ? 0 : String(c.c).length - dot - 1;
+        if (digits > most) {
+          most = digits;
+        }
+      }
+      return Math.min(6, Math.max(2, most));
+    }
     function drawCandles(t, e, n, o, r) {
       const a = t.clientWidth,
         i = t.clientHeight;
@@ -6685,6 +6701,45 @@
           s = v(r.c);
         d.fillRect(y(t) - _ / 2, Math.min(c, s), _, Math.max(1, Math.abs(s - c)));
       }
+      d.globalAlpha = 1;
+      // ── Last price: a dashed line across the chart and a label at the right edge ──────────────────
+      // Everything here is feature-checked and wrapped: a canvas without text metrics (the jsdom
+      // harness, or a browser refusing the call) must not take the candles down with it.
+      try {
+        const last = e[e.length - 1];
+        if (last && isFinite(last.c) && typeof d.fillText == "function") {
+          const price = last.c,
+            lineY = Math.round(v(price)) + 0.5,
+            colour = last.c >= last.o ? n : o;
+          d.globalAlpha = 0.5;
+          d.strokeStyle = colour;
+          if (typeof d.setLineDash == "function") {
+            d.setLineDash([3, 3]);
+          }
+          d.beginPath();
+          d.moveTo(6, lineY);
+          d.lineTo(6 + h, lineY);
+          d.stroke();
+          if (typeof d.setLineDash == "function") {
+            d.setLineDash([]);
+          }
+          d.globalAlpha = 1;
+          const text = price.toFixed(priceDecimals(e)),
+            size = Math.max(8, Math.min(11, Math.round(0.13 * i)));
+          d.font = "700 " + size + "px " + "'DM Sans', system-ui, sans-serif";
+          const width = (typeof d.measureText == "function" ? d.measureText(text).width : 6 * text.length) + 8,
+            height = size + 5,
+            boxX = Math.max(0, a - width - 1),
+            boxY = Math.max(0, Math.min(i - height, lineY - height / 2));
+          d.fillStyle = colour;
+          d.fillRect(boxX, boxY, width, height);
+          d.fillStyle = "#0b1020";
+          if (typeof d.textBaseline == "string") {
+            d.textBaseline = "middle";
+          }
+          d.fillText(text, boxX + 4, boxY + height / 2 + 0.5);
+        }
+      } catch (t) {}
       d.globalAlpha = 1;
     }
     const fmtAgo = (t) =>

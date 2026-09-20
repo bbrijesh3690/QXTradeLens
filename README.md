@@ -67,7 +67,7 @@ The stop loss never blocks trading (changed in v1.21.0); it is tracked and displ
   amount, and tap the middle button to switch the factor between 1.3 and 1.5.
 - **Multi-timeframe charts** — up to 4 mini candle charts (default 1m, 5m, 15m) drawn from Quotex's own
   candle data. Drag to pan, drag edges to resize, double-click to return to live. The header shows the pair
-  and highlights the timeframe your chart is on, and each cell says how many bars it has.
+  and highlights the timeframe your chart is on, and each cell says how many bars it has, with a dashed line and a label at the right edge for the last price.
   **Click a cell's timeframe label** to put the platform chart on that timeframe. Opening a pair
   **runs that walk for you** — the chart visits each of your timeframes once and comes back (only with the
   tab in front; switch it off in the popup, or set a wait before it starts),

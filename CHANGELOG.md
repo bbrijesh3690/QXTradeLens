@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.38.0] - 2026-09-20
+
+### Added
+- **Each mini chart shows its last price**: a dashed line across the chart at the last close, and a label
+  at the right edge in the colour of that bar. The charts showed shape with no price reference at all, so
+  there was no way to tell where a level sat without going back to the platform chart. The number of
+  decimals is read from the data, so a 5-decimal FX pair, a JPY cross and a whole-number index each print
+  the digits they actually move in.
+
 ## [1.37.0] - 2026-09-20
 
 ### Fixed
