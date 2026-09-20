@@ -6895,6 +6895,27 @@
       };
     // v1.40.0: which bar the pointer is over. The panel redraws on a 200 ms tick, which is visibly late
     // for a crosshair, so a move redraws the one cell it is over straight away.
+    // The bar in this cell whose period contains `at`, or null when it is not on screen.
+    function matchingBarIndex(cell, at) {
+      const drawn = cell._tcDrawn;
+      if (!drawn || !drawn.length) {
+        return null;
+      }
+      const period = tfSeconds(cell.getAttribute("data-tf")) || 0;
+      let found = null;
+      for (let i = drawn.length - 1; i >= 0; i--) {
+        if (drawn[i].t <= at) {
+          found = i;
+          break;
+        }
+      }
+      if (found == null) {
+        return null;
+      }
+      // Guard against a hole: without this, a moment that this chart never recorded would light up the
+      // last bar before the gap as though it covered it.
+      return period > 0 && at >= drawn[found].t + period ? null : found;
+    }
     function attachMtfHover(panel) {
       const clear = () => {
         let changed = false;
@@ -6924,12 +6945,19 @@
           if (cell._tcHoverIdx === next) {
             return;
           }
-          panel.querySelectorAll(".tcMtfCell").forEach((other) => {
-            if (other !== cell) {
-              other._tcHoverIdx = null;
-            }
-          });
           cell._tcHoverIdx = next;
+          // v1.43.0: the same moment on every chart. Candles are bucketed by time, so the bar under the
+          // pointer belongs to exactly one bar on each of the other timeframes - the one whose own period
+          // contains its start. That rule reads both ways: a 1m bar picks the 5m bar holding it, and a 15m
+          // bar picks the first 1m bar inside it. A chart not showing that moment gets no crosshair, which
+          // is the honest answer rather than the nearest bar to it.
+          const at = next == null ? null : cell._tcDrawn[next].t;
+          panel.querySelectorAll(".tcMtfCell").forEach((other) => {
+            if (other === cell) {
+              return;
+            }
+            other._tcHoverIdx = at == null ? null : matchingBarIndex(other, at);
+          });
           renderMtf(panel);
         },
         { passive: true },

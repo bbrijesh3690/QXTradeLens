@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.43.0] - 2026-09-20
+
+### Added
+- **The crosshair follows the same moment across every chart.** Hover a 1m bar and the 5m and 15m charts
+  mark the bar holding it, each with its own readout — so one hover gives you the minute, the five minutes
+  and the quarter hour around it. Candles are bucketed by time, so the rule is simply: mark the bar whose
+  own period contains the hovered bar start. It reads both ways, and a 15m bar marks the first minute
+  inside it.
+- A chart **not showing that moment gets no crosshair** rather than the nearest bar to it: the 1m chart
+  covers about forty minutes, so a 15m bar from hours ago is genuinely off its screen, and a hole in a
+  chart history is not quietly filled by the bar before it.
+
 ## [1.42.1] - 2026-09-20
 
 ### Fixed

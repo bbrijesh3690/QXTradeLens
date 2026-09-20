@@ -647,3 +647,66 @@ test("MTF: price on the right, countdown clear of the candles (v1.42.1)", async 
     qx.close();
   }
 });
+
+// ── v1.43.0: the same moment on every chart ──────────────────────────────
+
+const hoveredBar = (qx, tf) => {
+  const cell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="' + tf + '"]');
+  return cell._tcHoverIdx == null ? null : cell._tcDrawn[cell._tcHoverIdx];
+};
+
+test("MTF: hovering one chart marks the same moment on the others (v1.43.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(900, 15); // enough history for all three charts
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1400);
+    hoverBar(qx, "1m", 12);
+    const one = hoveredBar(qx, "1m");
+    assert.ok(one, "a 1m bar is under the pointer");
+    for (const [tf, sec] of [["5m", 300], ["15m", 900]]) {
+      const bar = hoveredBar(qx, tf);
+      assert.ok(bar, tf + " picked a bar too");
+      assert.ok(bar.t <= one.t && one.t < bar.t + sec, tf + " bar " + bar.t + " holds the 1m bar at " + one.t);
+    }
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: it reads the other way too - a 15m bar marks the first minute inside it (v1.43.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(900, 15);
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1400);
+    // The newest 15m bar: the 1m chart only shows about forty minutes, so an older one is genuinely
+    // off its screen and correctly gets no crosshair.
+    const wideCell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="15m"]');
+    hoverBar(qx, "15m", wideCell._tcDrawn.length - 1);
+    const wide = hoveredBar(qx, "15m");
+    assert.ok(wide, "a 15m bar is under the pointer");
+    const minute = hoveredBar(qx, "1m");
+    assert.ok(minute, "the 1m chart followed");
+    assert.equal(minute.t, wide.t, "and landed on the first minute of that fifteen");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: leaving clears every chart, not just the one hovered (v1.43.0)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(900, 15);
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1400);
+    hoverBar(qx, "1m", 8);
+    assert.ok(hoveredBar(qx, "15m"), "marked while hovering");
+    const panel = qx.panelRoot().getElementById("__tcMTF");
+    panel.dispatchEvent(new qx.window.Event("pointerleave", { bubbles: false }));
+    await sleep(300);
+    for (const tf of ["1m", "5m", "15m"]) assert.equal(hoveredBar(qx, tf), null, tf + " cleared");
+  } finally {
+    qx.close();
+  }
+});
