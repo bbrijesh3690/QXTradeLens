@@ -900,3 +900,30 @@ test("S/R: a level is labelled with its side and price, not its timeframe (v1.46
     qx.close();
   }
 });
+
+test("S/R: a level price has fallen through is resistance, not support (v1.46.1)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // A swing low, then a decline that leaves price well below it.
+  const shape = [20,19,18,17,16,15,14,15,16,17,18,19,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3];
+  const t0 = Math.floor(now / 60) * 60 - shape.length * 60;
+  const bars = shape.map((v, i) => ({ t: t0 + i * 60, o: 100 + v * 0.001, h: 100 + v * 0.001 + 0.0004, l: 100 + v * 0.001 - 0.0004, c: 100 + v * 0.001 }));
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@60": { candles: bars, capturedAt: now, periodSeconds: 60 } } } };
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
+  try {
+    await sleep(1400);
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    const labels = printed(qx).filter((x) => /^[RS] - /.test(x));
+    assert.ok(labels.length, "levels drawn: " + printed(qx).slice(0,6).join(" | "));
+    const last = bars[bars.length - 1].c;
+    for (const l of labels) {
+      const [side, price] = [l.slice(0, 1), parseFloat(l.slice(4))];
+      if (price >= last) assert.equal(side, "R", l + " sits above " + last.toFixed(5));
+      else assert.equal(side, "S", l + " sits below " + last.toFixed(5));
+    }
+  } finally {
+    qx.close();
+  }
+});

@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.46.1] - 2026-09-20
+
+### Fixed
+- **A level above price was labelled `S`.** The side was taken from how the level formed — swing low is
+  support, swing high is resistance — but that is only true until price crosses it. The rule these levels
+  come from says broken levels stay and count from either side, and its own example is a broken high that
+  later held as support. A level is now labelled by where price stands: above price it is `R` and drawn
+  solid, below price it is `S` and drawn dashed, whichever kind of swing made it. Reported from the chart
+  after a fall left every support sitting above the price.
+
 ## [1.46.0] - 2026-09-20
 
 ### Removed

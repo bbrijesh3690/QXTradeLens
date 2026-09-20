@@ -6911,15 +6911,21 @@
       // Drawn under everything else: a level is context, not the thing you are reading.
       if (srLines && srLines.length) {
         try {
+          // v1.46.1: a level's SIDE is where price stands now, not how the level formed. The rule this
+          // comes from says broken levels stay and count from either side - a swing low price has fallen
+          // through is resistance from underneath, and the research's own example is a broken high that
+          // later held as support. Labelling by origin put "S" above price, which reads as a mistake.
+          const ref = e[e.length - 1] && isFinite(e[e.length - 1].c) ? e[e.length - 1].c : NaN;
           for (const line of srLines) {
             if (!isFinite(line.price) || line.price > p || line.price < u) {
               continue; // off this chart's price range - drawing it at the edge would be a lie
             }
+            const role = !isFinite(ref) ? line.kind : line.price >= ref ? "R" : "S";
             const ly = Math.round(v(line.price)) + 0.5;
-            d.globalAlpha = line.kind === "R" ? 0.75 : 0.75;
+            d.globalAlpha = 0.75;
             d.strokeStyle = line.colour;
             if (typeof d.setLineDash == "function") {
-              d.setLineDash(line.kind === "R" ? [] : [4, 3]);
+              d.setLineDash(role === "R" ? [] : [4, 3]);
             }
             d.beginPath();
             d.moveTo(6, ly);
@@ -6931,7 +6937,7 @@
             if (typeof d.fillText == "function") {
               // v1.46.0: the chart already says which timeframe it is, so the label is just the side and
               // the price - "R - 0.56330" - sat at the right, where you read prices on this panel.
-              const tag = line.kind + " - " + line.price.toFixed(priceDecimals(e)),
+              const tag = role + " - " + line.price.toFixed(priceDecimals(e)),
                 size = Math.max(7, Math.min(10, Math.round(0.11 * i)));
               d.font = "700 " + size + "px " + "'DM Sans', system-ui, sans-serif";
               const tw = typeof d.measureText == "function" ? d.measureText(tag).width : 5.5 * tag.length;
