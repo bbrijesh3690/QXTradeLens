@@ -6794,10 +6794,14 @@
         if (bar && isFinite(bar.c)) {
           const x = Math.round(y(hoverIdx)) + 0.5,
             lineY = Math.round(v(bar.c)) + 0.5;
-          d.globalAlpha = 0.45;
-          d.strokeStyle = "#9fb3d9";
+          // v1.43.1: the crosshair and the bar-end upright were the same colour, weight and dash, so
+          // hovering near the newest candle showed two lines nobody could tell apart. The crosshair is
+          // the bright, finely dotted one, with a marker where its lines cross; the bar-end upright is
+          // dimmer below.
+          d.globalAlpha = 0.9;
+          d.strokeStyle = "#e8eefc";
           if (typeof d.setLineDash == "function") {
-            d.setLineDash([2, 2]);
+            d.setLineDash([1, 3]);
           }
           d.beginPath();
           d.moveTo(x, 6);
@@ -6808,6 +6812,8 @@
           if (typeof d.setLineDash == "function") {
             d.setLineDash([]);
           }
+          d.fillStyle = "#e8eefc";
+          d.fillRect(x - 1.5, lineY - 1.5, 3, 3);
           d.globalAlpha = 1;
         }
       }
@@ -6851,7 +6857,7 @@
           if (barLeft != null && barLeft >= 0) {
             // The bar now forming ends here: a dashed upright, clear of the last candle.
             const edge = Math.round(y(e.length - 1) + _ / 2 + GAP) + 0.5;
-            d.globalAlpha = 0.5;
+            d.globalAlpha = 0.3;
             d.strokeStyle = "#9fb3d9";
             if (typeof d.setLineDash == "function") {
               d.setLineDash([3, 3]);

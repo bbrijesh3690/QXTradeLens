@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.43.1] - 2026-09-20
+
+### Fixed
+- **The crosshair and the bar-end line looked the same.** Both were drawn in the same colour, weight and
+  dash, so hovering near the newest candle put two indistinguishable uprights on the chart. The crosshair
+  is now the bright, finely dotted one, with a marker where its lines cross; the bar-end upright is dimmer
+  and stays dashed. A spec records the colour each line is stroked in, so they cannot drift back together.
+
 ## [1.43.0] - 2026-09-20
 
 ### Added

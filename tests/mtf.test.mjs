@@ -710,3 +710,20 @@ test("MTF: leaving clears every chart, not just the one hovered (v1.43.0)", asyn
     qx.close();
   }
 });
+
+test("MTF: the crosshair does not look like the bar-end line (v1.43.1)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15);
+  const qx = await boot({ storage: oneCell, store });
+  try {
+    await sleep(1400);
+    qx.ctxCalls.length = 0;
+    hoverBar(qx, "1m", 20);
+    const strokes = qx.ctxCalls.filter((c) => c.startsWith("stroke:")).map((c) => c.slice(7));
+    const colours = [...new Set(strokes)];
+    assert.ok(colours.includes("#e8eefc"), "the crosshair is drawn in its own colour: " + colours.join(" "));
+    assert.ok(colours.includes("#9fb3d9"), "the bar-end line keeps its own: " + colours.join(" "));
+  } finally {
+    qx.close();
+  }
+});
