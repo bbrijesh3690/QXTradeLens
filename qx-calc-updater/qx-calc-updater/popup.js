@@ -337,7 +337,7 @@ if (mtfCountSlider) {
 }
 function clampSettle(v) {
   const n = parseInt(v, 10);
-  return isNaN(n) ? 15 : Math.min(120, Math.max(3, n));
+  return isNaN(n) ? 0 : Math.min(120, Math.max(0, n));
 }
 if (mtfAutofillToggle) {
   mtfAutofillToggle.addEventListener('change', () => {

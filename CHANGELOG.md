@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.36.0] - 2026-09-20
+
+### Changed
+- **The charts fill the moment you open a pair.** The wait before filling now defaults to 0 instead of 15
+  seconds. Flicking through pairs is still safe: the pair waiting to be filled is simply overwritten as
+  you go, so only the one you land on is walked. Raise **Wait Before Filling** in the popup if you would
+  rather it held off.
+- **An open trade no longer blocks anything.** The ↻ button refused to run while a trade was open, and the
+  fill waited for the trade to close. Neither needed to: the walk changes which timeframe the chart shows,
+  which is a view, not the trade. The cost is that the chart looks away from a running trade for the few
+  seconds the walk takes.
+
 ## [1.35.0] - 2026-09-20
 
 ### Changed

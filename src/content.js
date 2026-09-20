@@ -1238,17 +1238,19 @@
       KEY_MTF_AUTOFILL = "__tradeCalc_mtf_autofill",
       KEY_MTF_SETTLE = "__tradeCalc_mtf_settle",
       KEY_DIAG = "__tradeCalc_diag",
-      // v1.33.0: how long a pair has to stay on screen before its charts are filled. Flicking through
-      // pair tabs should not send the chart off on a walk for every pair you pass through.
+      // v1.33.0: how long a pair has to stay on screen before its charts are filled. v1.36.0 makes the
+      // default 0 — the charts fill the moment you open the pair. Flicking through tabs is handled by the
+      // pending pair being overwritten as you go, so only the one you land on is walked; set a wait here
+      // if you would rather it hold off.
       clampMtfSettle = (t) => {
         const n = parseInt(t, 10);
-        return isNaN(n) ? 15 : Math.min(120, Math.max(3, n));
+        return isNaN(n) ? 0 : Math.min(120, Math.max(0, n));
       },
       getMtfSettle = () => {
         try {
           return clampMtfSettle(prefGet(KEY_MTF_SETTLE));
         } catch (t) {
-          return 15;
+          return 0;
         }
       },
       setMtfSettle = (t) => {
@@ -6809,9 +6811,9 @@
       if (mtfSyncBusy || otcRebuildBusy) {
         return bail("");
       }
-      if (getOpenTradePnlEls().length) {
-        return bail("not while a trade is open");
-      }
+      // v1.36.0: a trade being open used to block this. It never needed to — the walk changes which
+      // timeframe the chart is showing, which is a view, not the trade. The cost is that the chart looks
+      // away from a running trade for the few seconds the walk takes.
       const panel = byId("__tcMTF");
       if (!panel) {
         return bail("");
@@ -6932,9 +6934,7 @@
       if (mtfAutofilledAt[sym] && now - mtfAutofilledAt[sym] < MTF_AUTOFILL_AGAIN_MS) {
         return stop("filled this pair " + fmtAgo(Math.round((now - mtfAutofilledAt[sym]) / 1000)));
       }
-      if (getOpenTradePnlEls().length || openTradeCount() > 0) {
-        return stop("waiting: a trade is open");
-      }
+
       const panel = byId("__tcMTF");
       if (!panel) {
         return stop("charts are hidden (press C)");
@@ -6966,9 +6966,7 @@
       if (/^filling/.test(r)) {
         return " · filling…";
       }
-      if (/trade is open/.test(r)) {
-        return " · trade open";
-      }
+
       if (/switched off/.test(r)) {
         return "";
       }

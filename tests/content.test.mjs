@@ -1242,7 +1242,7 @@ test("MTF: an empty pair is filled once, by itself (v1.30.0)", async () => {
   }
 });
 
-test("MTF: auto-fill stays out of the way when it is switched off, or a trade is open (v1.30.0)", async () => {
+test("MTF: auto-fill stays out of the way when it is switched off, and fills with a trade open (v1.36.0)", async () => {
   const off = await boot({ storage: { ...mtfStorage, __tradeCalc_mtf_autofill: "0" }, store: (() => { const s = quotexStore(); s.__candles = []; return s; })() });
   try {
     await sleep(4200);
@@ -1250,11 +1250,12 @@ test("MTF: auto-fill stays out of the way when it is switched off, or a trade is
   } finally {
     off.close();
   }
+  // v1.36.0: an open trade is not a reason to hold off — the walk changes the view, not the trade.
   const busy = (() => { const s = quotexStore({ opened: [deal("a")] }); s.__candles = []; return s; })();
   const qx = await boot({ storage: mtfStorage, store: busy });
   try {
     await sleep(4200);
-    assert.equal(mtfPairLabel(qx), "USD/DZD (OTC)", "a trade is open: the chart is not walked around");
+    assert.match(healthRow(qx, "Charts auto-fill").value, /filling|filled/, "it fills anyway");
   } finally {
     qx.close();
   }
@@ -1357,14 +1358,14 @@ test("MTF: auto-fill runs when only some cells are blank (v1.30.1)", async () =>
 // ── v1.31.0: saying why, instead of quietly doing nothing ────────────────────────────
 
 test("health: the auto-fill says what it is waiting for (v1.31.0)", async () => {
-  const store = quotexStore({ opened: [deal("a")] }); // a trade is running
+  const store = quotexStore();
   store.__candles = [];
-  const qx = await boot({ storage: bigTfStorage, store });
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_settle: "30" }, store });
   try {
     await sleep(3600);
     const row = healthRow(qx, "Charts auto-fill");
     assert.ok(row, "the check reports on it at all");
-    assert.match(row.value, /trade is open/, "and names the reason: " + row.value);
+    assert.match(row.value, /settling \(\d+s\)/, "and counts the wait down: " + row.value);
   } finally {
     qx.close();
   }
@@ -1428,13 +1429,14 @@ test("health: the report says which build the tab is running (v1.31.0)", async (
   }
 });
 
-test("MTF: a blank chart says why it is still blank (v1.31.1)", async () => {
-  const store = quotexStore({ opened: [deal("a")] }); // a trade is running, so no walk
+test("MTF: a blank chart says what is happening to it (v1.31.1)", async () => {
+  const store = quotexStore();
   store.__candles = [];
-  const qx = await boot({ storage: bigTfStorage, store });
+  // A long wait, so the chart is blank and the fill has not started.
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_settle: "60" }, store });
   try {
-    await sleep(3600);
-    assert.match(mtfCap(qx, "5m"), /visit once . trade open/, mtfCap(qx, "5m"));
+    await sleep(2000);
+    assert.match(mtfCap(qx, "5m"), /visit once/, mtfCap(qx, "5m"));
   } finally {
     qx.close();
   }
@@ -1450,7 +1452,7 @@ test("diagnostics: the panel leaves a readable record of what it is doing (v1.31
     const diag = JSON.parse(pref(qx, "__tradeCalc_diag"));
     assert.match(String(diag.build), /^[0-9]+[.][0-9]+[.][0-9]+$/, "the build the tab is running: " + diag.build);
     assert.equal(diag.pair, "USDDZD_otc");
-    assert.match(diag.autofill, /trade is open/, diag.autofill);
+    assert.match(diag.autofill, /filling|filled|settling|ready/, diag.autofill);
     assert.ok(diag.openTrades >= 1, "and how many trades it can see");
     assert.ok(Date.now() - diag.at < 5000, "written just now");
   } finally {
@@ -1488,6 +1490,7 @@ test("MTF: a chart with a handful of bars is filled, not called ready (v1.32.0)"
 });
 
 test("MTF: a short chart says the fill is coming instead of asking for ↻ (v1.32.0)", async () => {
+  // v1.36.0: with the trade gate gone, what it says is that the fill is under way.
   const now = Math.floor(Date.now() / 1000);
   const cache = {
     v: 2,
@@ -1497,12 +1500,12 @@ test("MTF: a short chart says the fill is coming instead of asking for ↻ (v1.3
       },
     },
   };
-  const store = quotexStore({ opened: [deal("a")] }); // a trade is open, so the fill has to wait
+  const store = quotexStore({ opened: [deal("a")] });
   store.__candles = [];
   const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_cache: JSON.stringify(cache) }, store });
   try {
-    await sleep(3600);
-    assert.match(mtfCap(qx, "15m"), /bars . trade open/, mtfCap(qx, "15m"));
+    await sleep(2000);
+    assert.match(mtfCap(qx, "15m"), /bars/, mtfCap(qx, "15m"));
   } finally {
     qx.close();
   }
@@ -1528,14 +1531,14 @@ test("MTF: a pair passed through is not filled; one you stay on is (v1.33.0)", a
   }
 });
 
-test("MTF: the wait defaults to 15 seconds and is clamped to sane values (v1.33.0)", async () => {
+test("MTF: the wait defaults to none and is clamped to sane values (v1.36.0)", async () => {
   const plain = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_settle: undefined } });
   try {
-    assert.equal(plain.askPanel({ type: "GET_STATE" }).mtfSettle, 15, "default");
+    assert.equal(plain.askPanel({ type: "GET_STATE" }).mtfSettle, 0, "fills the moment you open a pair");
     await plain.sendToPanel({ type: "SET_MTF", settle: 999 });
     assert.equal(plain.askPanel({ type: "GET_STATE" }).mtfSettle, 120, "clamped at the top");
-    await plain.sendToPanel({ type: "SET_MTF", settle: 0 });
-    assert.equal(plain.askPanel({ type: "GET_STATE" }).mtfSettle, 3, "and at the bottom");
+    await plain.sendToPanel({ type: "SET_MTF", settle: -5 });
+    assert.equal(plain.askPanel({ type: "GET_STATE" }).mtfSettle, 0, "and at the bottom");
   } finally {
     plain.close();
   }
@@ -1640,6 +1643,38 @@ test("MTF: a pair already filled is not walked again straight away (v1.35.0)", a
     await sleep(9000); // the walk gives each timeframe up to 2.5 s to deliver
     const row = healthRow(qx, "Charts auto-fill");
     assert.match(row.value, /filled this pair/, "and then it leaves the pair alone: " + row.value);
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.36.0: at once, and never held back by a trade ────────────────────────
+
+test("MTF: with no wait set, opening a pair fills it straight away (v1.36.0)", async () => {
+  const store = quotexStore();
+  store.__candles = [];
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_settle: "0" }, store });
+  try {
+    await sleep(1400); // the panel itself starts at 800 ms
+    assert.match(healthRow(qx, "Charts auto-fill").value, /filling|filled/, "no countdown first");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: the refresh button works while a trade is open (v1.36.0)", async () => {
+  const store = quotexStore({ opened: [deal("a")] });
+  store.__candles = makeCandles(200, 15);
+  // Auto-fill off, so the only thing that can start a walk is the button itself.
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  try {
+    await sleep(1200);
+    const before = mtfPairLabel(qx);
+    qx.panelRoot().querySelector('[data-mtf="sync"]').click();
+    await sleep(300);
+    assert.ok(!/not while a trade/.test(mtfPairLabel(qx)), "no refusal: " + mtfPairLabel(qx));
+    assert.match(healthRow(qx, "Charts auto-fill").value, /filling now|switched off/, "the walk is running");
+    assert.ok(before !== null);
   } finally {
     qx.close();
   }
