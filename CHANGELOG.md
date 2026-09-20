@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.42.0] - 2026-09-20
+
+### Changed
+- **The countdown moved onto the chart, the way the platform draws it**: a dashed upright where the
+  forming bar ends, and the time left in a dark pill riding the last-price line beside it, as `00:12`. The
+  price label moved to the left end of that line to make room, which is also where Quotex puts it. The
+  header copy is kept only for a cell with nothing drawn in it, where there is no line to ride.
+
 ## [1.41.0] - 2026-09-20
 
 ### Added

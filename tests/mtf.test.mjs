@@ -567,18 +567,26 @@ test("MTF: the pointer leaving puts the chart status back (v1.40.0)", async () =
 
 const barClock = (qx, tf) => qx.panelRoot().querySelector('.tcMtfCell[data-tf="' + tf + '"] .tcMtfCd').textContent;
 
-test("MTF: each chart counts down to the close of its bar (v1.41.0)", async () => {
+const oneCell = { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_tfs: JSON.stringify(["1m"]) };
+const clocksPrinted = (qx) => printed(qx).filter((t) => /^\d{2}:\d{2}$/.test(t));
+
+test("MTF: the chart prints the time left on its forming bar (v1.42.0)", async () => {
   const store = quotexStore();
   store.__candles = makeCandles(200, 15);
-  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  const qx = await boot({ storage: oneCell, store });
   try {
     await sleep(1200);
+    qx.ctxCalls.length = 0; // watch one redraw
+    await sleep(1400); // the canvas redraws every second so the countdown ticks
+    const shown = clocksPrinted(qx);
+    assert.ok(shown.length, "a countdown was drawn: " + printed(qx).slice(0, 5).join(" "));
     const now = Math.floor(Date.now() / 1000);
-    const expect = (sec) => { const left = sec - (now % sec); return [Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0"), Math.floor((left - 1) / 60) + ":" + String((left - 1) % 60).padStart(2, "0")]; };
-    for (const [tf, sec] of [["1m", 60], ["5m", 300], ["15m", 900]]) {
-      const shown = barClock(qx, tf);
-      assert.ok(expect(sec).includes(shown), tf + " shows " + shown + ", expected one of " + expect(sec).join(" or "));
-    }
+    const left = 60 - (now % 60);
+    const want = [left, left + 1, left + 2].map((v) => "00:" + String(v % 60).padStart(2, "0"));
+    assert.ok(
+      shown.some((t) => want.includes(t)),
+      "matching the wall clock: drew " + shown.join(" ") + ", expected one of " + want.join(" "),
+    );
   } finally {
     qx.close();
   }
@@ -600,14 +608,17 @@ test("MTF: the countdown is clock-based, so an empty chart still has one (v1.41.
 test("MTF: panned back into history, there is no bar to count down (v1.41.0)", async () => {
   const store = quotexStore();
   store.__candles = makeCandles(200, 15);
-  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0" }, store });
+  const qx = await boot({ storage: oneCell, store });
   try {
-    await sleep(1200);
-    assert.ok(barClock(qx, "1m").length, "counting at first");
+    await sleep(1400);
+    assert.ok(clocksPrinted(qx).length, "counting at first");
     const cell = qx.panelRoot().querySelector('.tcMtfCell[data-tf="1m"]');
     cell._tcPanEndT = cell._tcRows[Math.max(0, cell._tcRows.length - 10)].t; // dragged back ten bars
     await sleep(400);
-    assert.equal(barClock(qx, "1m"), "", "nothing is forming in the past");
+    qx.ctxCalls.length = 0;
+    await sleep(1400);
+    assert.deepEqual(clocksPrinted(qx), [], "nothing is forming in the past");
+    assert.equal(barClock(qx, "1m"), "", "and no copy in the header either");
   } finally {
     qx.close();
   }

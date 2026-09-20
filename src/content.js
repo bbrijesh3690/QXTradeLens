@@ -6700,7 +6700,7 @@
       }
       return Math.min(6, Math.max(2, best));
     }
-    function drawCandles(t, e, n, o, r, hoverIdx) {
+    function drawCandles(t, e, n, o, r, hoverIdx, barLeft) {
       const a = t.clientWidth,
         i = t.clientHeight;
       if (!(a && i && e && e.length)) {
@@ -6814,17 +6814,43 @@
           const text = price.toFixed(priceDecimals(e)),
             size = Math.max(8, Math.min(11, Math.round(0.13 * i)));
           d.font = "700 " + size + "px " + "'DM Sans', system-ui, sans-serif";
-          const width = (typeof d.measureText == "function" ? d.measureText(text).width : 6 * text.length) + 8,
-            height = size + 5,
-            boxX = Math.max(0, a - width - 1),
+          const measure = (str) => (typeof d.measureText == "function" ? d.measureText(str).width : 6 * str.length);
+          const height = size + 5,
             boxY = Math.max(0, Math.min(i - height, lineY - height / 2));
-          d.fillStyle = colour;
-          d.fillRect(boxX, boxY, width, height);
-          d.fillStyle = "#0b1020";
           if (typeof d.textBaseline == "string") {
             d.textBaseline = "middle";
           }
-          d.fillText(text, boxX + 4, boxY + height / 2 + 0.5);
+          // v1.42.0: the price sits at the LEFT end of its line, the way the platform's own chart puts it,
+          // leaving the right of the line free for the countdown.
+          const priceW = measure(text) + 8;
+          d.fillStyle = colour;
+          d.fillRect(1, boxY, priceW, height);
+          d.fillStyle = "#0b1020";
+          d.fillText(text, 5, boxY + height / 2 + 0.5);
+          // The bar now forming ends here: a dashed upright, then how long is left on it.
+          if (barLeft != null && barLeft >= 0) {
+            const edge = Math.round(y(e.length - 1) + _ / 2) + 0.5;
+            d.globalAlpha = 0.5;
+            d.strokeStyle = "#9fb3d9";
+            if (typeof d.setLineDash == "function") {
+              d.setLineDash([3, 3]);
+            }
+            d.beginPath();
+            d.moveTo(edge, 4);
+            d.lineTo(edge, i - 4);
+            d.stroke();
+            if (typeof d.setLineDash == "function") {
+              d.setLineDash([]);
+            }
+            d.globalAlpha = 1;
+            const clock = fmtBarClock(barLeft, true),
+              clockW = measure(clock) + 10,
+              clockX = Math.max(0, Math.min(a - clockW - 1, edge + 4));
+            d.fillStyle = "oklch(18% 0.02 257 / 0.95)";
+            d.fillRect(clockX, boxY, clockW, height);
+            d.fillStyle = "#e8eefc";
+            d.fillText(clock, clockX + 5, boxY + height / 2 + 0.5);
+          }
         }
       } catch (t) {}
       d.globalAlpha = 1;
@@ -7214,13 +7240,14 @@
       const secs = Math.floor((nowMs == null ? Date.now() : nowMs) / 1000);
       return periodSec - (secs % periodSec);
     }
-    function fmtBarClock(secs) {
+    function fmtBarClock(secs, pad) {
       if (!(secs >= 0)) {
         return "";
       }
       const m = Math.floor(secs / 60),
-        r = secs % 60;
-      return m + ":" + (r < 10 ? "0" + r : r);
+        r = secs % 60,
+        two = (v) => (v < 10 ? "0" + v : "" + v);
+      return (pad ? two(m) : m) + ":" + two(r);
     }
     function renderMtf(t) {
       ensureMtfSymbol();
@@ -7250,9 +7277,10 @@
           p = tfSeconds(r),
           m = mtfSymbol ? resolveMtfRows(mtfEntries, mtfSymbol, p, c, MTF_STALE_SEC) : null;
         if (cd) {
-          // Panned back into history, there is no bar forming to count down to.
-          const left = s._tcPanEndT ? NaN : barTimeLeft(p);
-          const text = isNaN(left) ? "" : fmtBarClock(left);
+          // v1.42.0: the countdown rides the price line on the chart itself. This header copy is kept for
+          // a cell with nothing drawn, where there is no line to ride.
+          const left = s._tcPanEndT || m ? NaN : barTimeLeft(p);
+          const text = isNaN(left) ? "" : fmtBarClock(left, true);
           if (cd.textContent !== text) {
             cd.textContent = text;
           }
@@ -7311,11 +7339,27 @@
           continue;
         }
         const g = f.candles[f.candles.length - 1],
+          barLeft = s._tcPanEndT ? null : barTimeLeft(p),
           _ =
-            f.candles.length + ":" + g.t + ":" + g.c + ":" + m.srcSec + ":" + f.future + ":" + a + i + ":" + (s._tcHoverIdx == null ? "" : s._tcHoverIdx);
+            f.candles.length +
+            ":" +
+            g.t +
+            ":" +
+            g.c +
+            ":" +
+            m.srcSec +
+            ":" +
+            f.future +
+            ":" +
+            a +
+            i +
+            ":" +
+            (s._tcHoverIdx == null ? "" : s._tcHoverIdx) +
+            ":" +
+            (barLeft == null ? "" : barLeft);
         if (s._tcSig !== _) {
           s._tcSig = _;
-          drawCandles(l, f.candles, a, i, f.future, s._tcHoverIdx);
+          drawCandles(l, f.candles, a, i, f.future, s._tcHoverIdx, barLeft);
         }
         const y = isStale(m.capturedAt, c, MTF_STALE_SEC) && f.atLive;
         s.classList.toggle("tcMtfStale", y);
