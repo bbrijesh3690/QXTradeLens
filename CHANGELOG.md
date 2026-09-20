@@ -5,6 +5,22 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.34.0] - 2026-09-20
+
+### Fixed
+- **A countdown chip appeared with no trade running**, reading 696:10 — about eleven and a half hours.
+  With no readable deal rows the panel looks for a block holding a pair name next to a clock, and matched
+  a block holding the session clock instead. A trade row must now carry a plausible countdown: the longest
+  expiry the platform offers is four hours.
+- **The page could outvote Quotex about what was open.** The open-trade count took the HIGHEST of the page
+  and the platform data, and chips read the deal rows first. A settled deal keeps its row, and when no
+  deal cells exist the pair tabs own P/L cells stood in for them — so a page with nothing running reported
+  two open trades. That quietly ate into the trade cap and held the chart auto-fill off with "a trade is
+  open". Quotex own data now decides, and the markup is read only when the bridge cannot answer.
+- **The win projection was blank with trades open.** It was only ever computed from the deal rows, so on
+  the data path it showed "win —", and a single unreadable trade blanked the total for all of them. It now
+  comes from the platform numbers, and a total missing one trade shows what could be added up, marked "≈".
+
 ## [1.33.0] - 2026-09-20
 
 ### Changed

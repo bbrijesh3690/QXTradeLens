@@ -673,10 +673,15 @@
     // Open trades for the max-trades cap: the higher of the page count and the store count, because
     // for a cap over-counting is the safe side.
     function openTradeCount() {
-      // Highest of: profit/loss cells, deal rows (v1.25.0) and Quotex's data.
-      const dom = Math.max(getOpenTradePnlEls().length, getOpenTradeRows().length);
+      // v1.34.0: Quotex's own data decides. Taking the HIGHEST of the page and the store let stale markup
+      // outvote the platform: a settled deal keeps its row, and when no deal cells exist at all the pair
+      // tabs' own P/L cells stood in for them - so a page with nothing running reported two open trades.
+      // That silently ate the trade cap and held the chart auto-fill off with "a trade is open".
       const store = storeOpenTradeCount();
-      return isNaN(store) ? dom : Math.max(dom, store);
+      if (!isNaN(store)) {
+        return store;
+      }
+      return Math.max(getOpenTradePnlEls().length, getOpenTradeRows().length);
     }
     // Open trades straight from Quotex's data (v1.25.0): pair, seconds left, winning/losing and the
     // amount a win would return. Independent of the platform's markup, so the chart countdown chips, the
@@ -705,6 +710,9 @@
           winning,
           // What the platform shows in the deal row while it runs: the full return on a win, 0 on a loss.
           liveReturn: winning && pct != null ? d.amount * (1 + pct / 100) : 0,
+          // v1.34.0: what this trade pays IF it wins, whichever way it is currently going. The projection
+          // chip needs this; it used to be derivable only from the deal row's markup.
+          winReturn: pct != null && d.amount != null ? d.amount * (1 + pct / 100) : NaN,
         };
       });
     }
@@ -3350,10 +3358,26 @@
     function isSettledRow(t) {
       return !(!t || !t.querySelector(".Fqtla"));
     }
+    // v1.34.0: the longest expiry the platform offers is four hours, so a block counting 11:39:34 is the
+    // session clock, not a trade. Live on 2026-09-20 the semantic finder matched exactly that and drew a
+    // countdown chip reading 696:10 with no trade running.
+    const MAX_TRADE_SECS = 14400;
+    function hasRunningClock(row) {
+      const el = row && findClockEl(row);
+      if (!el) {
+        return false;
+      }
+      const secs = parseClock((el.textContent || "").trim());
+      return secs > 0 && secs <= MAX_TRADE_SECS;
+    }
     function getOpenTradeRows() {
       if (openTradeRowsLive.length) {
         listVia.openTradeRows = "class";
-        return Array.from(openTradeRowsLive);
+        // Belt and braces: this list is the platform's own open-deal rows, but a settled row keeps its
+        // markup, so anything carrying a settled marker or an implausible clock is dropped here too.
+        // An empty result is an ANSWER - do not fall through to the guesswork below, which is what
+        // matched the session clock on the live page.
+        return Array.from(openTradeRowsLive).filter((row) => !isSettledRow(row) && hasRunningClock(row));
       }
       // v1.25.0: a running trade's row holds both a pair name and a mm:ss countdown, and no settled marker.
       const rows = resolveList("openTradeRows", document, [".ib6yR", ".RLj1p"], (root) => {
@@ -3379,7 +3403,7 @@
         }
         return out;
       });
-      return rows.filter((row) => !isSettledRow(row));
+      return rows.filter((row) => !isSettledRow(row) && hasRunningClock(row));
     }
     function getOpenTradePnlEls() {
       if (openTradePnlElsLive.length) {
@@ -5867,9 +5891,11 @@
       if (!TIMERS_ENABLED) {
         return;
       }
-      const t = getOpenTradeRows();
-      // v1.25.0: no readable deal rows -> use Quotex's data instead of hiding the chips.
-      const fromStore = t.length ? null : storeOpenTrades();
+      // v1.34.0: ask Quotex first. Reading the deal rows first meant stale markup outvoted the platform's
+      // own answer — the store said nothing was open while the page still held four settled rows, and the
+      // chips believed the page. The rows are now only used when the bridge cannot answer at all.
+      const fromStore = storeOpenTrades();
+      const t = fromStore ? [] : getOpenTradeRows();
       if (!t.length && fromStore && fromStore.length) {
         timersVia = "store";
       } else if (t.length) {
@@ -6030,6 +6056,19 @@
         p = d > 0 ? "↗" : d < 0 ? "↘" : "→",
         h = d > 0 ? "var(--tc-grn)" : d < 0 ? "var(--tc-red)" : "var(--tc-text-pri)",
         f = (function (t) {
+          // The store path has the numbers already; the row-reading version below is for when it cannot answer.
+          if (fromStore) {
+            let sum = 0,
+              missing = false;
+            for (const trade of fromStore) {
+              if (isNaN(trade.winReturn)) {
+                missing = true;
+              } else {
+                sum += trade.winReturn;
+              }
+            }
+            return fromStore.length ? { total: sum, partial: missing } : NaN;
+          }
           if (!t || !t.length) {
             return NaN;
           }
@@ -6063,10 +6102,13 @@
               }
             });
           }
-          return o ? NaN : n;
+          // v1.34.0: one unreadable trade used to blank the whole total — with several trades open that is
+          // exactly when you want it. Show the trades that could be added up, marked "≈".
+          return n > 0 || !o ? { total: n, partial: o } : NaN;
         })(t),
-        g = (isNaN(l) ? 0 : l) + f,
-        _ = `<div style="margin-top:0.16em; font-weight:700; font-size:0.76em; font-variant-numeric:tabular-nums; color:var(--tc-grn); opacity:0.92;">⤒ win ${isNaN(g) ? "—" : detectCurrency() + fmtMoney(g)}</div>`,
+        F = f && typeof f == "object" ? f : { total: NaN, partial: false },
+        g = (isNaN(l) ? 0 : l) + F.total,
+        _ = `<div style="margin-top:0.16em; font-weight:700; font-size:0.76em; font-variant-numeric:tabular-nums; color:var(--tc-grn); opacity:0.92;">⤒ win ${isNaN(g) ? "—" : (F.partial ? "≈ " : "") + detectCurrency() + fmtMoney(g)}</div>`,
         y = `<div style="background:var(--tc-bg); border:1px solid var(--tc-sec-border); border-radius:16px; padding:0.34em 0.9em; box-shadow:0 4px 16px -3px oklch(0% 0 0 / 0.55); font-weight:800; font-variant-numeric:tabular-nums; color:${h}; font-size:0.92em;">${p} ${detectCurrency()}${fmtMoney(u)}${_}</div>`;
       if (s._tcHtml !== y) {
         s._tcHtml = y;
