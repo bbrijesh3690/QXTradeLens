@@ -207,6 +207,7 @@ extension was reloaded, and it is still running the old code.
 | `…/chart_reader.js` | Read-only bridge to Quotex's chart and internal state |
 | `…/service_worker.js` | Background: dev reload, sheet fetch proxy, loss-streak lock |
 | `…/popup.html`, `popup.js` | Toolbar popup: settings, health check, deposit scanner |
+| `CLAUDE.md` | Working notes: the rules a change is judged against, what cannot be verified from outside the browser, and how to pick the work up cold |
 | `docs/ANALYSIS.md` | Capability map, known bugs and the refactor plan |
 | `CHANGELOG.md` | Version history |
 
