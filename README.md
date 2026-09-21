@@ -93,6 +93,8 @@ while you have it open, and never moves the board while a trade is running.
   and the ↻ button does the same on demand. From then on a **rolling 1-minute history**
   per pair keeps the cells current as you trade, and collected candles are kept per pair (last 6) so
   switching pairs does not lose them. Press **C** to show or hide the panel.
+- **Scan view** — the same panel, showing the whole board instead of one pair. See
+  [The scan view](#the-scan-view).
 - **Entry balance tags** — each row in the trade history is tagged with the balance you had when you
   placed that trade.
 - **Tab title** — 🟢/🔴 for winning/losing trades plus the nearest expiry countdown, so you can watch
@@ -100,6 +102,31 @@ while you have it open, and never moves the board while a trade is running.
 - **Marquee** — an optional scrolling reminder across the top of the page.
 - **Sounds** — short tones when open trades turn winning or losing.
 - **Mobile bar** — on narrow screens, quick controls for timeframe, expiry, stake and minimum payout.
+
+### The scan view
+
+The chart panel's bar carries a **Charts / Scan** switch. Scan replaces the charts with one row per pair:
+
+| Column | What it is |
+|---|---|
+| **Pair** | Its name. Pairs already open in a tab are shown brighter |
+| **Payout** | What it pays right now |
+| **Arrows** | One per timeframe, in that timeframe's colour: ▲ up, ▼ down, · flat or unknown, read over the last 3 closed bars |
+| **Level** | How far price is from the nearest level, as a % of price, with the side it is on — `S 0.02%` means support 0.02% below. Coloured by the timeframe that level came from |
+
+Rows are **sorted nearest to a level first**, because those are the ones about to make a decision, and a
+row whose price is inside the level's own zone is picked out. **Click a row** to switch to that pair, or
+to open it from the asset list if it is not open yet. The view you leave it in is the view it opens in.
+
+**Nothing on this board moves your chart.** Payout, whether a market is active and the pair's name come
+from Quotex's own asset table, which covers every instrument they offer and costs nothing to read. The
+arrows and the level come from candles the panel already holds — the pair you are on, plus the ones kept
+in the cache — using the same detector, window and tolerance the charts draw with, so the board and a
+chart can never disagree with each other.
+
+A pair with **no candles yet** still gets a row if it clears your payout floor, with `—` in the level
+column: its payout is knowable and worth ranking, but it cannot be placed against a level until it has
+been opened once. Pairs below the floor, and markets that are closed, are left off.
 
 ## Keyboard shortcuts
 
@@ -228,7 +255,7 @@ into a single look.
 |---|---|
 | `src/content.js` | **Source** of the main panel. Edit this, not the built file |
 | `tools/` | `build.mjs` (build), `verify-equivalence.mjs` (proof check), `unminify.mjs` + `rename-map.json` (one-off source recovery) |
-| `tests/` | jsdom behavior specs plus a fixture copied from the live Quotex DOM. `helpers.mjs` holds the shared harness; the specs are split by area (`panel`, `platform`, `mtf`, `mtf-fill`, `chips`, `privacy`, `popup`) so Node can run them in parallel |
+| `tests/` | jsdom behavior specs plus a fixture copied from the live Quotex DOM. `helpers.mjs` holds the shared harness; the specs are split by area (`panel`, `platform`, `mtf`, `mtf-fill`, `scan`, `chips`, `privacy`, `popup`) so Node can run them in parallel |
 | `qx-calc-updater/qx-calc-updater/` | The unpacked extension (load this folder in `chrome://extensions`) |
 | `…/manifest.json` | Extension manifest. `version` is the source of truth for releases |
 | `…/content.js` | Main panel, **generated** by `npm run build` from `src/content.js` (committed so the folder loads without building) |

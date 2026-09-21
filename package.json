@@ -1,6 +1,6 @@
 {
   "name": "qxtradelens",
-  "version": "1.54.4",
+  "version": "1.55.0",
   "private": true,
   "description": "QXTradeLens Controller Chrome extension - source and build tooling",
   "type": "module",
@@ -8,7 +8,7 @@
     "build": "node tools/build.mjs",
     "build:dev": "node tools/build.mjs --dev",
     "verify": "node tools/verify-equivalence.mjs",
-    "test": "node --test tests/panel.test.mjs tests/platform.test.mjs tests/mtf.test.mjs tests/mtf-fill.test.mjs tests/chips.test.mjs tests/privacy.test.mjs tests/popup.test.mjs"
+    "test": "node --test tests/panel.test.mjs tests/platform.test.mjs tests/mtf.test.mjs tests/mtf-fill.test.mjs tests/scan.test.mjs tests/chips.test.mjs tests/privacy.test.mjs tests/popup.test.mjs"
   },
   "devDependencies": {
     "@babel/generator": "^7.26.3",

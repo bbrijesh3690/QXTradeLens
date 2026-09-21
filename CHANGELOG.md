@@ -5,6 +5,25 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.55.0] - 2026-09-21
+
+### Added
+- **A scan view on the chart panel: which pair is worth looking at, across the whole board.** The panel
+  bar gains a **Charts / Scan** switch. The board lists one row per pair - what it pays, a direction for
+  each of your timeframes, and how far price is from the nearest level, in the colour of the timeframe
+  that level came from - **sorted nearest to a level first**, because those are the rows about to make a
+  decision. A row whose price is inside the zone is picked out. Clicking a row switches to that pair, or
+  opens it from the asset list if it is not open yet.
+
+  **Nothing here moves your chart.** Payout, whether the market is active and the label come from
+  Quotex own asset table, which covers every instrument they offer; the trend and the levels come
+  from candles already collected - the pair you are on plus the ones held in the cache - using the same
+  detector, window and tolerance the charts draw with, so the board and a chart can never disagree. A
+  pair with no candles still earns a row if it clears your payout floor, marked, because its payout is
+  knowable and worth ranking even when it cannot be placed against a level.
+
+  The view you leave it in is the view it opens in, and the charts are not drawn while the board is up.
+
 ## [1.54.4] - 2026-09-21
 
 ### Changed
