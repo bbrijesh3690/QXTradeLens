@@ -5,6 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.55.1] - 2026-09-22
+
+### Fixed
+- **Coming back from the scan board left the panel hanging off the screen.** The clamp that keeps the
+  panel inside the window gave up whenever it had no inline position to read - which is every panel that
+  has never been dragged, since the stylesheet places it from the top and right. A view taller than the
+  charts then pushed its bottom edge, and the resize handles with it, out of reach. The clamp now reads
+  the box the panel actually occupies and pins that, the two views clamp on every switch, and the board
+  itself is capped at 40% of the window height so it cannot outgrow the screen to begin with.
+
+### Added
+- **A scan row says how old the candles behind it are.** Only the pair in front of you is live; every
+  other row is judged from what was collected the last time it was open, and a level from forty minutes
+  ago is not the same claim as one from thirty seconds ago. Rows more than 90 seconds behind carry their
+  age, the header counts how many are current, and the tooltip says to open the pair to bring it up to
+  date.
+
 ## [1.55.0] - 2026-09-21
 
 ### Added

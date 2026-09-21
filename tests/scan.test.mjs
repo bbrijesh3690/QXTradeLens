@@ -215,3 +215,98 @@ test("scan: the charts are not drawn while the board is up (v1.55.0)", async () 
     qx.close();
   }
 });
+
+// ── v1.55.1: the board is a different height from the charts ───────────────────────────────────
+
+// jsdom has no layout, so the panel is given a box to be measured against: 600px tall with its top at
+// 500, in a 768px window - a panel whose bottom hangs 332px below the screen.
+function giveItABox(panel, { left = 40, top = 500, width = 268, height = 600 } = {}) {
+  panel.getBoundingClientRect = () => ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top });
+  Object.defineProperty(panel, "offsetWidth", { value: width, configurable: true });
+  Object.defineProperty(panel, "offsetHeight", { value: height, configurable: true });
+}
+
+test("scan: a panel that has never been dragged is still pulled back on screen (v1.55.1)", async () => {
+  const qx = await bootScan({ view: "charts" });
+  try {
+    await sleep(1600);
+    const panel = qx.panelRoot().getElementById("__tcMTF");
+    // It starts on the corner the stylesheet put it on, with no inline left/top of its own - which is
+    // exactly the case the clamp used to give up on, so a taller view could push its bottom, and its
+    // resize handles, off the screen with nothing left to grab.
+    assert.equal(panel.style.left, "", "it starts on its stylesheet corner");
+    giveItABox(panel);
+
+    viewBtn(qx, "scan").dispatchEvent(new qx.window.Event("click", { bubbles: true }));
+    await sleep(400);
+    assert.match(panel.style.top, /px$/, "the switch pins it so it can be clamped: " + panel.style.top);
+    assert.equal(panel.style.right, "auto", "and it is positioned from the left/top from then on");
+    const top = parseInt(panel.style.top, 10);
+    assert.ok(top >= 2, "inside the window: " + top);
+    assert.ok(top + 600 <= qx.window.innerHeight, "with its bottom edge - and its handles - on screen: " + (top + 600) + " of " + qx.window.innerHeight);
+  } finally {
+    qx.close();
+  }
+});
+
+test("scan: coming back to the charts clamps the panel too (v1.55.1)", async () => {
+  const qx = await bootScan({ view: "scan" });
+  try {
+    await sleep(1600);
+    const panel = qx.panelRoot().getElementById("__tcMTF");
+    giveItABox(panel, { top: 700, height: 400 });
+    viewBtn(qx, "charts").dispatchEvent(new qx.window.Event("click", { bubbles: true }));
+    await sleep(400);
+    const top = parseInt(panel.style.top, 10);
+    assert.ok(top + 400 <= qx.window.innerHeight, "the charts view is clamped as well: " + top);
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.55.1: a row is never read as fresher than it is ─────────────────────────────────────────
+
+test("scan: the header counts how many rows are current (v1.55.1)", async () => {
+  const qx = await bootScan();
+  try {
+    await sleep(2400);
+    assert.match(header(qx), /[0-9]+ live/, "the header says how many rows are current: " + header(qx));
+    // The cache here was written with candles ending now, so those pairs read live.
+    const aud = scanRows(qx).find((r) => r.getAttribute("data-sym") === "AUDCAD_otc");
+    assert.equal(aud.querySelector(".tcScanAge"), null, "a current row carries no age label");
+    assert.match(aud.getAttribute("title"), /live/, "and says so: " + aud.getAttribute("title"));
+    const blank = scanRows(qx).find((r) => r.getAttribute("data-sym") === "USDBRL_otc");
+    assert.equal(blank.querySelector(".tcScanAge"), null, "and a pair with no candles has no age to show");
+  } finally {
+    qx.close();
+  }
+});
+
+test("scan: candles from twenty-five minutes ago are labelled, not passed off as current (v1.55.1)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(300, 60);
+  store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  const now = Math.floor(Date.now() / 1000);
+  // 25 minutes: old enough to matter, inside the half-hour after which the cache drops an entry entirely.
+  const stale = {
+    v: 2,
+    symbols: {
+      AUDCAD_otc: { "AUDCAD_otc@60": { candles: pairRows(200, now - 1500, 1.4, 0.004), capturedAt: now - 1500, periodSeconds: 60 } },
+    },
+  };
+  const qx = await boot({
+    storage: { ...bigTfStorage, __tradeCalc_minrp: "80", __tradeCalc_mtf_view: "scan", __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify(stale) },
+    store,
+  });
+  try {
+    await sleep(2400);
+    const aud = scanRows(qx).find((r) => r.getAttribute("data-sym") === "AUDCAD_otc");
+    assert.ok(aud, "the pair still gets a row");
+    const age = aud.querySelector(".tcScanAge");
+    assert.ok(age, "with its age on it: " + aud.textContent);
+    assert.match(age.textContent, /^[0-9]+[hm]$/, "in plain words: " + age.textContent);
+    assert.match(aud.getAttribute("title"), /open it to bring them up to date/, aud.getAttribute("title"));
+  } finally {
+    qx.close();
+  }
+});

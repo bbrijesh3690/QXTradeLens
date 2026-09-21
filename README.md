@@ -113,6 +113,7 @@ The chart panel's bar carries a **Charts / Scan** switch. Scan replaces the char
 | **Payout** | What it pays right now |
 | **Arrows** | One per timeframe, in that timeframe's colour: ▲ up, ▼ down, · flat or unknown, read over the last 3 closed bars |
 | **Level** | How far price is from the nearest level, as a % of price, with the side it is on — `S 0.02%` means support 0.02% below. Coloured by the timeframe that level came from |
+| **Age** | How far behind that row is. Only the pair you are on is live; every other row is judged from the candles collected the last time it was open. Rows within 90 seconds carry no label |
 
 Rows are **sorted nearest to a level first**, because those are the ones about to make a decision, and a
 row whose price is inside the level's own zone is picked out. **Click a row** to switch to that pair, or
