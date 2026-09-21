@@ -5,6 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.56.1] - 2026-09-22
+
+### Changed
+- **The sweep is the refresh button, not a second control.** The panel already had a button meaning
+  “go and fetch candles”; what changes between the two views is the scope, and the view already states
+  the scope. On the charts it refreshes the pair in front of you, exactly as before; on the board it
+  brings every open pair that has fallen behind up to date. Pressed again while that runs, it stops. The
+  footer under the board is now only a status line — progress, and the reason when it will not start.
+
+### Fixed
+- **A pair that had just been collected could be reported as minutes behind.** How far behind a series
+  is was taken from the age of its newest candle’s timestamp, but the bar now forming is always up to a
+  whole period old and is not stale for it — so a pair holding only 5m and 15m data read as five minutes
+  behind the moment it was swept, and the sweep queued it to be walked again for nothing. Seen live on
+  2026-09-22 on EUR/NZD. A series is now behind by how long ago its newest bar should have **closed**,
+  and the figure comes from the finest series a pair has rather than the kindest of them.
+
 ## [1.56.0] - 2026-09-22
 
 ### Added

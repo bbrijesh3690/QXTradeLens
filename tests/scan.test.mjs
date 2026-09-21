@@ -313,7 +313,8 @@ test("scan: candles from twenty-five minutes ago are labelled, not passed off as
 
 // ── v1.56.0: the sweep — the one part that moves the chart ──────────────────────────────────────
 
-const sweepBtn = (qx) => qx.panelRoot().querySelector('[data-mtf="sweep"]');
+// v1.56.1: the refresh button carries the sweep; there is no separate control.
+const sweepBtn = (qx) => qx.panelRoot().querySelector('[data-mtf="sync"]');
 const sweepMsg = (qx) => qx.panelRoot().querySelector(".tcScanFootMsg").textContent;
 const press = (qx, el) => el.dispatchEvent(new qx.window.Event("click", { bubbles: true }));
 
@@ -356,14 +357,14 @@ async function bootSweep({ opened = [] } = {}) {
   });
 }
 
-test("sweep: the board carries a sweep button, idle until pressed (v1.56.0)", async () => {
+test("sweep: on the board, the refresh button offers to sweep (v1.56.1)", async () => {
   const qx = await bootSweep();
   try {
     await sleep(2000);
-    assert.ok(sweepBtn(qx), "the board has the control");
-    assert.equal(sweepBtn(qx).textContent, "Sweep", "reading as an invitation, not a state");
+    assert.ok(sweepBtn(qx), "the refresh button is the control");
+    assert.match(sweepBtn(qx).getAttribute("title"), /every open pair/, "and on the board it offers to sweep them: " + sweepBtn(qx).getAttribute("title"));
     assert.equal(sweepMsg(qx), "", "and saying nothing until it has something to say");
-    assert.match(sweepBtn(qx).getAttribute("title"), /come back here/, "it says it returns you: " + sweepBtn(qx).getAttribute("title"));
+    
   } finally {
     qx.close();
   }
@@ -379,7 +380,7 @@ test("sweep: it visits the pairs that have fallen behind, and says where it is (
     );
     press(qx, sweepBtn(qx));
     await sleep(300);
-    assert.equal(sweepBtn(qx).textContent, "Stop", "the button becomes the way out of it");
+    assert.match(sweepBtn(qx).getAttribute("title"), /^Stop/, "the button becomes the way out of it: " + sweepBtn(qx).getAttribute("title"));
     assert.match(sweepMsg(qx), /of [0-9]+/, "and says how far along it is: " + sweepMsg(qx));
     await sleep(1200);
     assert.ok(activated.length, "it switched to a pair that needed collecting: " + activated.join(","));
@@ -401,7 +402,7 @@ test("sweep: pressing it again stops, and puts you back where you started (v1.56
     await sleep(400);
     press(qx, sweepBtn(qx));
     await sleep(1400);
-    assert.equal(sweepBtn(qx).textContent, "Sweep", "it is idle again");
+    assert.ok(!/^Stop/.test(sweepBtn(qx).getAttribute("title")), "it is idle again: " + sweepBtn(qx).getAttribute("title"));
     assert.match(sweepMsg(qx), /stopped/, "and says it was stopped: " + sweepMsg(qx));
     assert.ok(activated.includes(started), "it went back to the pair you were on: " + activated.join(","));
   } finally {
@@ -417,7 +418,7 @@ test("sweep: it will not start while a trade is running (v1.56.0)", async () => 
     qx.window.document.querySelectorAll("[data-symbol] .WRocw").forEach((el) => el.addEventListener("click", () => activated.push(1)));
     press(qx, sweepBtn(qx));
     await sleep(600);
-    assert.equal(sweepBtn(qx).textContent, "Sweep", "it did not start");
+    assert.ok(!/^Stop/.test(sweepBtn(qx).getAttribute("title")), "it did not start");
     assert.match(sweepMsg(qx), /not while a trade is running/, sweepMsg(qx));
     assert.equal(activated.length, 0, "and nothing on the board was touched");
   } finally {
@@ -440,8 +441,112 @@ test("sweep: with nothing behind, it says so instead of walking the board (v1.56
     await sleep(2000);
     press(qx, sweepBtn(qx));
     await sleep(500);
-    assert.equal(sweepBtn(qx).textContent, "Sweep", "nothing started");
+    assert.ok(!/^Stop/.test(sweepBtn(qx).getAttribute("title")), "nothing started");
     assert.match(sweepMsg(qx), /already current/, sweepMsg(qx));
+  } finally {
+    qx.close();
+  }
+});
+
+test("scan: a 5m-only pair that was just collected is not called stale (v1.56.1)", async () => {
+  // Exactly what was on the live page on 2026-09-22: a pair swept seconds earlier, holding 5m and 15m
+  // entries and nothing shorter. Its newest 5m bar is by definition up to five minutes old, which the
+  // first cut of this read as "five minutes behind" - and the sweep then queued it to be walked again.
+  const store = quotexStore();
+  store.__candles = makeCandles(300, 60);
+  store.assets.assetBySymbol.EURNZD_otc = { symbol: "EURNZD_otc", label: "EUR/NZD (OTC)", payout: 92, is_otc: 1, active: true };
+  const now = Math.floor(Date.now() / 1000);
+  // Four minutes into the bar now forming: well past the 90 seconds that separates live from behind
+  // if you read the bar's timestamp literally, and no distance at all once it is read against its period.
+  const bar = now - 240;
+  const fiveMin = [];
+  for (let i = 40; i >= 0; i--) {
+    const o = 1.78 + 0.004 * Math.sin(i / 3.1);
+    fiveMin.push({ t: bar - i * 300, o, h: o + 0.0006, l: o - 0.0006, c: o + 0.0002 });
+  }
+  const qx = await boot({
+    storage: {
+      ...bigTfStorage,
+      __tradeCalc_minrp: "80",
+      __tradeCalc_mtf_view: "scan",
+      __tradeCalc_mtf_autofill: "0",
+      __tradeCalc_mtf_cache: JSON.stringify({
+        v: 2,
+        symbols: { EURNZD_otc: { "EURNZD_otc@300": { candles: fiveMin, capturedAt: now, periodSeconds: 300 } } },
+      }),
+    },
+    store,
+  });
+  try {
+    await sleep(2400);
+    const row = scanRows(qx).find((r) => r.getAttribute("data-sym") === "EURNZD_otc");
+    assert.ok(row, "the pair is on the board");
+    assert.equal(row.querySelector(".tcScanAge"), null, "and is not labelled behind: " + row.textContent);
+    assert.match(row.getAttribute("title"), /live/, "it reads as current: " + row.getAttribute("title"));
+  } finally {
+    qx.close();
+  }
+});
+
+test("scan: a 5m series that really has stopped is still called stale (v1.56.1)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(300, 60);
+  store.assets.assetBySymbol.EURNZD_otc = { symbol: "EURNZD_otc", label: "EUR/NZD (OTC)", payout: 92, is_otc: 1, active: true };
+  const now = Math.floor(Date.now() / 1000);
+  // Its newest bar closed twenty minutes ago: behind by any measure.
+  const bar = Math.floor((now - 1200) / 300) * 300;
+  const fiveMin = [];
+  for (let i = 40; i >= 0; i--) {
+    const o = 1.78 + 0.004 * Math.sin(i / 3.1);
+    fiveMin.push({ t: bar - i * 300, o, h: o + 0.0006, l: o - 0.0006, c: o + 0.0002 });
+  }
+  const qx = await boot({
+    storage: {
+      ...bigTfStorage,
+      __tradeCalc_minrp: "80",
+      __tradeCalc_mtf_view: "scan",
+      __tradeCalc_mtf_autofill: "0",
+      __tradeCalc_mtf_cache: JSON.stringify({
+        v: 2,
+        symbols: { EURNZD_otc: { "EURNZD_otc@300": { candles: fiveMin, capturedAt: now, periodSeconds: 300 } } },
+      }),
+    },
+    store,
+  });
+  try {
+    await sleep(2400);
+    const row = scanRows(qx).find((r) => r.getAttribute("data-sym") === "EURNZD_otc");
+    const age = row.querySelector(".tcScanAge");
+    assert.ok(age, "it is labelled behind: " + row.textContent);
+    assert.match(age.textContent, /^[0-9]+m$/, "in minutes: " + age.textContent);
+    assert.ok(parseInt(age.textContent, 10) >= 10, "by about how long it has been: " + age.textContent);
+  } finally {
+    qx.close();
+  }
+});
+
+test("sweep: on the charts, the same button still refreshes only the pair you are on (v1.56.1)", async () => {
+  const { FIXTURE } = await import("./helpers.mjs");
+  const store = quotexStore();
+  store.__candles = makeCandles(300, 60);
+  const A = store.assets.assetBySymbol;
+  A.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  A.CHFJPY_otc = { symbol: "CHFJPY_otc", label: "CHF/JPY (OTC)", payout: 91, is_otc: 1, active: true };
+  const qx = await boot({
+    html: withTabs(FIXTURE),
+    store,
+    storage: { ...bigTfStorage, __tradeCalc_minrp: "80", __tradeCalc_mtf_view: "charts", __tradeCalc_mtf_autofill: "0" },
+  });
+  try {
+    await sleep(2000);
+    const switched = [];
+    qx.window.document.querySelectorAll("[data-symbol] .WRocw").forEach((el) =>
+      el.addEventListener("click", (e) => switched.push(e.currentTarget.closest("[data-symbol]").getAttribute("data-symbol"))),
+    );
+    assert.match(sweepBtn(qx).getAttribute("title"), /Visit each timeframe/, "on the charts it offers the single-pair walk: " + sweepBtn(qx).getAttribute("title"));
+    press(qx, sweepBtn(qx));
+    await sleep(1500);
+    assert.deepEqual(switched, [], "and pressing it never leaves the pair you are on");
   } finally {
     qx.close();
   }
