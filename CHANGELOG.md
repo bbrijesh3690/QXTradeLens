@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.54.3] - 2026-09-21
+
+### Fixed
+- **The new timeframe pill had no text in it.** v1.26.0 marks the platform own timeframe by writing
+  `style.color` on the label, and clears it with an empty string on every other cell. That was harmless
+  while the stylesheet supplied `color: var(--tc-text-dim)` underneath; v1.54.2 moved the colour inline
+  and dropped the stylesheet one, so clearing it left the label with no colour at all, inheriting from
+  the host page. The label now keeps its timeframe colour in both states, being the platform current
+  timeframe inverts the pill instead - dark ink on a solid pill of that colour, which reads better than
+  the old accent text anyway - and the stylesheet carries a colour again so no future clear can blank it.
+
 ## [1.54.2] - 2026-09-21
 
 ### Changed

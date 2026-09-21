@@ -133,9 +133,12 @@ test("MTF: header shows the pair label and marks the chart's own timeframe", asy
     await sleep(900);
     const root = qx.panelRoot();
     assert.equal(root.querySelector('[data-mtf="pair"]').textContent, "USD/DZD (OTC)");
-    const label = (tf) => root.querySelector('.tcMtfCell[data-tf="' + tf + '"] .tcMtfTf').style.color;
-    assert.match(label("1m"), /accent/, "1m is the chart timeframe");
-    assert.equal(label("5m"), "");
+    // v1.54.3: the chart's own timeframe is marked by inverting its pill - dark ink on a solid pill of
+    // that timeframe's colour - rather than by recolouring the text, which used to erase the colour.
+    const label = (tf) => root.querySelector('.tcMtfCell[data-tf="' + tf + '"] .tcMtfTf');
+    assert.equal(label("1m").style.color, "rgb(11, 16, 32)", "1m is the chart timeframe");
+    assert.equal(label("1m").style.background, "rgb(90, 169, 255)", "shown as a solid pill");
+    assert.equal(label("5m").style.color, "rgb(255, 180, 84)", "5m is not, and keeps its own colour");
   } finally {
     qx.close();
   }
@@ -1323,6 +1326,43 @@ test("MTF: the timeframe label carries that timeframe's own colour (v1.54.2)", a
     assert.match(style("15m"), /#c792ea/, "15m wears its own: " + style("15m"));
     assert.match(style("1m"), /background/, "as a filled pill, not bare text");
     assert.equal(label("1m").textContent, "1m", "and still says which timeframe it is");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: the label still has its colour after a render, not just at birth (v1.54.3)", async () => {
+  const store = quotexStore();
+  const qx = await boot({ storage: bigTfStorage, store });
+  try {
+    await sleep(1600);
+    const label = (tf) => qx.panelRoot().querySelector('.tcMtfCell[data-tf="' + tf + '"] .tcMtfTf');
+    // v1.26.0 marked the platform's timeframe by writing style.color, and cleared it with "" everywhere
+    // else - which wiped the colour v1.54.2 put there and left the text with none at all.
+    for (const tf of ["1m", "5m", "15m"]) {
+      assert.notEqual(label(tf).style.color, "", tf + " has a colour to draw its text in");
+    }
+    assert.equal(label("5m").style.color, "rgb(255, 180, 84)", "5m is amber: " + label("5m").style.color);
+    assert.equal(label("15m").style.color, "rgb(199, 146, 234)", "15m is violet: " + label("15m").style.color);
+    assert.match(label("5m").title, /Put the chart on this timeframe/, "and says what clicking it does");
+
+    // Being the platform's own timeframe inverts the pill rather than recolouring the text.
+    setChart(store, "USDDZD_otc", 300);
+    await sleep(1600);
+    assert.equal(label("5m").style.color, "rgb(11, 16, 32)", "5m inverts: " + label("5m").style.color);
+    assert.equal(label("5m").style.background, "rgb(255, 180, 84)", "onto a solid amber pill: " + label("5m").style.background);
+    assert.match(label("5m").title, /platform chart is on this timeframe/);
+    assert.equal(label("15m").style.color, "rgb(199, 146, 234)", "and the others keep their own colour");
+
+    // Belt and braces: even with no inline colour at all the label still has one to draw with. The
+    // regression was exactly this - clearing the inline value left it inheriting from the host page.
+    const bare = label("15m");
+    bare.style.color = "";
+    assert.match(
+      qx.panelRoot().textContent + [...qx.panelRoot().querySelectorAll("style")].map((n) => n.textContent).join(" "),
+      /[#]__tcMTF [.]tcMtfTf [{] color:/,
+      "the stylesheet supplies a colour of its own",
+    );
   } finally {
     qx.close();
   }
