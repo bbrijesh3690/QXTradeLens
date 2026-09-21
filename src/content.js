@@ -6530,6 +6530,8 @@
     const MTF_MAX_CANDLES = 1500,
       MTF_STALE_SEC = 3;
     const MTF_MAX_SYMBOLS = 6;
+    // Roughly a third of a megabyte: room for several pairs at full depth, and far from the origin's limit.
+    const MTF_CACHE_MAX_CHARS = 300 * 1024;
     // Candles per pair (v1.26.0). Switching pairs used to wipe every timeframe, so each pair needed a
     // fresh sync; now the last few pairs are kept and restored when you come back.
     let mtfArchive = {};
@@ -6638,6 +6640,35 @@
         const symbols = { [mtfSymbol]: trimEntriesForStorage(mtfEntries) };
         for (const sym in mtfArchive) {
           symbols[sym] = trimEntriesForStorage(mtfArchive[sym]);
+        }
+        // v1.53.0: a ceiling on what this is allowed to occupy. Deeper history per timeframe (v1.52.0)
+        // and a wider zoom both widen what is kept, and the cache had reached 552 KB for five pairs -
+        // shared with the platform's own storage in a budget of about five megabytes. Writes here are
+        // wrapped, so passing quota would not throw: SETTINGS would quietly stop saving instead, which
+        // is a bad way to find out. The newest pairs are kept whole, then older ones go, then history is
+        // thinned - the current pair is never dropped.
+        const newestOf = (entries) =>
+          Object.values(entries || {}).reduce((max, e) => Math.max(max, (e && e.capturedAt) || 0), 0);
+        let text = JSON.stringify({ v: 2, symbols });
+        if (text.length > MTF_CACHE_MAX_CHARS) {
+          const oldestFirst = Object.keys(symbols)
+            .filter((sym) => sym !== mtfSymbol)
+            .sort((a, b) => newestOf(symbols[a]) - newestOf(symbols[b]));
+          while (text.length > MTF_CACHE_MAX_CHARS && oldestFirst.length) {
+            delete symbols[oldestFirst.shift()];
+            text = JSON.stringify({ v: 2, symbols });
+          }
+          for (let pass = 0; pass < 6 && text.length > MTF_CACHE_MAX_CHARS; pass++) {
+            for (const sym in symbols) {
+              for (const key in symbols[sym]) {
+                const entry = symbols[sym][key];
+                if (entry && entry.candles && entry.candles.length > 60) {
+                  entry.candles = entry.candles.slice(-Math.max(60, Math.floor(entry.candles.length / 2)));
+                }
+              }
+            }
+            text = JSON.stringify({ v: 2, symbols });
+          }
         }
         writeJson(KEY_MTF_CACHE, { v: 2, symbols });
       }
@@ -7465,7 +7496,11 @@
     // keeps the charts current, so this runs once per pair you open and gets out of the way.
     // Only a guard against a walk repeating while you flick between two pairs (v1.35.0).
     const MTF_AUTOFILL_AGAIN_MS = 60000;
+    // v1.53.0: when the last fill actually RAN, for what the panel reports. Kept apart from when the
+    // next one is allowed, below - the retry used to be scheduled by back-dating this one, so a walk that
+    // came back empty immediately claimed to have filled the pair minutes ago.
     const mtfAutofilledAt = {};
+    const mtfNextFillAt = {};
     function setMtfAutofill(on) {
       mtfAutofill = !!on;
       try {
@@ -7513,8 +7548,12 @@
         return stop("settling (" + Math.ceil((settleMs - (now - mtfSymbolSince)) / 1000) + "s)");
       }
       // Only to stop a walk repeating while you flick back and forth between two pairs.
-      if (mtfAutofilledAt[sym] && now - mtfAutofilledAt[sym] < MTF_AUTOFILL_AGAIN_MS) {
-        return stop("filled this pair " + fmtAgo(Math.round((now - mtfAutofilledAt[sym]) / 1000)));
+      if (mtfNextFillAt[sym] && now < mtfNextFillAt[sym]) {
+        return stop(
+          mtfAutofilledAt[sym]
+            ? "filled this pair " + fmtAgo(Math.round((now - mtfAutofilledAt[sym]) / 1000))
+            : "waiting before another try",
+        );
       }
 
       const panel = byId("__tcMTF");
@@ -7524,6 +7563,7 @@
       const tfs = panel._tcTfs || getMtfTfs();
       mtfFillPendingFor = null;
       mtfAutofilledAt[sym] = now;
+      mtfNextFillAt[sym] = now + MTF_AUTOFILL_AGAIN_MS;
       stop("filling " + tfs.join(", "));
       mtfFlash("filling …", 2500);
       runMtfSync(() => {
@@ -7534,8 +7574,10 @@
           return !!(e && e.candles && e.candles.length);
         });
         if (!gotSomething) {
+          // Nothing came back: allow another go shortly, and do not claim this counted as a fill.
           mtfFillPendingFor = sym;
-          mtfAutofilledAt[sym] = now - (MTF_AUTOFILL_AGAIN_MS - 30000);
+          delete mtfAutofilledAt[sym];
+          mtfNextFillAt[sym] = now + 30000;
           mtfAutofillReason = "walk came back empty, retrying";
         }
       });

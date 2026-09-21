@@ -325,3 +325,44 @@ test("MTF: the walk waits while history is still arriving (v1.52.0)", async () =
     qx.close();
   }
 });
+
+test("MTF: the cache is held under its ceiling (v1.53.0)", async () => {
+  const now = Math.floor(Date.now() / 1000);
+  // Six pairs with deep history: far more than the cache is allowed to keep.
+  const bars = (n) => { const out=[]; for (let i=0;i<n;i++) out.push({ t: now - (n-i)*60, o: 1.2345+i*1e-5, h: 1.2350+i*1e-5, l: 1.2340+i*1e-5, c: 1.2346+i*1e-5 }); return out; };
+  const symbols = {};
+  for (const sym of ["USDDZD_otc","A_otc","B_otc","C_otc","D_otc","E_otc"]) {
+    symbols[sym] = { [sym+"@60"]: { candles: bars(900), capturedAt: now, periodSeconds: 60 }, [sym+"@300"]: { candles: bars(400), capturedAt: now, periodSeconds: 300 }, [sym+"@900"]: { candles: bars(400), capturedAt: now, periodSeconds: 900 } };
+  }
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 15);
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_autofill: "0", __tradeCalc_mtf_cache: JSON.stringify({ v: 2, symbols }) }, store });
+  try {
+    await sleep(1200);
+    setChart(store, "EURUSD_otc", 60); // a pair change forces the cache to be written
+    await sleep(1200);
+    const written = pref(qx, "__tradeCalc_mtf_cache") || "";
+    assert.ok(written.length, "the cache was written");
+    assert.ok(written.length <= 300 * 1024, "and kept under the ceiling: " + Math.round(written.length/1024) + " KB");
+    const back = JSON.parse(written);
+    assert.ok(Object.keys(back.symbols).length >= 1, "with pairs still in it");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MTF: an empty walk does not claim the pair was filled (v1.53.0)", async () => {
+  const store = quotexStore();
+  store.__candles = []; // nothing for the walk to collect
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_settle: "0" }, store });
+  try {
+    // Sample across the whole cycle: walk, come back empty, wait, try again. At no point should the
+    // panel claim the pair was filled.
+    const seen = [];
+    for (let i = 0; i < 14; i++) { await sleep(1000); seen.push(healthRow(qx, "Charts auto-fill").value); }
+    const claims = seen.filter((v) => /filled this pair/.test(v));
+    assert.deepEqual(claims, [], "a fill was never claimed: " + [...new Set(seen)].join(" | "));
+  } finally {
+    qx.close();
+  }
+});

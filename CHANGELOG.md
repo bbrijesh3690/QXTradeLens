@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.53.0] - 2026-09-21
+
+### Fixed
+- **The candle cache had no ceiling.** Deeper per-timeframe history and wider zooms had taken it to 552 KB
+  for five pairs, in an origin budget of about five megabytes shared with the platform own storage. Writes
+  here are wrapped, so passing quota would not have thrown — settings would simply have stopped saving.
+  It is now held under 300 KB: the current pair is kept whole, then the oldest pairs go, then history is
+  thinned.
+- **A walk that came back empty claimed to have filled the pair.** The retry was scheduled by back-dating
+  the "filled at" time, and the panel reported that same value as elapsed — so a failed walk immediately
+  read `filled this pair 40s ago`. When a fill RAN and when the next one is allowed are now two separate
+  clocks, and a walk that collected nothing says so.
+
 ## [1.52.0] - 2026-09-21
 
 ### Fixed
