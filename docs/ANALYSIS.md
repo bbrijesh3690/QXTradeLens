@@ -2,6 +2,11 @@
 
 Date: 2026-09-15. Based on a full read of the source and a live check on `qxbroker.com/en/demo-trade`.
 
+> This is a **snapshot of v1.19.0**, kept as the record of what the code looked like when it was
+> recovered and re-analysed. It is not updated as features land. For the current state read
+> [README.md](../README.md) and [CHANGELOG.md](../CHANGELOG.md); for how to work on it,
+> [CLAUDE.md](../CLAUDE.md).
+
 ## 1. What the extension does
 
 ### Top panel (content.js, closed shadow DOM)

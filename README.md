@@ -35,6 +35,7 @@ Quotex pages. Drag it by its left grip; the position is remembered.
 | **RISK** | Your stake as a % of balance — green under 2%, amber to 5%, red above |
 | **Goal** | Days and trades to target, from your journal sheet |
 | **Sparkline** | Your balance over the last 30 updates, behind the panel |
+| **Version** | The build this tab is running, at the right-hand end of the row. Reloading the extension does **not** update an open tab, so if this differs from the installed version, refresh the tab |
 
 ### What blocks a trade
 
@@ -45,6 +46,18 @@ The Up/Down buttons are disabled, with the reason shown in the panel, when:
 - **A second trade within 1.5 s**, unless MULT is on.
 
 The stop loss never blocks trading (changed in v1.21.0); it is tracked and displayed only.
+
+### The payout floor works both ways
+
+Every 5 s, pairs paying below your **PAYOUT** minimum are closed. Quotex gives the last remaining tab no
+close control, so when the final pair drops below the floor there used to be nothing left to trade and
+nothing to switch to. Since v1.54.0, when *every* open pair is below the floor the panel opens one that
+clears it, and the close pass removes the stale one on its next turn.
+
+Which pair is Quotex's decision, not a list kept here: their own asset table gives the payout, whether
+the market is active and the label for every instrument they offer, so the best available pair is picked
+from the whole board. It waits for the condition to hold across two passes, leaves the asset list alone
+while you have it open, and never moves the board while a trade is running.
 
 ### Stop loss and take profit
 
@@ -67,7 +80,10 @@ The stop loss never blocks trading (changed in v1.21.0); it is tracked and displ
   amount, and tap the middle button to switch the factor between 1.3 and 1.5.
 - **Multi-timeframe charts** — up to 4 mini candle charts (default 1m, 5m, 15m) drawn from Quotex's own
   candle data. Drag to pan back through older candles, scroll to zoom that chart in or out (kept per timeframe), drag edges to resize, double-click to return to live. The header shows the pair
-  and highlights the timeframe your chart is on, and each cell says how many bars it has, with a dashed line and a label at the right edge for the last price. Support and resistance are drawn on each chart (swing levels, strength 3, last three a side) with an S/R
+  and highlights the timeframe your chart is on, and each cell says how many bars it has, with a dashed line and a label at the right edge for the last price.
+  Each cell header opens with that timeframe as a coloured pill — **1m blue, 5m amber, 15m violet**, the same
+  colours its levels are drawn in — followed by its S/R switch in the same colour and its turn mark. The
+  pill fills in solid on whichever timeframe the platform chart is currently on. Support and resistance are drawn on each chart (swing levels, strength 3, last three a side) with an S/R
   switch in its header, and an arrow appears in a cell header when that
   timeframe turns, and hovering a bar shows its time, close, high and low in place of the status line — on every chart at once, each marking the bar that holds that moment. Each cell counts down to the close of the bar
   it is drawing, on the chart itself.
@@ -107,7 +123,8 @@ Active on the trade page when you are not typing in a field.
 | **Alt+Shift+R** | Developer: reload the extension and refresh Quotex tabs |
 
 Tabs paying below your minimum are also closed automatically every 5 s, when Quotex shows a close
-button on them.
+button on them — and if that would leave you with nothing tradeable, a pair above the floor is opened
+first. See [The payout floor works both ways](#the-payout-floor-works-both-ways).
 
 ## Journal and balance log
 
@@ -178,6 +195,17 @@ trade is open`, `filled this pair 4m ago`, `switched off in the popup`), and **w
 running** next to the installed version. If those two differ, the tab was never refreshed after the
 extension was reloaded, and it is still running the old code.
 
+### The diagnostics line
+
+The health check can only be read by whoever is sitting at the browser, which is no help when the panel
+is misbehaving in a tab someone else has to reason about. So the tab in front also writes what it is
+doing into this site's own storage every 2 s, under an opaque key: the build, the pair, the chart's
+timeframe, open trades, what the auto-fill is waiting for, the payout floor and what each open pair is
+paying, what the payout floor last decided, what the win-projection chip is showing, and for each chart
+its zoom, how many bars it holds, how many it drew, where it has been dragged to and whether it is at the
+live edge. Any tab on `qxbroker.com` can read it back, which turns most "it is not working" questions
+into a single look.
+
 ## Good to know
 
 - **"Live Account" is displayed as "Demo Account"**, and the tab title says "Demo trading", on every
@@ -225,8 +253,8 @@ npm install
 
 - `npm run build` rebuilds `content.js` from `src/content.js` (minified).
 - `npm run build:dev` builds an unminified `content.js`, which is easier to debug in DevTools.
-- `npm test` runs the jsdom behavior specs (about 90 s; they are almost entirely waiting on the panel’s
-  timers, and Node runs the files in parallel). A single area is quicker: `node --test tests/mtf.test.mjs`,
+- `npm test` runs the jsdom behavior specs (about 3.5 minutes; they are almost entirely waiting on the
+  panel’s timers, and Node runs the files in parallel — `tests/mtf.test.mjs` is the long pole). A single area is quicker: `node --test tests/mtf.test.mjs`,
   or one test by name with `--test-name-pattern`. `CONTENT_JS=path npm test` runs them against another build,
   which is how each fix is shown to fail on the previous version and pass on the new one.
 - `npm run verify` checks that a build is the same program as the v1.19.0 release. Useful for refactors
