@@ -50,8 +50,9 @@ This matters more than it sounds, and has caused wrong conclusions before:
 Three things exist because of this:
 
 - **The diagnostics line** — the foreground tab writes build, pair, chart timeframe, open-trade
-  count, what the auto-fill is doing, and per-chart `zoom / have / drawn / pannedTo / atLive` into
-  the site's own storage every 2 s, under the hashed key for `__tradeCalc_diag`. Any tab on the
+  count, what the auto-fill is doing, what the win-projection chip is showing, and per-chart
+  `zoom / have / drawn / pannedTo / atLive` into the site's own storage every 2 s, under the hashed key
+  for `__tradeCalc_diag`. Any tab on the
   origin can read it back. This is how a live problem gets diagnosed in one round trip.
 - **The health check** (popup → Check Quotex compatibility) reports every lookup as ok / fallback /
   missing, plus the build the *tab* is running against the one installed — an extension reload does
@@ -78,7 +79,7 @@ Three things exist because of this:
 ```bash
 npm run build          # src/content.js -> the extension's content.js (minified)
 npm run build:dev      # unminified, for DevTools
-npm test               # all specs, ~90 s (files run in parallel)
+npm test               # all specs, ~3.5 min (files run in parallel; tests/mtf.test.mjs is the long pole)
 node --test tests/mtf.test.mjs                      # one area, ~20 s
 node --test --test-name-pattern="v1.49" tests/...   # one change
 CONTENT_JS=path npm test                            # against another build
@@ -101,7 +102,10 @@ check will say so if only one happened.
 ## Open items
 
 - **The win projection on the chart chip** is covered by a test (two open trades, balance plus both
-  payouts) but has never been seen on a live page — that needs a trade actually running.
+  payouts) but has still never been *seen* on a live page — that needs a trade actually running. Since
+  v1.54.0 the chip's own text is in the diagnostics line (`projChip`), so one live trade settles it
+  without a screenshot. The formula itself was checked against 7 settled deals on 2026-09-20 and matched
+  every one exactly.
 - Offered and not started: a sound for the trend-flip mark (left visual on purpose — a tone mid-trade
   is intrusive and gives no clue which chart it came from), and per-asset rather than per-timeframe
   zoom memory.

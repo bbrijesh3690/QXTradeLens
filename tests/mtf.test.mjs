@@ -1290,3 +1290,23 @@ test("S/R: a level label never lands on the price or countdown row (v1.51.0)", a
     qx.close();
   }
 });
+
+
+// ── v1.54.0: a cell header reads timeframe, then its S/R switch, then its turn mark ────────────────
+
+test("MTF: the cell header runs 5m, S/R, flip mark (v1.54.0)", async () => {
+  const qx = await boot({ storage: bigTfStorage, store: quotexStore() });
+  try {
+    await sleep(1200);
+    const head = qx.panelRoot().querySelector('.tcMtfCell[data-tf="5m"] .tcMtfHd');
+    const order = Array.from(head.children).map((el) => el.className);
+    assert.deepEqual(
+      order.slice(0, 3),
+      ["tcMtfTf", "tcMtfSr", "tcMtfFlip"],
+      "timeframe first, then its S/R switch, then the turn mark: " + order.join(" "),
+    );
+    assert.equal(head.children[0].textContent, "5m", "and the first thing in the row is the timeframe");
+  } finally {
+    qx.close();
+  }
+});

@@ -550,3 +550,115 @@ test("health: lists that aren't open right now read as idle, not broken", async 
     qx.close();
   }
 });
+
+
+// ── v1.54.0: the payout floor opens a pair as well as closing them ─────────────────────────────────
+
+// One tab, below the floor, with no close control - Quotex gives the last tab none - and an asset list
+// holding three OTC pairs. GBP/JPY prints the biggest number but the platform does not list it; the
+// store's own asset table is what decides, so AUD/CAD is the one that should open.
+function lowTabWithAssetList() {
+  const row = (name, pct, id) =>
+    '<div class="R2Rgm" id="' + id + '"><div class="teoXG">' + name + '</div><div class="mQX6T">' + pct + ' %</div></div>';
+  return FIXTURE.replace('<div class="ElyTP">91 %</div>', '<div class="ElyTP">70 %</div>')
+    .replace('<span class="UI2Kh">91 %</span>', '<span class="UI2Kh">70 %</span>')
+    .replace(
+      '<div id="graph">',
+      '<div id="asset-select-dropdown">' +
+        row("EUR/USD (OTC)", 70, "rowEur") +
+        row("AUD/CAD (OTC)", 93, "rowAud") +
+        row("GBP/JPY (OTC)", 95, "rowGbp") +
+        '</div><div id="graph">',
+    );
+}
+
+test("payout floor: with every open pair below it, one that clears it is opened (v1.54.0)", async () => {
+  const store = quotexStore({ payout: 70 });
+  store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  const clicked = [];
+  // Quotex adds a pair tab when a row in the asset list is clicked.
+  const setup = (w) => {
+    ["rowEur", "rowAud", "rowGbp"].forEach((id) => {
+      w.document.getElementById(id).addEventListener("click", (e) => {
+        const el = e.currentTarget;
+        if (clicked.includes(el.id)) return;
+        clicked.push(el.id);
+        const tab = w.document.createElement("div");
+        tab.className = "dJ15T vXMlv";
+        tab.setAttribute("data-symbol", "AUDCAD_otc");
+        tab.innerHTML = '<div class="WRocw">' + el.querySelector(".teoXG").textContent + '</div><div class="ElyTP">93 %</div>';
+        w.document.querySelector(".Q02Z1").appendChild(tab);
+      });
+    });
+  };
+  const qx = await boot({ html: lowTabWithAssetList(), store, setup });
+  try {
+    await sleep(7000);
+    assert.deepEqual(clicked, ["rowAud"], "the pair the platform rates highest was opened, once: " + clicked.join(","));
+    assert.ok(qx.window.document.querySelector('[data-symbol="AUDCAD_otc"]'), "and its tab is there now");
+  } finally {
+    qx.close();
+  }
+});
+
+test("payout floor: a pair above it is reason enough to open nothing (v1.54.0)", async () => {
+  const clicked = [];
+  const setup = (w) => {
+    ["rowEur", "rowAud", "rowGbp"].forEach((id) =>
+      w.document.getElementById(id).addEventListener("click", (e) => clicked.push(e.currentTarget.id)),
+    );
+  };
+  // The same page, except the open tab still pays 91% - over the 89% floor.
+  const html = lowTabWithAssetList().replace('<div class="ElyTP">70 %</div>', '<div class="ElyTP">91 %</div>');
+  const qx = await boot({ html, store: quotexStore({ payout: 91 }), setup });
+  try {
+    await sleep(7000);
+    assert.deepEqual(clicked, [], "nothing in the asset list was clicked");
+  } finally {
+    qx.close();
+  }
+});
+
+test("payout floor: nothing is opened while a trade is running (v1.54.0)", async () => {
+  const store = quotexStore({ payout: 70, opened: [openDealNow()] });
+  store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  const clicked = [];
+  const setup = (w) => {
+    ["rowEur", "rowAud", "rowGbp"].forEach((id) =>
+      w.document.getElementById(id).addEventListener("click", (e) => clicked.push(e.currentTarget.id)),
+    );
+  };
+  const qx = await boot({ html: lowTabWithAssetList(), store, setup });
+  try {
+    await sleep(7000);
+    assert.deepEqual(clicked, [], "the board is left alone until the trade settles");
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.54.0: the projection chip reports itself, so a live trade can confirm it ────────────────────
+
+test("diagnostics: the win projection says what it is showing (v1.54.0)", async () => {
+  const store = quotexStore({ opened: [openDealNow()], quotes: { USDDZD_otc: 256.2 } });
+  const qx = await boot({ store });
+  try {
+    await sleep(3000);
+    const diag = JSON.parse(pref(qx, "__tradeCalc_diag"));
+    assert.match(String(diag.projChip), /win/, "the chip's own text is in the line: " + diag.projChip);
+    assert.match(String(diag.projChip), /[0-9]/, "including the number it is projecting: " + diag.projChip);
+  } finally {
+    qx.close();
+  }
+});
+
+test("diagnostics: with nothing running, the projection chip reports itself hidden (v1.54.0)", async () => {
+  const qx = await boot({ store: quotexStore() });
+  try {
+    await sleep(3000);
+    const diag = JSON.parse(pref(qx, "__tradeCalc_diag"));
+    assert.equal(diag.projChip, "hidden");
+  } finally {
+    qx.close();
+  }
+});

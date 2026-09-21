@@ -5,6 +5,31 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.54.0] - 2026-09-21
+
+### Added
+- **The payout floor now opens a pair as well as closing them.** Auto-close takes low-payout pairs away
+  one at a time, but Quotex gives the last remaining tab no close control — so when the final pair drops
+  below the floor it stayed, trading was blocked, and there was nothing left to switch to. When every open
+  pair is below the floor, one that clears it is opened and the close pass takes the stale one away on its
+  next turn. Which pair is the platform's decision: its own asset table gives payout, whether the market is
+  active and the label for every instrument it offers, so this works on the whole board rather than a list
+  written down here. The asset list's rows are only the click target, and only the fallback for choosing.
+  It waits for the condition to hold across two passes, stays out of the way while the trader has the asset
+  list open, and never moves the board while a trade is running.
+- **The build is on the panel.** It was only in the popup's health check, which is the wrong place for the
+  question it answers — reloading the extension does not update an open tab, and that mismatch looks
+  exactly like "the fix did nothing". The version sits at the end of the panel's own row, outside the
+  section that hides itself when no sheet URL is configured.
+- **The win projection reports itself in the diagnostics line.** It has been covered by a test since
+  v1.34.0 and never once seen on a live page, because it only draws while a trade is running and an
+  automated tab cannot produce one. The chip's own text is now in the line any tab can read back, so a
+  single live trade settles the question.
+
+### Changed
+- **The MTF cell header reads left to right: timeframe, its S/R switch, then its turn mark.** The turn mark
+  used to come first, which put a symbol that is usually absent in front of the two things the row is for.
+
 ## [1.53.0] - 2026-09-21
 
 ### Fixed

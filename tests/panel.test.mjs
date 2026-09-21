@@ -290,3 +290,21 @@ test("B10: switching SL off closes an open setup screen and its click blocker", 
     qx.close();
   }
 });
+
+
+// ── v1.54.0: the build is on the panel, not only in the popup ──────────────────────────────────────
+
+test("panel: the build it is running is visible on the panel (v1.54.0)", async () => {
+  const qx = await boot({ store: quotexStore() });
+  try {
+    await sleep(1200);
+    const el = qx.panelRoot().getElementById("__tcVer");
+    assert.ok(el, "the panel shows a version");
+    assert.match(el.textContent, /^v[0-9]+[.][0-9]+[.][0-9]+$/, "as a version number: " + el.textContent);
+    assert.match(el.getAttribute("data-tc-tip") || "", /refresh this tab/, "and says what to do when it looks stale");
+    assert.equal(el.closest("#__tcSecLog"), null, "not inside the section that hides without a sheet URL");
+    assert.ok(el.closest("#__tcContent"), "but inside the panel's own row");
+  } finally {
+    qx.close();
+  }
+});
