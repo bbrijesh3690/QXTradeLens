@@ -5591,7 +5591,10 @@
       AUTO_OPEN_SETTLE_MS = 4000;
     let lastAutoOpenAt = 0,
       autoOpenBusy = false,
-      allBelowSince = 0;
+      allBelowSince = 0,
+      // v1.54.1: why this did or did not act, for the diagnostics line. Whether a pair SHOULD have been
+      // opened cannot be judged from outside the tab without the payouts it was looking at.
+      autoOpenReason = "starting up";
     function tabPayout(tab) {
       const el =
         tab.querySelector(".ElyTP") ||
@@ -5693,6 +5696,7 @@
         }
       }, 12000);
       const wanted = bestAssetAboveFloor(min);
+      autoOpenReason = wanted ? "opening " + wanted.label + " at " + wanted.payout + "%" : "looking for a pair above " + min + "%";
       ensureAssetDropdown(0, () => {
         const rows = getAssetChoices(),
           open = new Set(getPairTabs().map((t) => normKey(getTabName(t)))),
@@ -5703,6 +5707,7 @@
               .sort((a, b) => b.payout - a.payout || a.name.localeCompare(b.name))[0],
           target = pick && (pick.click || pick.row);
         if (!target || !target.isConnected) {
+          autoOpenReason = "nothing in the asset list clears " + min + "%";
           autoOpenFinish();
           return;
         }
@@ -5711,30 +5716,49 @@
       });
     }
     function maybeAutoOpenPair(min) {
-      if (autoOpenBusy || otcRebuildBusy || autoCloseRunning || isNaN(min)) {
-        return;
+      const stop = (why) => {
+        autoOpenReason = why;
+      };
+      if (autoOpenBusy) {
+        return stop("opening a pair now");
+      }
+      if (otcRebuildBusy || autoCloseRunning) {
+        return stop("the tab list is busy");
+      }
+      if (isNaN(min)) {
+        return stop("no payout floor set");
       }
       const now = Date.now();
       if (now - lastAutoOpenAt < AUTO_OPEN_AGAIN_MS) {
-        return;
+        return stop("opened one " + fmtAgo(Math.round((now - lastAutoOpenAt) / 1000)));
       }
       // The list is the trader's while they have it open, and nothing moves the board under a running trade.
-      if (isAssetDropdownOpen() || openTradeCount() > 0) {
-        return;
+      if (isAssetDropdownOpen()) {
+        return stop("the asset list is open");
+      }
+      if (openTradeCount() > 0) {
+        return stop("a trade is running");
       }
       const payouts = openPairPayouts();
-      if (!payouts || !payouts.length || payouts.some((p) => p >= min)) {
+      if (!payouts) {
+        return stop("a pair's payout cannot be read");
+      }
+      if (!payouts.length) {
+        return stop("no pair tabs");
+      }
+      if (payouts.some((p) => p >= min)) {
         allBelowSince = 0;
-        return;
+        return stop("a pair is at or above " + min + "%");
       }
       if (!allBelowSince) {
         allBelowSince = now;
-        return;
+        return stop("every pair below " + min + "% - waiting to see if it holds");
       }
       if (now - allBelowSince < AUTO_OPEN_SETTLE_MS) {
-        return;
+        return stop("every pair below " + min + "% - waiting to see if it holds");
       }
       allBelowSince = 0;
+      autoOpenReason = "every pair below " + min + "% - opening one";
       autoOpenBetterPair(min);
     }
     function closeAssetDropdown() {
@@ -8470,6 +8494,19 @@
             chartSec: mtfChartSec || 0,
             autofill: mtfAutofill ? mtfAutofillReason : "switched off in the popup",
             openTrades: openTradeCount(),
+            // v1.54.1: the payout floor and what it is looking at. "Should a pair have been opened?" is
+            // not answerable from another tab without the numbers the decision was made on.
+            floor: parseInt(getMinPayoutStored(), 10),
+            pairs: (() => {
+              const out = {};
+              getPairTabs().forEach((tab) => {
+                const name = getTabName(tab) || tab.getAttribute("data-symbol") || "?";
+                const pct = tabPayout(tab);
+                out[name] = isNaN(pct) ? null : pct;
+              });
+              return out;
+            })(),
+            autoOpen: autoOpenReason,
             // v1.54.0: the win projection has been covered by a test since v1.34.0 and never once seen on
             // a live page - it only draws while a trade is running, which an automated tab cannot produce
             // (document.hidden pauses the render loop). Reporting what the chip holds turns "has it ever

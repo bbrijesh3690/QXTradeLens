@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.54.1] - 2026-09-21
+
+### Added
+- **The payout floor reports what it is looking at.** Whether it should have opened a pair cannot be
+  judged from another tab without the numbers the decision was made on, so the diagnostics line now
+  carries the floor, what each open pair is paying, and the reason the last pass gave — `a pair is at or
+  above 86%`, `every pair below 86% - waiting to see if it holds`, `a trade is running`, `opening
+  AUD/CAD (OTC) at 93%`.
+
 ## [1.54.0] - 2026-09-21
 
 ### Added

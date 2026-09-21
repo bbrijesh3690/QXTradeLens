@@ -662,3 +662,30 @@ test("diagnostics: with nothing running, the projection chip reports itself hidd
     qx.close();
   }
 });
+
+test("diagnostics: the payout floor says what it is looking at (v1.54.1)", async () => {
+  const store = quotexStore({ payout: 70 });
+  store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  const qx = await boot({ html: lowTabWithAssetList(), store });
+  try {
+    await sleep(3000);
+    const diag = JSON.parse(pref(qx, "__tradeCalc_diag"));
+    assert.equal(diag.floor, 89, "the floor it is holding to");
+    assert.deepEqual(diag.pairs, { "USD/DZD (OTC)": 70 }, "and what each open pair pays: " + JSON.stringify(diag.pairs));
+    assert.match(String(diag.autoOpen), /below 89%/, "and what it decided: " + diag.autoOpen);
+  } finally {
+    qx.close();
+  }
+});
+
+test("diagnostics: with a pair above the floor, the line says so (v1.54.1)", async () => {
+  const html = lowTabWithAssetList().replace('<div class="ElyTP">70 %</div>', '<div class="ElyTP">91 %</div>');
+  const qx = await boot({ html, store: quotexStore({ payout: 91 }) });
+  try {
+    await sleep(3000);
+    const diag = JSON.parse(pref(qx, "__tradeCalc_diag"));
+    assert.match(String(diag.autoOpen), /at or above 89%/, diag.autoOpen);
+  } finally {
+    qx.close();
+  }
+});
