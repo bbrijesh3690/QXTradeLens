@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.54.2] - 2026-09-21
+
+### Changed
+- **The timeframe on an MTF cell reads as the cell own identity.** It was the dimmest thing in a row it
+  now leads, so it is a filled pill in the colour that timeframe already uses for its levels - blue for
+  1m, amber for 5m, violet for 15m. A glance at the pill says which chart you are looking at, and the
+  colour is the same one its S/R lines are drawn in.
+
 ## [1.54.1] - 2026-09-21
 
 ### Added

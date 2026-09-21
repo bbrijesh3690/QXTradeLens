@@ -1310,3 +1310,20 @@ test("MTF: the cell header runs 5m, S/R, flip mark (v1.54.0)", async () => {
     qx.close();
   }
 });
+
+test("MTF: the timeframe label carries that timeframe's own colour (v1.54.2)", async () => {
+  const qx = await boot({ storage: bigTfStorage, store: quotexStore() });
+  try {
+    await sleep(1200);
+    const label = (tf) => qx.panelRoot().querySelector('.tcMtfCell[data-tf="' + tf + '"] .tcMtfTf');
+    const style = (tf) => label(tf).getAttribute("style") || "";
+    // The same colours the levels are drawn in: 1m blue, 5m amber, 15m violet.
+    assert.match(style("1m"), /#5aa9ff/, "1m wears its level colour: " + style("1m"));
+    assert.match(style("5m"), /#ffb454/, "5m wears its own: " + style("5m"));
+    assert.match(style("15m"), /#c792ea/, "15m wears its own: " + style("15m"));
+    assert.match(style("1m"), /background/, "as a filled pill, not bare text");
+    assert.equal(label("1m").textContent, "1m", "and still says which timeframe it is");
+  } finally {
+    qx.close();
+  }
+});
