@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.56.0] - 2026-09-22
+
+### Added
+- **Sweep: bring every open pair up to date in one press.** The rest of the scan board is free, which is
+  why it could only judge pairs you had already been on — four tabs open with two of them reading `—` was
+  the normal case. Sweep visits each open pair whose candles have fallen behind, runs the same walk the
+  refresh button runs, and puts you back on the pair you started from. Stalest first, and pairs already
+  current are skipped, so chart time is only spent where it buys something.
+
+  It is the one part of this feature that moves the chart, so it never starts by itself: it needs the
+  button, the tab in front and no trade running. It stops on its own if a trade opens or the tab goes to
+  the back, the button becomes **Stop** while it runs and says how far along it is, and stopping takes
+  effect at once rather than at the end of the pair it is on.
+
 ## [1.55.1] - 2026-09-22
 
 ### Fixed

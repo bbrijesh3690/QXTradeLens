@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sleep, quotexStore, makeCandles, boot, bigTfStorage, prefKey } from "./helpers.mjs";
+import { sleep, quotexStore, makeCandles, boot, bigTfStorage, prefKey, pref, openDealNow } from "./helpers.mjs";
 
 const scanRows = (qx) => [...qx.panelRoot().querySelectorAll(".tcMtfScanRow")];
 const scanText = (row) => row.textContent.replace(/\s+/g, " ").trim();
@@ -306,6 +306,142 @@ test("scan: candles from twenty-five minutes ago are labelled, not passed off as
     assert.ok(age, "with its age on it: " + aud.textContent);
     assert.match(age.textContent, /^[0-9]+[hm]$/, "in plain words: " + age.textContent);
     assert.match(aud.getAttribute("title"), /open it to bring them up to date/, aud.getAttribute("title"));
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.56.0: the sweep — the one part that moves the chart ──────────────────────────────────────
+
+const sweepBtn = (qx) => qx.panelRoot().querySelector('[data-mtf="sweep"]');
+const sweepMsg = (qx) => qx.panelRoot().querySelector(".tcScanFootMsg").textContent;
+const press = (qx, el) => el.dispatchEvent(new qx.window.Event("click", { bubbles: true }));
+
+// Two pair tabs beside the one in the fixture, so there is something to sweep.
+function withTabs(FIXTURE) {
+  const tab = (sym, name, pct) =>
+    '<div class="dJ15T vXMlv" data-symbol="' + sym + '"><div class="WRocw">' + name + '</div><div class="ElyTP">' + pct + ' %</div></div>';
+  return (
+    FIXTURE.replace(
+      '<div class="ElyTP">91 %</div>\n          </div>',
+      '<div class="ElyTP">91 %</div>\n          </div>' + tab("AUDCAD_otc", "AUD/CAD (OTC)", 93) + tab("CHFJPY_otc", "CHF/JPY (OTC)", 91),
+    )
+      // The fixture marks its active tab by id, which makes that tab active for ever — so switching
+      // away from it and back again cannot be observed. The live page marks it with a class; so does this.
+      .replace(' id="tab-active"', "")
+      .replace('<div class="dJ15T vXMlv" data-symbol="USDDZD_otc">', '<div class="dJ15T vXMlv tab-active" data-symbol="USDDZD_otc">')
+  );
+}
+
+async function bootSweep({ opened = [] } = {}) {
+  const { FIXTURE } = await import("./helpers.mjs");
+  const store = quotexStore({ opened });
+  store.__candles = makeCandles(300, 60);
+  const A = store.assets.assetBySymbol;
+  A.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  A.CHFJPY_otc = { symbol: "CHFJPY_otc", label: "CHF/JPY (OTC)", payout: 91, is_otc: 1, active: true };
+  const setup = (w) =>
+    w.document.querySelectorAll("[data-symbol] .WRocw").forEach((el) =>
+      el.addEventListener("click", (e) => {
+        const tab = e.currentTarget.closest("[data-symbol]");
+        w.document.querySelectorAll("[data-symbol]").forEach((t) => t.classList.remove("tab-active"));
+        tab.classList.add("tab-active");
+      }),
+    );
+  return await boot({
+    html: withTabs(FIXTURE),
+    setup,
+    store,
+    storage: { ...bigTfStorage, __tradeCalc_minrp: "80", __tradeCalc_mtf_view: "scan", __tradeCalc_mtf_autofill: "0" },
+  });
+}
+
+test("sweep: the board carries a sweep button, idle until pressed (v1.56.0)", async () => {
+  const qx = await bootSweep();
+  try {
+    await sleep(2000);
+    assert.ok(sweepBtn(qx), "the board has the control");
+    assert.equal(sweepBtn(qx).textContent, "Sweep", "reading as an invitation, not a state");
+    assert.equal(sweepMsg(qx), "", "and saying nothing until it has something to say");
+    assert.match(sweepBtn(qx).getAttribute("title"), /come back here/, "it says it returns you: " + sweepBtn(qx).getAttribute("title"));
+  } finally {
+    qx.close();
+  }
+});
+
+test("sweep: it visits the pairs that have fallen behind, and says where it is (v1.56.0)", async () => {
+  const qx = await bootSweep();
+  try {
+    await sleep(2000);
+    const activated = [];
+    qx.window.document.querySelectorAll("[data-symbol] .WRocw").forEach((el) =>
+      el.addEventListener("click", (e) => activated.push(e.currentTarget.closest("[data-symbol]").getAttribute("data-symbol"))),
+    );
+    press(qx, sweepBtn(qx));
+    await sleep(300);
+    assert.equal(sweepBtn(qx).textContent, "Stop", "the button becomes the way out of it");
+    assert.match(sweepMsg(qx), /of [0-9]+/, "and says how far along it is: " + sweepMsg(qx));
+    await sleep(1200);
+    assert.ok(activated.length, "it switched to a pair that needed collecting: " + activated.join(","));
+  } finally {
+    qx.close();
+  }
+});
+
+test("sweep: pressing it again stops, and puts you back where you started (v1.56.0)", async () => {
+  const qx = await bootSweep();
+  try {
+    await sleep(2000);
+    const started = JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").pair;
+    const activated = [];
+    qx.window.document.querySelectorAll("[data-symbol] .WRocw").forEach((el) =>
+      el.addEventListener("click", (e) => activated.push(e.currentTarget.closest("[data-symbol]").getAttribute("data-symbol"))),
+    );
+    press(qx, sweepBtn(qx));
+    await sleep(400);
+    press(qx, sweepBtn(qx));
+    await sleep(1400);
+    assert.equal(sweepBtn(qx).textContent, "Sweep", "it is idle again");
+    assert.match(sweepMsg(qx), /stopped/, "and says it was stopped: " + sweepMsg(qx));
+    assert.ok(activated.includes(started), "it went back to the pair you were on: " + activated.join(","));
+  } finally {
+    qx.close();
+  }
+});
+
+test("sweep: it will not start while a trade is running (v1.56.0)", async () => {
+  const qx = await bootSweep({ opened: [openDealNow()] });
+  try {
+    await sleep(2000);
+    const activated = [];
+    qx.window.document.querySelectorAll("[data-symbol] .WRocw").forEach((el) => el.addEventListener("click", () => activated.push(1)));
+    press(qx, sweepBtn(qx));
+    await sleep(600);
+    assert.equal(sweepBtn(qx).textContent, "Sweep", "it did not start");
+    assert.match(sweepMsg(qx), /not while a trade is running/, sweepMsg(qx));
+    assert.equal(activated.length, 0, "and nothing on the board was touched");
+  } finally {
+    qx.close();
+  }
+});
+
+test("sweep: with nothing behind, it says so instead of walking the board (v1.56.0)", async () => {
+  const { FIXTURE } = await import("./helpers.mjs");
+  const store = quotexStore();
+  // Candles that end now, so the one open pair is genuinely current and there is nothing to sweep.
+  store.__candles = makeCandles(300, 60, Math.floor(Date.now() / 1000) - 300 * 60);
+  // One tab only - the pair in front - and the panel has just collected it.
+  const qx = await boot({
+    html: FIXTURE,
+    store,
+    storage: { ...bigTfStorage, __tradeCalc_minrp: "80", __tradeCalc_mtf_view: "scan", __tradeCalc_mtf_autofill: "0" },
+  });
+  try {
+    await sleep(2000);
+    press(qx, sweepBtn(qx));
+    await sleep(500);
+    assert.equal(sweepBtn(qx).textContent, "Sweep", "nothing started");
+    assert.match(sweepMsg(qx), /already current/, sweepMsg(qx));
   } finally {
     qx.close();
   }

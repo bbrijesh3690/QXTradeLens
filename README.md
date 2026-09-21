@@ -129,6 +129,21 @@ A pair with **no candles yet** still gets a row if it clears your payout floor, 
 column: its payout is knowable and worth ranking, but it cannot be placed against a level until it has
 been opened once. Pairs below the floor, and markets that are closed, are left off.
 
+#### Sweep
+
+Everything else on the board is free, which is why it can only judge pairs you have already been on.
+**Sweep** is the exception: it visits each open pair whose candles have fallen behind, collects them the
+same way the ↻ button does, and puts you back on the pair you started from. Stalest first; pairs already
+current are skipped.
+
+It is the only part of the panel that moves your chart, so it never runs by itself — it needs the button,
+the tab in front, and no trade running. While it runs the button becomes **Stop** and says how far along
+it is (`2 of 4 · AUD/CAD (OTC)`); pressing Stop ends it immediately. It also stops on its own if a trade
+opens or the tab goes to the back.
+
+Sweep only covers pairs you already have open. To stock the tabs first, press **R** — that opens the
+highest-paying pairs at or above your minimum — then Sweep to fill them in.
+
 ## Keyboard shortcuts
 
 Active on the trade page when you are not typing in a field.

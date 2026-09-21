@@ -107,12 +107,11 @@ check will say so if only one happened.
   v1.54.0 the chip's own text is in the diagnostics line (`projChip`), so one live trade settles it
   without a screenshot. The formula itself was checked against 7 settled deals on 2026-09-20 and matched
   every one exactly.
-- **The scan view (v1.55.0) is the first two of three tiers.** Built: the payout board and the setup
-  board, both free because they read Quotex's asset table and candles already held. Not built: the
-  **sweep** — an explicit button that walks a chosen set of pairs, visiting each for a few seconds to
-  collect candles and returning to where it started. It is the only part that moves the chart, so it
-  stays behind a button, guarded by no-open-trade and tab-in-front, with a stop control. Also not built:
-  the one-line "best right now" chip on the Charts view.
+- **The scan view is complete across its three tiers** (v1.55.0 board, v1.56.0 sweep). The sweep covers
+  pairs that are already **open as tabs** — it does not open new ones, because that is a bigger change to
+  the board than collecting candles is, and `R` already stocks the tabs. Extending it to open the top
+  payouts itself is the obvious next step if the tab-stocking step becomes the annoying part. Still not
+  built: the one-line "best right now" chip on the Charts view.
 - Offered and not started: a sound for the trend-flip mark (left visual on purpose — a tone mid-trade
   is intrusive and gives no clue which chart it came from), and per-asset rather than per-timeframe
   zoom memory.
