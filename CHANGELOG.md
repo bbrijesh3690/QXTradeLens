@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.54.4] - 2026-09-21
+
+### Changed
+- **The S/R switch wears the same pill as the timeframe beside it.** A solid block of colour was too
+  heavy next to it; it is now a tint of that timeframe colour with a matching edge and the text in the
+  colour. Solid now means one thing only - this is the timeframe the platform chart is on.
+- **The three marks in a cell header line up.** They had three different font sizes, paddings and line
+  heights on a baseline-aligned row, so their edges never met. All three are now one box height on a row
+  that centres them.
+
 ## [1.54.3] - 2026-09-21
 
 ### Fixed

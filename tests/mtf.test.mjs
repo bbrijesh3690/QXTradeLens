@@ -1367,3 +1367,34 @@ test("MTF: the label still has its colour after a render, not just at birth (v1.
     qx.close();
   }
 });
+
+test("MTF: the S/R switch wears the same pill as the timeframe, and lines up with it (v1.54.4)", async () => {
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 60);
+  const qx = await boot({ storage: bigTfStorage, store });
+  try {
+    await sleep(1600);
+    const root = qx.panelRoot();
+    const sr = root.querySelector('.tcMtfCell[data-tf="1m"] .tcMtfSr');
+    // On: tinted fill, matching edge, text in the colour - the treatment the timeframe pill wears.
+    // It used to be a solid block of colour with dark ink, which is now reserved for one thing:
+    // this is the timeframe the platform chart is on.
+    assert.equal(sr.style.color, "rgb(90, 169, 255)", "S/R is blue on the 1m cell: " + sr.style.color);
+    assert.equal(sr.style.background, "rgba(90, 169, 255, 0.133)", "over a tint of it: " + sr.style.background);
+    assert.notEqual(sr.style.borderColor, "transparent", "with an edge of its own: " + sr.style.borderColor);
+
+    // Aligned: the two boxes are the same height, on a row that centres them.
+    const css = [...root.querySelectorAll("style")].map((n) => n.textContent).join(" ");
+    const box = (sel) => (css.match(new RegExp(sel.replace(".", "[.]") + " [{]([^}]*)[}]")) || [, ""])[1];
+    const lineHeight = (sel) => (box(sel).match(/line-height: ([^;]+)/) || [, ""])[1];
+    assert.equal(lineHeight(".tcMtfTf"), lineHeight(".tcMtfSr"), "same line height: " + lineHeight(".tcMtfTf") + " vs " + lineHeight(".tcMtfSr"));
+    assert.equal(lineHeight(".tcMtfSr"), lineHeight(".tcMtfFlip"), "the turn mark too: " + lineHeight(".tcMtfFlip"));
+    assert.match(box(".tcMtfHd"), /align-items: center/, "on a row that centres them: " + box(".tcMtfHd"));
+    for (const sel of [".tcMtfTf", ".tcMtfSr", ".tcMtfFlip"]) {
+      assert.match(box(sel), /padding: 0 5px/, sel + " has the same padding: " + box(sel));
+      assert.match(box(sel), /border-radius: 4px/, sel + " has the same corners");
+    }
+  } finally {
+    qx.close();
+  }
+});
