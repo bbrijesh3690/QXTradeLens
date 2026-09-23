@@ -214,10 +214,10 @@ Quotex's CSS class names change with each of their releases, which is what break
 Two layers deal with that:
 
 1. **Quotex's own data.** A read-only bridge reads the platform's internal state — current pair and
-   payout, every pair's payout, open and closed trades with entry prices, live prices, currency and
-   timezone. No CSS involved, so payout %, pair names, open trades, the loss streak, trade countdowns
+   payout, every pair's payout, open and closed trades with entry prices, live prices, currency,
+   timezone and the account balance. No CSS involved, so payout %, pair names, open trades, the loss streak, trade countdowns
    and the win/loss markers keep working even if the page markup changes completely.
-2. **Self-repairing lookups.** For things that only exist on the page — balance, payout amount, the
+2. **Self-repairing lookups.** For things that only exist on the page — payout amount, the
    Up/Down buttons, the investment field, the chart, trade rows, the asset list, the timeframe and
    expiry menus — the panel first tries the known class names, then finds the element by what it *is*
    (the account label next to it, the "Payout" text, a pair name beside a countdown, and so on). When
@@ -254,6 +254,8 @@ into a single look.
 
 - **"Live Account" is displayed as "Demo Account"**, and the tab title says "Demo trading", on every
   account. This is deliberate (screen-sharing cover), so check the balance itself before trading.
+  **Since Quotex's 2026-09-23 build the on-page label can no longer be rewritten** — it moved inside a
+  closed web component that no extension can reach. The tab title still says "Demo trading".
 - **Your data stays on your machine.** Settings live in Chrome storage and in this site's own storage under
   opaque names; the only outbound traffic is to your own Google Sheet, if you configure one.
 - **Footprint on Quotex's page is kept small**: no webfont request, no stylesheet naming their classes, and

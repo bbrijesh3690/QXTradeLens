@@ -43,6 +43,13 @@ This matters more than it sounds, and has caused wrong conclusions before:
 - The panel lives in a **closed shadow root**, so page-world script cannot see it.
 - An **automated tab reports `document.hidden: true`**, so the render loop is paused there and the
   charts never draw. A screenshot of an automated tab shows empty cells; that is not a bug.
+- **Quotex ships closed web components now.** Their account block is `<qx-usermenu-trigger>`, whose
+  shadow root is **closed** — `el.shadowRoot` is null, `querySelectorAll` and XPath both stop at the
+  boundary, and the balance is not in the document at all. No selector, no text scan and no semantic
+  finder can ever reach it; only the store can (v1.57.0). Expect more of the page to go this way. When a
+  lookup suddenly finds nothing, check for a custom element before hunting for a renamed class:
+  `document.querySelectorAll("*")` filtered on `tagName.includes("-")` names them in one line.
+  `deepQueryAll` crosses **open** roots, which is all that can be done from outside.
 - Quotex's chart is **one WebGL canvas**. Its vertical scale is view state it keeps to itself —
   measured against its own axis, the visible span is *not* `maxValue - minValue`. A price cannot be
   mapped to a pixel on their chart without calling obfuscated internals. Do not try again.
@@ -112,6 +119,9 @@ check will say so if only one happened.
   the board than collecting candles is, and `R` already stocks the tabs. Extending it to open the top
   payouts itself is the obvious next step if the tab-stocking step becomes the annoying part. Still not
   built: the one-line "best right now" chip on the Charts view.
+- **"Show Live as Demo" is dead against the current build** — the label it rewrites is inside that
+  closed root. The tab-title cover still works. Painting our own label over the component would restore
+  it, at the cost of a visible change to their page; not done without asking.
 - Offered and not started: a sound for the trend-flip mark (left visual on purpose — a tone mid-trade
   is intrusive and gives no clue which chart it came from), and per-asset rather than per-timeframe
   zoom memory.

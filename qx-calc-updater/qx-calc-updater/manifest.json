@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "QXTradeLens Controller",
-  "version": "1.56.1",
+  "version": "1.57.0",
   "description": "Professional trading controls and real-time scaling for QXTradeLens.",
   "permissions": [
     "storage",
@@ -65,3 +65,4 @@
     }
   }
 }
+

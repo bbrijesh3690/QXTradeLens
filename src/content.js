@@ -391,10 +391,36 @@
     })();
     const selectorVia = {};
     const textOf = (el) => (el && el.textContent ? el.textContent.trim() : "");
+    // v1.57.0: search that crosses OPEN shadow roots. Quotex has started moving parts of the page into
+    // custom elements, and `document.querySelectorAll` stops dead at a shadow boundary - so a finder that
+    // only walks the light DOM goes blind the moment a component appears, which is exactly what happened
+    // to the account block. A CLOSED root cannot be read by anyone, which is what the store is for; an
+    // OPEN one stays findable, and this keeps the semantic layer working across those.
+    const SHADOW_MAX_DEPTH = 5;
+    function deepQueryAll(selector, root, depth) {
+      const out = [];
+      const scope = root || document;
+      try {
+        scope.querySelectorAll(selector).forEach((el) => out.push(el));
+      } catch (t) {}
+      if ((depth || 0) >= SHADOW_MAX_DEPTH) {
+        return out;
+      }
+      try {
+        scope.querySelectorAll("*").forEach((el) => {
+          // Never our own root. In the page it is closed and unreachable anyway, but the test harness
+          // forces every root open, and a finder that wandered into our UI would read it as Quotex's.
+          if (el.shadowRoot && el !== shadowHost) {
+            deepQueryAll(selector, el.shadowRoot, (depth || 0) + 1).forEach((found) => out.push(found));
+          }
+        });
+      } catch (t) {}
+      return out;
+    }
     const SEMANTIC_FINDERS = {
       // The balance sits next to the "Live Account" / "Demo Account" label.
       balance: () => {
-        const label = Array.from(document.querySelectorAll("div")).find(
+        const label = deepQueryAll("div").find(
           (d) => d.children.length === 0 && /^(Live|Demo) Account$/.test(textOf(d)),
         );
         if (label && label.nextElementSibling) {
@@ -403,7 +429,7 @@
         // Any site language (v1.24.0): a money value ("₹15,228.00") right after a short text label
         // near the top of the page, which is the account block's shape.
         return (
-          Array.from(document.querySelectorAll("div")).find((d) => {
+          deepQueryAll("div").find((d) => {
             if (d.children.length !== 0 || !/^[^\d\s]{1,3}\s?\d[\d,.\s]*\d$/.test(textOf(d))) {
               return false;
             }
@@ -3535,7 +3561,43 @@
     }
     let openPnlEls = getOpenTradePnlEls(),
       accountBalanceEl = null;
+    // v1.57.0: the balance as Quotex itself holds it. Their account block is now
+    // <qx-usermenu-trigger>, a custom element with a CLOSED shadow root - the same trick this panel uses
+    // to hide itself - so the number is not in the document at all. No selector reaches it, no text scan
+    // finds it, and no semantic finder can be written that would: `querySelectorAll` stops at a shadow
+    // boundary and a closed root hands out no reference. The store is the only source left, and by this
+    // project's first working rule it should have been the first source all along.
+    //
+    // Which figure: the route decides, because that is what the user is looking at. `balance` (the
+    // active account's) covers a build that does not carry the split.
+    function storeBalance() {
+      const state = readQuotexState();
+      if (!state) {
+        return NaN;
+      }
+      const demo = isDemoPage(),
+        ofRoute = demo ? state.demoBalance : state.liveBalance,
+        num = (v) => (typeof v == "number" && isFinite(v) ? v : NaN);
+      let pick = num(ofRoute);
+      if (isNaN(pick)) {
+        pick = num(state.balance);
+      }
+      // A zero that comes from the account the page is NOT on is the other account's emptiness, not this
+      // one's: keep waiting rather than announcing "no balance to protect".
+      if (
+        pick === 0 &&
+        state.activeAccount &&
+        (demo ? state.activeAccount !== "demo" : state.activeAccount === "demo")
+      ) {
+        return NaN;
+      }
+      return pick;
+    }
     function readAccountBalance() {
+      const fromStore = storeBalance();
+      if (!isNaN(fromStore)) {
+        return fromStore;
+      }
       let t = accountBalanceEl && accountBalanceEl.isConnected ? accountBalanceEl : null;
       if (!t) {
         t = document.evaluate(
@@ -9548,11 +9610,28 @@
       for (const [key, label] of elementTargets) {
         const el = findEl(key, { cache: false });
         const via = selectorVia[key] || "missing";
+        // The balance element went into a closed component in Quotex's 2026-09-23 build. Its absence is
+        // not a fault while the store answers, and reporting it as one sends the next reader hunting for
+        // a class that no longer exists.
+        if (key === "balance" && !el && !isNaN(storeBalance())) {
+          add(label, "idle", "closed component \u2014 read from the store", "not in the page");
+          continue;
+        }
         const status = !el ? "missing" : via === "class" ? "ok" : "fallback";
         add(label, status, via === "learned" ? "learned " + learnedSelectors[key].sel : via, el ? textOf(el).slice(0, 24) || el.tagName.toLowerCase() : "");
       }
-      const balance = readAccountBalance();
-      add("Balance value", isNaN(balance) ? "missing" : "ok", "page", isNaN(balance) ? "" : balance);
+      // v1.57.0: the element and the number are now separate questions. Quotex's account block is a
+      // closed custom element, so "no balance element" is the expected state rather than a fault - what
+      // matters is whether the figure itself arrived.
+      const balanceFromStore = storeBalance(),
+        balance = readAccountBalance(),
+        balanceVia = !isNaN(balanceFromStore) ? "store" : isNaN(balance) ? "missing" : "page";
+      add(
+        "Balance value",
+        isNaN(balance) ? "missing" : "ok",
+        balanceVia,
+        isNaN(balance) ? "" : balance,
+      );
       const payoutEl = findEl("returnPct", { cache: false });
       const payoutShown = payoutEl ? parsePct(payoutEl.textContent) : NaN;
       const payoutStore = state && state.payout != null ? state.payout : NaN;

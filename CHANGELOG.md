@@ -5,7 +5,39 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
-## [1.56.1] - 2026-09-22
+## [1.57.0] - 2026-09-23
+
+### Fixed
+- **The daily stop-loss screen sat on "Reading balance…" for ever.** Quotex's 2026-09-23 build moved the
+  account block into `<qx-usermenu-trigger>`, a custom element with a **closed** shadow root — the same
+  trick this panel uses to hide itself. The balance is no longer anywhere in the document: no selector
+  reaches it, no text scan finds it, and no semantic finder can be written that would, because
+  `querySelectorAll` stops at a shadow boundary and a closed root hands out no reference. Nothing was
+  wrong with the lookup; the thing it looked for had left the page.
+
+  The balance now comes from Quotex's own state through the read-only bridge, which is where this
+  project's first working rule said it should have come from all along. The route decides which figure —
+  the demo one on `/demo-trade`, the live one on `/trade` — and a zero belonging to the account the page
+  is *not* on is treated as "still waiting", not as "no balance to protect". The page remains the
+  fallback for a build where the bridge cannot answer.
+
+### Changed
+- **The semantic finders can cross open shadow roots.** Quotex is clearly moving parts of the page into
+  components, and a finder that stops at the first shadow boundary goes blind at each one. A closed root
+  still cannot be read by anyone — that is what the store is for — but an open one stays findable. The
+  walk never enters this panel's own root: in the page it is closed and unreachable, and the guard keeps
+  that true in the test harness, which forces every root open.
+- **The health check no longer calls the missing balance element a fault.** It reports the element as
+  `closed component — read from the store`, and says whether the figure itself came from the store or the
+  page. Reporting it as broken would send the next reader hunting for a class that no longer exists.
+
+### Known
+- **"Show Live as Demo" can no longer relabel the account block.** The label sits inside the same closed
+  shadow root, and XPath cannot cross it either. The tab-title cover still works; the on-page label does
+  not. Painting our own label over the component is possible but is a visible change to their page, so it
+  is left as a decision rather than assumed.
+
+
 
 ### Changed
 - **The sweep is the refresh button, not a second control.** The panel already had a button meaning

@@ -222,6 +222,15 @@
       dealValue: cs ? num(cs.dealValue) : null,
       currency: g.currency != null ? String(g.currency) : null,
       currencyCode: g.currencyCode != null ? String(g.currencyCode) : null,
+      // v1.57.0: the account balance, read from the same state everything else here comes from.
+      // Quotex moved their account block into <qx-usermenu-trigger>, a custom element with a CLOSED
+      // shadow root, so the figure is no longer anywhere in the document - no selector reaches it and no
+      // text scan finds it. This is the only remaining source. Still pull-only: nothing is written.
+      balance: num(g.balance),
+      liveBalance: num(g.liveBalance),
+      demoBalance: num(g.demoBalance),
+      activeAccount: g.activeAccount != null ? String(g.activeAccount) : null,
+      balanceVisible: g.isBalanceVisible == null ? null : !!g.isBalanceVisible,
       timeZone: num(g.timeZone),
       tabs: st.navigationSymbols && st.navigationSymbols.list ? st.navigationSymbols.list.map(String) : [],
       openedDeals: dealList(deals.openedById, deals.openedIds, 0),

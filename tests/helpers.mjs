@@ -47,7 +47,7 @@ const pref = (qx, name) => qx.window.localStorage.getItem(prefKey(name));
 const CHART_READER = fs.readFileSync(new URL("../qx-calc-updater/qx-calc-updater/chart_reader.js", import.meta.url), "utf8");
 
 // A Redux state shaped like Quotex's (paths seen live on 2026-09-15). Tests mutate it to simulate the app.
-function quotexStore({ payout = 91, opened = [], closed = [], timeZone = 19800, quotes = {} } = {}) {
+function quotexStore({ payout = 91, opened = [], closed = [], timeZone = 19800, quotes = {}, balance, liveBalance, demoBalance, activeAccount } = {}) {
   const byId = (list) => Object.fromEntries(list.map((d) => [d.id, d]));
   return {
     chartSettings: { chartById: { c1: { currentAsset: { symbol: "USDDZD_otc" }, dealValue: 2000 } } },
@@ -58,7 +58,9 @@ function quotexStore({ payout = 91, opened = [], closed = [], timeZone = 19800, 
       },
     },
     deals: { openedById: byId(opened), openedIds: opened.map((d) => d.id), closedById: byId(closed), closedIds: closed.map((d) => d.id) },
-    global: { currency: "₹", currencyCode: "INR", timeZone },
+    // v1.57.0: the account figures live here, as they do on the live page. Left undefined by default so
+    // the specs written before the balance came from the store still exercise the markup path.
+    global: { currency: "₹", currencyCode: "INR", timeZone, balance, liveBalance, demoBalance, activeAccount },
     quotes: { quoteBySymbol: Object.fromEntries(Object.entries(quotes).map(([k, price]) => [k, { price, time: 1789464900 }])), symbols: Object.keys(quotes) },
     navigationSymbols: { list: ["USDDZD_otc"] },
   };
