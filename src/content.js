@@ -236,6 +236,10 @@
           shadowHost.remove();
         }
       } catch (t) {}
+      if (window.__tcAcctCoverResize) {
+        window.removeEventListener("resize", window.__tcAcctCoverResize);
+        delete window.__tcAcctCoverResize;
+      }
       if (window.__tcMsgListener) {
         try {
           chrome.runtime.onMessage.removeListener(window.__tcMsgListener);
@@ -840,6 +844,7 @@
       "tcProjChip",
       "tcPlacedBal",
       "tcMonitored",
+      "tcAcctCover",
     ].forEach((t, e) => {
       ids[t] = "x" + idToken + (e + 1).toString(36);
     });
@@ -1676,7 +1681,136 @@
         }
       }
     }
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // v1.58.0: the account cover. "Show Live as Demo" worked by rewriting the text of Quotex's own label;
+    // their 2026-09-23 build moved that label inside a closed shadow root, where no extension can reach
+    // it - the rewrite above now finds nothing. What can still be done is to paint over it: an opaque
+    // block of our own, living in this panel's closed root, positioned on top of their component and
+    // carrying the label we want plus the balance the store gives us.
+    //
+    // It is transparent to the mouse, so their account menu underneath still opens on a click, and it
+    // only exists while the switch is on AND their own label is genuinely out of reach - if a later build
+    // puts the label back in the page, the rewrite takes over again and the cover disappears.
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    let accountCoverEl = null,
+      accountComponentEl = null,
+      accountScanAt = 0;
+    // Quotex's account block, found by what it IS rather than by a class: a custom element in the top
+    // strip. Their hashed classes rotate with every build; a tag name with a hyphen in it does not, and
+    // custom elements are rare enough on this page to be unambiguous.
+    function findAccountComponent() {
+      if (accountComponentEl && accountComponentEl.isConnected) {
+        return accountComponentEl;
+      }
+      const now = Date.now();
+      if (accountComponentEl === null && now - accountScanAt < 2000) {
+        return null; // nothing found last time; do not re-walk the document every tick
+      }
+      accountScanAt = now;
+      accountComponentEl = null;
+      const all = document.querySelectorAll("*");
+      for (let i = 0; i < all.length; i++) {
+        const el = all[i];
+        if (el.tagName.indexOf("-") < 0 || isOurElement(el)) {
+          continue;
+        }
+        const r = el.getBoundingClientRect();
+        if (r.top < 140 && r.width >= 40 && r.height >= 12) {
+          accountComponentEl = el;
+          break;
+        }
+      }
+      return accountComponentEl;
+    }
+    // The nearest real background behind an element, so the cover sits on the page rather than floating
+    // over it. Their theme decides the colour; nothing here names one.
+    function opaqueBgBehind(el) {
+      for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+        try {
+          const bg = getComputedStyle(n).backgroundColor;
+          if (bg && bg !== "transparent" && !/^rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)$/.test(bg)) {
+            return bg;
+          }
+        } catch (t) {}
+      }
+      return "#12161f";
+    }
+    function removeAccountCover() {
+      if (accountCoverEl) {
+        accountCoverEl.remove();
+        accountCoverEl = null;
+      }
+    }
+    function renderAccountCover() {
+      if (!relabelDemo) {
+        return removeAccountCover();
+      }
+      // Their label still in the page? Then the rewrite above is doing the job and nothing needs covering.
+      let inPage = null;
+      try {
+        inPage = document.evaluate(
+          "//div[text()='Live Account' or text()='Demo Account']",
+          document,
+          null,
+          9,
+          null,
+        ).singleNodeValue;
+      } catch (t) {}
+      if (inPage) {
+        return removeAccountCover();
+      }
+      const host = findAccountComponent();
+      if (!host) {
+        return removeAccountCover();
+      }
+      const r = host.getBoundingClientRect();
+      if (!(r.width > 0 && r.height > 0)) {
+        return removeAccountCover();
+      }
+      if (!accountCoverEl) {
+        accountCoverEl = document.createElement("div");
+        accountCoverEl.id = ids.tcAcctCover;
+        // Transparent to the mouse: their account menu has to keep opening on a click.
+        accountCoverEl.style.cssText =
+          "position:fixed; pointer-events:none; z-index:2147483000; display:flex; flex-direction:column;" +
+          " align-items:flex-end; justify-content:center; overflow:hidden; box-sizing:border-box;" +
+          " font-family:'DM Sans',system-ui,sans-serif; line-height:1.2; padding:0 0.4em;";
+        shadow.appendChild(accountCoverEl);
+      }
+      const bg = opaqueBgBehind(host);
+      if (accountCoverEl._tcBg !== bg) {
+        accountCoverEl._tcBg = bg;
+        accountCoverEl.style.background = bg;
+      }
+      const box = Math.round(r.left) + "," + Math.round(r.top) + "," + Math.round(r.width) + "," + Math.round(r.height);
+      if (accountCoverEl._tcBox !== box) {
+        accountCoverEl._tcBox = box;
+        accountCoverEl.style.left = r.left + "px";
+        accountCoverEl.style.top = r.top + "px";
+        accountCoverEl.style.width = r.width + "px";
+        accountCoverEl.style.height = r.height + "px";
+      }
+      const bal = readAccountBalance(),
+        shown = isNaN(bal) ? "" : detectCurrency() + fmtMoney(bal),
+        sig = shown;
+      if (accountCoverEl._tcSig !== sig) {
+        accountCoverEl._tcSig = sig;
+        accountCoverEl.innerHTML =
+          '<div style="font-size:0.72em; font-weight:600; letter-spacing:0.01em; color:#ff8a00; white-space:nowrap;">Demo Account</div>' +
+          (shown
+            ? '<div style="font-size:0.95em; font-weight:700; color:oklch(97% 0.005 257); white-space:nowrap; font-variant-numeric:tabular-nums;">' +
+              shown.replace(/[&<>"]/g, "") +
+              "</div>"
+            : "");
+      }
+    }
     spoofLiveAccountLabel();
+    // Not called here: the first pass has to wait for the scheduler. Reading the balance touches state
+    // declared further down this file, and calling it while the module is still evaluating would throw
+    // before the panel exists at all.
+    every(400, renderAccountCover);
+    window.__tcAcctCoverResize = () => renderAccountCover();
+    window.addEventListener("resize", window.__tcAcctCoverResize, { passive: true });
     // Re-applied after DOM additions by the shared page observer (see "Page observer" below).
     let spoofQueued = false;
     function onPageMutationsForSpoof(t) {

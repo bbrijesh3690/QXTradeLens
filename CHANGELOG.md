@@ -5,7 +5,24 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
-## [1.57.0] - 2026-09-23
+## [1.58.0] - 2026-09-24
+
+### Added
+- **"Show Live as Demo" works again, by covering rather than rewriting.** v1.57.0 recorded the feature as
+  lost: the label it used to rewrite is inside Quotex's closed shadow root, and no extension can reach it.
+  What can be done is to paint over it. The panel now draws its own opaque block — in its own closed root,
+  so the page still cannot see it — positioned exactly on their account component, carrying the
+  "Demo Account" label and the balance from the store.
+
+  It is **transparent to the mouse**, so their account menu still opens on a click; it follows the
+  component if the page moves or the window resizes; and it only appears while the switch is on **and**
+  their own label is genuinely out of reach — if a later build puts that label back in the page, the
+  original rewrite takes over and the cover disappears by itself.
+
+  Their component is found by what it *is* — a custom element in the top strip — rather than by a class,
+  so a rename does not break it, and the search skips anything belonging to this panel.
+
+
 
 ### Fixed
 - **The daily stop-loss screen sat on "Reading balance…" for ever.** Quotex's 2026-09-23 build moved the
