@@ -5,7 +5,25 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
-## [1.58.0] - 2026-09-24
+## [1.58.1] - 2026-09-24
+
+### Fixed
+- **The cover repainted the whole account block, in the wrong colour.** v1.58.0 drew the label *and* the
+  balance on a background sampled from the page. Checked against the live DOM afterwards — which should
+  have come first — that was wrong twice over. The job is the name: the balance is Quotex's and is now
+  left untouched. And there is no background to sample: every ancestor of their account block is
+  transparent up to `<body>`, which computes to **white** while the page renders dark, so the sample put
+  a white slab across a dark header.
+
+  The cover is now a strip the width of their block and the height of its first line, over the label
+  only. It names no colour at all — `backdrop-filter` gives it whatever the page actually paints, in
+  either theme — and it carries the word and nothing else.
+- **Nothing is drawn on a demo account.** Their own label already reads "Demo Account" there, so a cover
+  is pure noise. It appears only where there is something to hide: a live account whose label sits inside
+  the closed component. Where Quotex still renders the label in the page, the original rewrite handles it
+  and no cover is drawn at all.
+
+
 
 ### Added
 - **"Show Live as Demo" works again, by covering rather than rewriting.** v1.57.0 recorded the feature as

@@ -119,10 +119,13 @@ check will say so if only one happened.
   the board than collecting candles is, and `R` already stocks the tabs. Extending it to open the top
   payouts itself is the obvious next step if the tab-stocking step becomes the annoying part. Still not
   built: the one-line "best right now" chip on the Charts view.
-- **"Show Live as Demo" covers rather than rewrites** (v1.58.0), because the label it used to rewrite is
-  inside Quotex's closed root. The cover lives in our own closed root, is positioned on their component
-  each tick, and is `pointer-events: none` so their account menu still opens. It stands down by itself if
-  a build puts the label back in the light DOM. The component is found by tag shape, not by class.
+- **"Show Live as Demo" rewrites where it can and covers where it cannot** (v1.58.1). Quotex's account
+  block is the old markup on some routes and the closed `<qx-usermenu-trigger>` on others, so both paths
+  are live: the text rewrite when their label is in the page, a cover over the first line when it is not.
+  The cover sits in our own closed root, is `pointer-events: none`, covers the **name only** — never the
+  balance — and **names no colour**: there is nothing to sample, since every ancestor of their block is
+  transparent up to `<body>`, which computes to white on a page that renders dark. `backdrop-filter` is
+  what hides the text underneath. Nothing is drawn on a demo account, where their label already agrees.
 - Offered and not started: a sound for the trend-flip mark (left visual on purpose — a tone mid-trade
   is intrusive and gives no clue which chart it came from), and per-asset rather than per-timeframe
   zoom memory.

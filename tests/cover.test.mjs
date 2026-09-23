@@ -1,12 +1,12 @@
-// "Show Live as Demo" against a build that keeps its account label inside a closed shadow root: the
-// label cannot be rewritten any more, so it is covered instead.
+// "Show Live as Demo" against a build that keeps its account label inside a closed shadow root. The
+// label cannot be rewritten any more, so the name — and only the name — is covered.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FIXTURE, sleep, quotexStore, boot, prefKey } from "./helpers.mjs";
+import { FIXTURE, SOURCE, sleep, quotexStore, boot, prefKey, slStorage } from "./helpers.mjs";
 
 // Quotex's 2026-09-23 account block: a custom element whose shadow root is closed, so the label and the
-// balance inside it are unreachable. jsdom gives it a box through getBoundingClientRect below.
+// balance inside it are unreachable.
 const withComponent = () =>
   FIXTURE.replace(
     '<div class="zfJUm">\n          <div class="v2KPX lTzTl">Demo Account</div>\n          <div class="Zt1hG">₹15,228.00</div>\n        </div>',
@@ -14,7 +14,7 @@ const withComponent = () =>
   );
 
 // jsdom has no layout: give the component a box so the cover has something to sit on.
-const giveBox = (w, box = { left: 1544, top: 15, width: 150, height: 44 }) => {
+const giveBox = (w, box = { left: 1544, top: 15, width: 150, height: 38 }) => {
   const el = w.document.querySelector("qx-usermenu-trigger");
   el.getBoundingClientRect = () => ({ ...box, right: box.left + box.width, bottom: box.top + box.height, x: box.left, y: box.top });
   return el;
@@ -24,49 +24,91 @@ const giveBox = (w, box = { left: 1544, top: 15, width: 150, height: 44 }) => {
 const coverEl = (qx) =>
   [...qx.panelRoot().children].find((el) => /Demo Account/.test(el.textContent || "") && el.style.position === "fixed") || null;
 
-test("cover: the account label is painted over when Quotex's own is out of reach (v1.58.0)", async () => {
-  const qx = await boot({
+// A live account on the live route: the only situation where there is anything to hide.
+const bootLive = (extra = {}) =>
+  boot({
+    path: "/en/trade",
     html: withComponent(),
-    store: quotexStore({ balance: 43662.072, demoBalance: 43662.072, activeAccount: "demo" }),
+    storage: { ...slStorage(50000), __tradeCalc_sl_ls_init_bal: "69036" },
+    store: quotexStore({ balance: 69036.96, liveBalance: 69036.96, demoBalance: 0, activeAccount: "live" }),
     setup: (w) => giveBox(w),
+    ...extra,
   });
+
+test("cover: on a live account the name is covered (v1.58.1)", async () => {
+  const qx = await bootLive();
   try {
     await sleep(1200);
     const el = coverEl(qx);
     assert.ok(el, "a cover was drawn");
-    assert.match(el.textContent, /Demo Account/, "carrying the label the switch promises");
-    assert.match(el.textContent, /43,662/, "and the balance, which their component was showing: " + el.textContent);
+    assert.equal(el.textContent, "Demo Account", "carrying the name and nothing else");
   } finally {
     qx.close();
   }
 });
 
-test("cover: it sits exactly on their component and lets clicks through (v1.58.0)", async () => {
+test("cover: the balance is left alone (v1.58.1)", async () => {
+  // The first cut repainted the balance too. It is theirs; the ask was the name.
+  const qx = await bootLive();
+  try {
+    await sleep(1200);
+    const el = coverEl(qx);
+    assert.doesNotMatch(el.textContent, /[0-9]/, "no number of ours is drawn: " + el.textContent);
+    assert.doesNotMatch(el.textContent, /₹/, "and no currency either");
+  } finally {
+    qx.close();
+  }
+});
+
+test("cover: it covers the first line only, not the whole block (v1.58.1)", async () => {
+  const qx = await bootLive();
+  try {
+    await sleep(1200);
+    const el = coverEl(qx);
+    assert.equal(el.style.left, "1544px", "on their block: " + el.style.left);
+    assert.equal(el.style.top, "15px");
+    assert.equal(el.style.width, "150px", "the full width of it");
+    assert.equal(el.style.height, "19px", "but only its first line, where the label is: " + el.style.height);
+  } finally {
+    qx.close();
+  }
+});
+
+test("cover: it names no colour of its own (v1.58.1)", async () => {
+  // Nothing in their header paints a background - every ancestor is transparent up to <body>, which
+  // computes to white while the page renders dark. A sampled colour put a white slab on a dark header.
+  const qx = await bootLive();
+  try {
+    await sleep(1200);
+    const el = coverEl(qx);
+    assert.equal(el.style.background, "", "no background of ours: " + el.style.background);
+    assert.equal(el.style.backgroundColor, "", "and no background colour either");
+    // jsdom drops backdrop-filter as an unknown property, so the build itself is the witness that the
+    // cover takes its appearance from whatever the page paints rather than naming a colour.
+    assert.match(SOURCE, /backdrop-filter:\s*blur/, "the cover uses a backdrop filter");
+    assert.equal(el.style.pointerEvents, "none", "and their account menu still opens");
+  } finally {
+    qx.close();
+  }
+});
+
+test("cover: nothing is drawn on a demo account (v1.58.1)", async () => {
+  // Their own label already reads "Demo Account" there, so covering it would be pure noise.
   const qx = await boot({
     html: withComponent(),
-    store: quotexStore({ balance: 43662.072, demoBalance: 43662.072, activeAccount: "demo" }),
+    store: quotexStore({ balance: 43662.07, demoBalance: 43662.07, activeAccount: "demo" }),
     setup: (w) => giveBox(w),
   });
   try {
     await sleep(1200);
-    const el = coverEl(qx);
-    assert.equal(el.style.left, "1544px", "positioned on the component: " + el.style.left);
-    assert.equal(el.style.top, "15px");
-    assert.equal(el.style.width, "150px");
-    assert.equal(el.style.height, "44px");
-    // Their account menu has to keep opening on a click.
-    assert.equal(el.style.pointerEvents, "none", "and transparent to the mouse");
+    assert.equal(coverEl(qx), null, "nothing painted over their page");
   } finally {
     qx.close();
   }
 });
 
-test("cover: it follows their component when the page moves (v1.58.0)", async () => {
-  const qx = await boot({
-    html: withComponent(),
-    store: quotexStore({ balance: 43662.072, demoBalance: 43662.072, activeAccount: "demo" }),
-    setup: (w) => giveBox(w),
-  });
+test("cover: it follows their component when the page moves (v1.58.1)", async () => {
+  const qx = await bootLive();
   try {
     await sleep(1200);
     assert.equal(coverEl(qx).style.left, "1544px");
@@ -79,13 +121,8 @@ test("cover: it follows their component when the page moves (v1.58.0)", async ()
   }
 });
 
-test("cover: with the switch off there is no cover (v1.58.0)", async () => {
-  const qx = await boot({
-    html: withComponent(),
-    store: quotexStore({ balance: 43662.072, demoBalance: 43662.072, activeAccount: "demo" }),
-    storage: { [prefKey("__tradeCalc_relabel_demo")]: "0" },
-    setup: (w) => giveBox(w),
-  });
+test("cover: with the switch off there is no cover (v1.58.1)", async () => {
+  const qx = await bootLive({ storage: { ...slStorage(50000), [prefKey("__tradeCalc_relabel_demo")]: "0" } });
   try {
     await sleep(1200);
     assert.equal(coverEl(qx), null, "nothing is painted over their page");
@@ -94,37 +131,16 @@ test("cover: with the switch off there is no cover (v1.58.0)", async () => {
   }
 });
 
-test("cover: a build that still has the label in the page is rewritten, not covered (v1.58.0)", async () => {
-  // The old path has to keep working: if Quotex puts the label back, the rewrite takes over and the
-  // cover stays away rather than both acting at once.
+test("cover: a build that still has the label in the page is rewritten, not covered (v1.58.1)", async () => {
+  // If Quotex puts the label back, the original rewrite takes over and the cover stands down.
   const html = FIXTURE.replace('<div class="v2KPX lTzTl">Demo Account</div>', '<div class="v2KPX lTzTl">Live Account</div>');
-  const qx = await boot({ html, store: quotexStore() });
+  const qx = await boot({ path: "/en/trade", html, storage: slStorage(10000), store: quotexStore({ activeAccount: "live" }) });
   try {
     await sleep(1200);
     assert.equal(coverEl(qx), null, "no cover while their own label is reachable");
     const label = qx.window.document.querySelector(".v2KPX");
     assert.equal(label.textContent, "Demo Account", "it was rewritten in place, as before");
     assert.equal(label.getAttribute("data-tc-relabel"), "1");
-  } finally {
-    qx.close();
-  }
-});
-
-test("cover: the panel's own root is never mistaken for Quotex's component (v1.58.0)", async () => {
-  // The harness forces every shadow root open and the panel has custom-element-free markup, but the
-  // search for a component must still skip anything of ours.
-  const qx = await boot({
-    html: withComponent(),
-    store: quotexStore({ balance: 43662.072, demoBalance: 43662.072, activeAccount: "demo" }),
-    setup: (w) => giveBox(w),
-  });
-  try {
-    await sleep(1200);
-    const el = coverEl(qx);
-    assert.ok(el, "it found their component");
-    // One cover, not one per candidate.
-    const all = [...qx.panelRoot().children].filter((n) => /Demo Account/.test(n.textContent || ""));
-    assert.equal(all.length, 1, "exactly one cover: " + all.length);
   } finally {
     qx.close();
   }
