@@ -254,10 +254,10 @@ into a single look.
 
 - **"Live Account" is displayed as "Demo Account"**, and the tab title says "Demo trading", on every
   account. This is deliberate (screen-sharing cover), so check the balance itself before trading.
-  Where Quotex still renders that label in the page it is rewritten as before. Since their 2026-09-23
-  build some pages keep it inside a closed web component that no extension can read; there the panel
-  covers the **name only** — never your balance — with a strip that takes its appearance from the page
-  itself, lets clicks through to their account menu, and is not drawn at all on a demo account.
+  Where Quotex renders that label in the page it is rewritten, as it always has been. **Since their
+  2026-09-23 build it sits inside a closed web component that no extension can read**, so on those pages
+  the relabel does nothing — the tab title still says "Demo trading". Nothing is painted over their page
+  to compensate; if a later build puts the label back, the relabel resumes by itself.
 - **Your data stays on your machine.** Settings live in Chrome storage and in this site's own storage under
   opaque names; the only outbound traffic is to your own Google Sheet, if you configure one.
 - **Footprint on Quotex's page is kept small**: no webfont request, no stylesheet naming their classes, and

@@ -5,7 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
-## [1.58.1] - 2026-09-24
+## [1.59.0] - 2026-09-24
+
+### Removed
+- **The account cover is gone.** v1.58.0 and v1.58.1 painted our own "Demo Account" label over Quotex's
+  account component, because their 2026-09-23 build put theirs inside a closed shadow root where the
+  rewrite cannot reach it. Reverted at the user's request: covering their UI to win back a cosmetic
+  relabel was not worth what it cost, and both attempts at it looked wrong on the real page.
+
+  **"Show Live as Demo" is now exactly what it was in the frozen v1.54.4** — the relabel code is
+  byte-for-byte identical. The consequence is stated plainly rather than worked around: while Quotex
+  keeps that label inside a closed component, the switch has nothing to rewrite and **does nothing on a
+  live account**. The tab-title cover still works. If a later build puts the label back in the page, the
+  rewrite starts working again by itself, with no change needed here.
+
+  The balance fix from v1.57.0 is unaffected and stays: that one is not cosmetic.
+
+
 
 ### Fixed
 - **The cover repainted the whole account block, in the wrong colour.** v1.58.0 drew the label *and* the

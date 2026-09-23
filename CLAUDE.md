@@ -119,13 +119,14 @@ check will say so if only one happened.
   the board than collecting candles is, and `R` already stocks the tabs. Extending it to open the top
   payouts itself is the obvious next step if the tab-stocking step becomes the annoying part. Still not
   built: the one-line "best right now" chip on the Charts view.
-- **"Show Live as Demo" rewrites where it can and covers where it cannot** (v1.58.1). Quotex's account
-  block is the old markup on some routes and the closed `<qx-usermenu-trigger>` on others, so both paths
-  are live: the text rewrite when their label is in the page, a cover over the first line when it is not.
-  The cover sits in our own closed root, is `pointer-events: none`, covers the **name only** — never the
-  balance — and **names no colour**: there is nothing to sample, since every ancestor of their block is
-  transparent up to `<body>`, which computes to white on a page that renders dark. `backdrop-filter` is
-  what hides the text underneath. Nothing is drawn on a demo account, where their label already agrees.
+- **"Show Live as Demo" rewrites Quotex's own label and nothing else** — byte-for-byte as frozen in
+  v1.54.4. Their 2026-09-23 build moved that label into the closed `<qx-usermenu-trigger>`, so on those
+  pages the switch does nothing at all; the tab-title cover still works. **Do not paint over their
+  component to get it back.** That was tried twice (v1.58.0, v1.58.1) and reverted in v1.59.0: it covered
+  more than the job needed, there is no background to sample — every ancestor of their block is
+  transparent up to `<body>`, which computes to white on a page that renders dark — and the result looked
+  wrong on the real page both times. If their label returns to the light DOM, the relabel resumes on its
+  own.
 - Offered and not started: a sound for the trend-flip mark (left visual on purpose — a tone mid-trade
   is intrusive and gives no clue which chart it came from), and per-asset rather than per-timeframe
   zoom memory.

@@ -236,10 +236,6 @@
           shadowHost.remove();
         }
       } catch (t) {}
-      if (window.__tcAcctCoverResize) {
-        window.removeEventListener("resize", window.__tcAcctCoverResize);
-        delete window.__tcAcctCoverResize;
-      }
       if (window.__tcMsgListener) {
         try {
           chrome.runtime.onMessage.removeListener(window.__tcMsgListener);
@@ -844,7 +840,6 @@
       "tcProjChip",
       "tcPlacedBal",
       "tcMonitored",
-      "tcAcctCover",
     ].forEach((t, e) => {
       ids[t] = "x" + idToken + (e + 1).toString(36);
     });
@@ -1681,134 +1676,15 @@
         }
       }
     }
-    // ────────────────────────────────────────────────────────────────────────────────────────────────
-    // v1.58.0: the account cover. "Show Live as Demo" worked by rewriting the text of Quotex's own label;
-    // their 2026-09-23 build moved that label inside a closed shadow root, where no extension can reach
-    // it - the rewrite above now finds nothing. What can still be done is to paint over it: an opaque
-    // block of our own, living in this panel's closed root, positioned on top of their component and
-    // carrying the label we want plus the balance the store gives us.
+    // v1.59.0: no cover here. v1.58.0 painted our own label over Quotex's account component, because
+    // their 2026-09-23 build put theirs inside a closed shadow root where the rewrite above cannot reach
+    // it. Reverted at the user's request: covering their UI to win back a cosmetic relabel was not worth
+    // what it cost, and the two attempts at it both looked wrong on the real page.
     //
-    // It is transparent to the mouse, so their account menu underneath still opens on a click, and it
-    // only exists while the switch is on AND their own label is genuinely out of reach - if a later build
-    // puts the label back in the page, the rewrite takes over again and the cover disappears.
-    // ────────────────────────────────────────────────────────────────────────────────────────────────
-    let accountCoverEl = null,
-      accountComponentEl = null,
-      accountScanAt = 0;
-    // Quotex's account block, found by what it IS rather than by a class: a custom element in the top
-    // strip. Their hashed classes rotate with every build; a tag name with a hyphen in it does not, and
-    // custom elements are rare enough on this page to be unambiguous.
-    function findAccountComponent() {
-      if (accountComponentEl && accountComponentEl.isConnected) {
-        return accountComponentEl;
-      }
-      const now = Date.now();
-      if (accountComponentEl === null && now - accountScanAt < 2000) {
-        return null; // nothing found last time; do not re-walk the document every tick
-      }
-      accountScanAt = now;
-      accountComponentEl = null;
-      const all = document.querySelectorAll("*");
-      for (let i = 0; i < all.length; i++) {
-        const el = all[i];
-        if (el.tagName.indexOf("-") < 0 || isOurElement(el)) {
-          continue;
-        }
-        const r = el.getBoundingClientRect();
-        if (r.top < 140 && r.width >= 40 && r.height >= 12) {
-          accountComponentEl = el;
-          break;
-        }
-      }
-      return accountComponentEl;
-    }
-    function removeAccountCover() {
-      if (accountCoverEl) {
-        accountCoverEl.remove();
-        accountCoverEl = null;
-      }
-    }
-    // v1.58.1: the name, and nothing else.
-    //
-    // The first cut of this repainted the whole account block - label AND balance - on a background
-    // sampled from their page. Checked against the live DOM afterwards, that was wrong twice over: it
-    // covered more than the job needs, and there is no background to sample. Every ancestor of their
-    // account block is transparent up to <body>, which computes to WHITE while the page renders dark, so
-    // the sampled colour produced a white slab over a dark header.
-    //
-    // So: no colour is chosen here at all. A strip the width of their block and the height of its first
-    // line sits over the label with `backdrop-filter`, which takes its appearance from whatever is
-    // actually painted behind it - light theme, dark theme, or a build that changes either. Their balance
-    // is never touched. And none of this runs on a demo account, where their own label already reads
-    // "Demo Account" and there is nothing to hide.
-    function renderAccountCover() {
-      if (!relabelDemo) {
-        return removeAccountCover();
-      }
-      // Their label still in the page? The rewrite above is doing the job.
-      let inPage = null;
-      try {
-        inPage = document.evaluate(
-          "//div[text()='Live Account' or text()='Demo Account']",
-          document,
-          null,
-          9,
-          null,
-        ).singleNodeValue;
-      } catch (t) {}
-      if (inPage) {
-        return removeAccountCover();
-      }
-      // Nothing to cover on a demo account: their own label already says so.
-      const state = readQuotexState();
-      if (isDemoPage() || (state && state.activeAccount === "demo")) {
-        return removeAccountCover();
-      }
-      const host = findAccountComponent();
-      if (!host) {
-        return removeAccountCover();
-      }
-      const r = host.getBoundingClientRect();
-      if (!(r.width > 0 && r.height > 0)) {
-        return removeAccountCover();
-      }
-      if (!accountCoverEl) {
-        accountCoverEl = document.createElement("div");
-        accountCoverEl.id = ids.tcAcctCover;
-        // Transparent to the mouse, so their account menu still opens; and no colour of our own - the
-        // backdrop filter is what hides the text underneath, whatever is painted there.
-        accountCoverEl.style.cssText =
-          "position:fixed; pointer-events:none; z-index:2147483000; display:flex; align-items:center;" +
-          " justify-content:flex-end; overflow:hidden; box-sizing:border-box; padding:0 0.25em;" +
-          " font-family:'DM Sans',system-ui,sans-serif; backdrop-filter:blur(7px) saturate(0.4);" +
-          " -webkit-backdrop-filter:blur(7px) saturate(0.4);";
-        accountCoverEl.textContent = "Demo Account";
-        accountCoverEl.style.color = "#ff8a00";
-        accountCoverEl.style.fontSize = "11px";
-        accountCoverEl.style.fontWeight = "600";
-        accountCoverEl.style.whiteSpace = "nowrap";
-        shadow.appendChild(accountCoverEl);
-      }
-      // Their block is a label above a balance. The label is the first line, so the strip is the top of
-      // the box - as a fraction of whatever height they give it, not a pixel count of ours.
-      const band = r.height >= 28 ? r.height * 0.5 : r.height,
-        box =
-          Math.round(r.left) + "," + Math.round(r.top) + "," + Math.round(r.width) + "," + Math.round(band);
-      if (accountCoverEl._tcBox !== box) {
-        accountCoverEl._tcBox = box;
-        accountCoverEl.style.left = r.left + "px";
-        accountCoverEl.style.top = r.top + "px";
-        accountCoverEl.style.width = r.width + "px";
-        accountCoverEl.style.height = band + "px";
-      }
-    }
+    // The consequence is plain: while Quotex keeps that label inside a closed component, "Show Live as
+    // Demo" has nothing to rewrite and does nothing on a live account. The tab-title cover still works.
+    // If a later build puts the label back in the page, the rewrite below starts working again by itself.
     spoofLiveAccountLabel();
-    // Not called here: the first pass has to wait for the scheduler. Reading the balance touches state
-    // declared further down this file, and calling it while the module is still evaluating would throw
-    // before the panel exists at all.
-    every(400, renderAccountCover);
-    window.__tcAcctCoverResize = () => renderAccountCover();
-    window.addEventListener("resize", window.__tcAcctCoverResize, { passive: true });
     // Re-applied after DOM additions by the shared page observer (see "Page observer" below).
     let spoofQueued = false;
     function onPageMutationsForSpoof(t) {
