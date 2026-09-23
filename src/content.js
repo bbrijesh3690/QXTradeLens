@@ -1656,13 +1656,49 @@
         el.removeAttribute("data-tc-relabel");
       });
     }
+    // v1.59.1: which elements carry the account label. This used to be a single XPath demanding a DIV
+    // whose own text node reads exactly "Live Account" - which breaks the moment Quotex wraps the words in
+    // a span, pads them with whitespace, or uses any other tag. The words are what identify it, so match
+    // on those: any element with no element children whose trimmed text is the label, anywhere the search
+    // can reach, including open shadow roots. The strict XPath is kept as the first try so a page that
+    // still has the old shape behaves exactly as it always did.
+    let relabelFound = 0,
+      relabelVia = "not run";
+    function accountLabelEls() {
+      const out = [];
+      try {
+        const x = document.evaluate("//div[text()='Live Account']", document, null, 7, null);
+        for (let i = 0; i < x.snapshotLength; i++) {
+          out.push(x.snapshotItem(i));
+        }
+      } catch (t) {}
+      if (out.length) {
+        relabelVia = "exact";
+        return out;
+      }
+      deepQueryAll("*").forEach((el) => {
+        if (el.children.length || out.includes(el)) {
+          return;
+        }
+        const text = (el.textContent || "").trim();
+        if (text === "Live Account" || (text === "Demo Account" && el.getAttribute("data-tc-relabel"))) {
+          out.push(el);
+        }
+      });
+      relabelVia = out.length ? "by text" : "none";
+      return out;
+    }
     function spoofLiveAccountLabel() {
       if (!relabelDemo) {
+        relabelVia = "switched off";
         return;
       }
-      const t = document.evaluate("//div[text()='Live Account']", document, null, 7, null);
-      for (let e = 0; e < t.snapshotLength; e++) {
-        const n = t.snapshotItem(e);
+      const found = accountLabelEls();
+      relabelFound = found.length;
+      for (const n of found) {
+        if (n.getAttribute("data-tc-relabel") && n.textContent.trim() === "Demo Account") {
+          continue; // already ours
+        }
         n.setAttribute("data-tc-relabel", "1");
         n.textContent = "Demo Account";
         n.style.color = "#ff8a00";
@@ -9094,6 +9130,10 @@
             chartSec: mtfChartSec || 0,
             autofill: mtfAutofill ? mtfAutofillReason : "switched off in the popup",
             openTrades: openTradeCount(),
+            // v1.59.1: whether the account label was found and rewritten. Every conclusion about this so
+            // far came from an automated tab whose page never finished loading, which is no evidence at
+            // all about the tab actually in front of someone.
+            relabel: relabelDemo ? relabelVia + " \u00b7 " + relabelFound + " found" : "switched off",
             // v1.54.1: the payout floor and what it is looking at. "Should a pair have been opened?" is
             // not answerable from another tab without the numbers the decision was made on.
             floor: parseInt(getMinPayoutStored(), 10),
