@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.59.1] - 2026-09-24
+
+### Fixed
+- **The account relabel was too literal to survive a markup change.** It looked for a `<div>` whose own
+  text node read exactly `Live Account`; one wrapper span, one newline, or any other tag and it matched
+  nothing — silently, with no sign of why. The words are what identify that label, so it now matches on
+  those: any element with no element children whose trimmed text is the label, including inside open
+  shadow roots. The strict XPath is still tried first, so a page with the old shape behaves exactly as it
+  always did.
+- **It reports itself in the diagnostics line** (`relabel`): how the label was found, and how many were
+  rewritten. Every conclusion drawn about this otherwise came from an automated tab whose page never left
+  `body.loading`, which says nothing about the tab actually in front of someone.
+
 ## [1.59.0] - 2026-09-24
 
 ### Removed
