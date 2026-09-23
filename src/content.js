@@ -1656,49 +1656,22 @@
         el.removeAttribute("data-tc-relabel");
       });
     }
-    // v1.59.1: which elements carry the account label. This used to be a single XPath demanding a DIV
-    // whose own text node reads exactly "Live Account" - which breaks the moment Quotex wraps the words in
-    // a span, pads them with whitespace, or uses any other tag. The words are what identify it, so match
-    // on those: any element with no element children whose trimmed text is the label, anywhere the search
-    // can reach, including open shadow roots. The strict XPath is kept as the first try so a page that
-    // still has the old shape behaves exactly as it always did.
-    let relabelFound = 0,
-      relabelVia = "not run";
-    function accountLabelEls() {
-      const out = [];
+    // The label, exactly as frozen in v1.54.4: a DIV whose own text node reads "Live Account". v1.59.1
+    // tried matching on the words wherever they appeared and had to be reverted - it renamed the account
+    // switcher's own row for the live account, leaving two entries both reading "Demo Account". Being
+    // unable to tell two accounts apart is a worse failure than the relabel being quiet.
+    function spoofLiveAccountLabel() {
+      if (!relabelDemo) {
+        return;
+      }
+      const found = [];
       try {
         const x = document.evaluate("//div[text()='Live Account']", document, null, 7, null);
         for (let i = 0; i < x.snapshotLength; i++) {
-          out.push(x.snapshotItem(i));
+          found.push(x.snapshotItem(i));
         }
       } catch (t) {}
-      if (out.length) {
-        relabelVia = "exact";
-        return out;
-      }
-      deepQueryAll("*").forEach((el) => {
-        if (el.children.length || out.includes(el)) {
-          return;
-        }
-        const text = (el.textContent || "").trim();
-        if (text === "Live Account" || (text === "Demo Account" && el.getAttribute("data-tc-relabel"))) {
-          out.push(el);
-        }
-      });
-      relabelVia = out.length ? "by text" : "none";
-      return out;
-    }
-    function spoofLiveAccountLabel() {
-      if (!relabelDemo) {
-        relabelVia = "switched off";
-        return;
-      }
-      const found = accountLabelEls();
-      relabelFound = found.length;
       for (const n of found) {
-        if (n.getAttribute("data-tc-relabel") && n.textContent.trim() === "Demo Account") {
-          continue; // already ours
-        }
         n.setAttribute("data-tc-relabel", "1");
         n.textContent = "Demo Account";
         n.style.color = "#ff8a00";
@@ -9133,7 +9106,13 @@
             // v1.59.1: whether the account label was found and rewritten. Every conclusion about this so
             // far came from an automated tab whose page never finished loading, which is no evidence at
             // all about the tab actually in front of someone.
-            relabel: relabelDemo ? relabelVia + " \u00b7 " + relabelFound + " found" : "switched off",
+            relabel: (() => {
+              if (!relabelDemo) {
+                return "switched off";
+              }
+              const ours = document.querySelectorAll("[data-tc-relabel]").length;
+              return ours ? "rewritten \u00b7 " + ours : "nothing matched";
+            })(),
             // v1.54.1: the payout floor and what it is looking at. "Should a pair have been opened?" is
             // not answerable from another tab without the numbers the decision was made on.
             floor: parseInt(getMinPayoutStored(), 10),

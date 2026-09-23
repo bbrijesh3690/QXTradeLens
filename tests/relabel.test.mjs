@@ -1,5 +1,7 @@
-// "Show Live as Demo": the account label is identified by the words it carries, not by one exact
-// markup shape. Quotex rewraps that block from time to time and the words are what survive.
+// "Show Live as Demo". The finder is deliberately narrow: a <div> whose own text node reads exactly
+// "Live Account". v1.59.1 widened it to match those words anywhere and had to be reverted — it renamed
+// the account switcher's own row, leaving two entries both reading "Demo Account", which makes the two
+// accounts indistinguishable at the moment of choosing between them.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -9,95 +11,58 @@ const label = (qx, sel) => qx.window.document.querySelector(sel);
 const live = (html) => html.replace('<div class="v2KPX lTzTl">Demo Account</div>', '<div class="v2KPX lTzTl">Live Account</div>');
 const diag = (qx) => JSON.parse(pref(qx, "__tradeCalc_diag") || "{}");
 
-test("relabel: the original shape still works exactly as before (v1.59.1)", async () => {
+test("relabel: a div whose own text is the label is rewritten (v1.59.2)", async () => {
   const qx = await boot({ path: "/en/trade", html: live(FIXTURE), store: quotexStore({ activeAccount: "live" }) });
   try {
     await sleep(900);
     const el = label(qx, ".v2KPX");
     assert.equal(el.textContent, "Demo Account", "rewritten in place");
     assert.equal(el.getAttribute("data-tc-relabel"), "1");
-    assert.equal(el.style.color, "rgb(255, 138, 0)", "in the same orange as always");
+    assert.equal(el.style.color, "rgb(255, 138, 0)", "in the orange it has always used");
   } finally {
     qx.close();
   }
 });
 
-test("relabel: a label wrapped in a span is still found (v1.59.1)", async () => {
-  // The old finder demanded a DIV whose own text node was exactly "Live Account". One extra wrapper and
-  // it matched nothing - and the feature went quiet with no sign of why.
-  const html = FIXTURE.replace('<div class="v2KPX lTzTl">Demo Account</div>', '<div class="v2KPX lTzTl"><span class="inner">Live Account</span></div>');
+test("relabel: the account switcher's own rows are left alone (v1.59.2)", async () => {
+  // What v1.59.1 got wrong. A switcher listing both accounts must keep telling them apart; renaming the
+  // live row to "Demo Account" left two identical entries.
+  const listRow = '<div class="switcherRow"><span class="rowName">Live Account</span><span>₹0.00</span></div>';
+  const html = live(FIXTURE).replace("</body>", listRow + "</body>");
   const qx = await boot({ path: "/en/trade", html, store: quotexStore({ activeAccount: "live" }) });
   try {
     await sleep(900);
-    assert.equal(label(qx, ".inner").textContent, "Demo Account", "the words are what identify it");
-    assert.equal(label(qx, ".inner").getAttribute("data-tc-relabel"), "1");
+    assert.equal(label(qx, ".rowName").textContent, "Live Account", "the switcher still distinguishes the accounts");
+    assert.equal(label(qx, ".rowName").getAttribute("data-tc-relabel"), null, "and was never touched");
   } finally {
     qx.close();
   }
 });
 
-test("relabel: whitespace around the words does not hide them (v1.59.1)", async () => {
-  const html = FIXTURE.replace('<div class="v2KPX lTzTl">Demo Account</div>', '<div class="v2KPX lTzTl">\n            Live Account\n          </div>');
-  const qx = await boot({ path: "/en/trade", html, store: quotexStore({ activeAccount: "live" }) });
-  try {
-    await sleep(900);
-    assert.equal(label(qx, ".v2KPX").textContent, "Demo Account");
-  } finally {
-    qx.close();
-  }
-});
-
-test("relabel: a tag other than div is still found (v1.59.1)", async () => {
-  const html = FIXTURE.replace('<div class="v2KPX lTzTl">Demo Account</div>', '<span class="v2KPX lTzTl">Live Account</span>');
-  const qx = await boot({ path: "/en/trade", html, store: quotexStore({ activeAccount: "live" }) });
-  try {
-    await sleep(900);
-    assert.equal(label(qx, ".v2KPX").textContent, "Demo Account");
-  } finally {
-    qx.close();
-  }
-});
-
-test("relabel: a label inside an open shadow root is found (v1.59.1)", async () => {
-  const html = FIXTURE.replace('<div class="v2KPX lTzTl">Demo Account</div>', '<div id="acctHost"></div>');
-  const setup = (w) => {
-    const root = w.document.getElementById("acctHost").attachShadow({ mode: "open" });
-    root.innerHTML = '<div class="inShadow">Live Account</div>';
-  };
-  const qx = await boot({ path: "/en/trade", html, store: quotexStore({ activeAccount: "live" }), setup });
-  try {
-    await sleep(900);
-    const el = qx.window.document.getElementById("acctHost").shadowRoot.querySelector(".inShadow");
-    assert.equal(el.textContent, "Demo Account", "found through the shadow boundary");
-  } finally {
-    qx.close();
-  }
-});
-
-test("relabel: it reports what it found, so this never has to be guessed again (v1.59.1)", async () => {
+test("relabel: it reports what it found, so this is a read rather than a guess (v1.59.2)", async () => {
   const qx = await boot({ path: "/en/trade", html: live(FIXTURE), store: quotexStore({ activeAccount: "live" }) });
   try {
     await sleep(2600);
-    assert.match(String(diag(qx).relabel), /[0-9]+ found/, "the diagnostics line carries it: " + diag(qx).relabel);
-    assert.doesNotMatch(String(diag(qx).relabel), /0 found/, "and it found the label: " + diag(qx).relabel);
+    // It reports what is relabelled RIGHT NOW, not what the last pass matched: once the label has been
+    // rewritten it no longer reads "Live Account", so a per-pass count says "none" about a working feature.
+    assert.match(String(diag(qx).relabel), /rewritten . 1/, "the diagnostics line carries it: " + diag(qx).relabel);
   } finally {
     qx.close();
   }
 });
 
-test("relabel: with nothing to relabel the line says so rather than claiming success (v1.59.1)", async () => {
-  // The fixture's own label already reads "Demo Account" and was never ours.
+test("relabel: with nothing matching, the line says none rather than claiming success (v1.59.2)", async () => {
   const html = FIXTURE.replace('<div class="v2KPX lTzTl">Demo Account</div>', "<div></div>");
   const qx = await boot({ html, store: quotexStore() });
   try {
     await sleep(2600);
-    assert.match(String(diag(qx).relabel), /none|0 found/, diag(qx).relabel);
+    assert.equal(diag(qx).relabel, "nothing matched", "it says so rather than implying success");
   } finally {
     qx.close();
   }
 });
 
-test("relabel: switched off, nothing is touched and the line says why (v1.59.1)", async () => {
+test("relabel: switched off, nothing is touched and the line says why (v1.59.2)", async () => {
   const qx = await boot({
     path: "/en/trade",
     html: live(FIXTURE),
