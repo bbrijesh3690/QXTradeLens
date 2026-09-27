@@ -5,6 +5,37 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.60.0] - 2026-09-27
+
+### Added
+- **The sweep can be watched from another tab.** Every spec for it passed and it had still never been seen
+  running on a real page, for a reason that is structural rather than lazy: it refuses to start while
+  `document.hidden`, which is exactly what an automated tab reports, so it cannot be driven from one. The
+  diagnostics line now carries `view` (the refresh button's scope depends on which view is up),
+  `sweep` (`running · 2 of 4 · at AUD/CAD`, or what the last press came to), and `stale` — seconds behind
+  per open pair, by the same measure the sweep picks its targets with. `stale` is the one that settles it:
+  the same numbers before and after a press say whether the walk actually collected candles, rather than
+  just visiting tabs.
+
+### Changed
+- **One place answers "how far behind is this pair"** (`pairBehindSec`). The sweep's target list and the
+  diagnostics line were about to hold two copies of that arithmetic, which is how "the board says stale,
+  the sweep says nothing to do" starts.
+
+## [1.59.2] - 2026-09-24
+
+Recorded late — this shipped and was tagged without an entry.
+
+### Fixed
+- **Reverted the widened relabel finder from 1.59.1.** Matching the words `Live Account` anywhere found the
+  account switcher's own row for the live account and renamed it, leaving two entries both reading
+  `Demo Account` — so the two accounts could not be told apart at the moment of choosing between them.
+  That is a worse failure than the relabel being quiet. The finder is the exact one from 1.19.0: a `<div>`
+  whose own text node reads `Live Account`.
+- **`relabel` in the diagnostics line reports what is relabelled now**, not what the last pass matched. A
+  per-pass count reads "none" as soon as the rewrite succeeds, because the label no longer says
+  `Live Account` — it was describing a working feature as a broken one.
+
 ## [1.59.1] - 2026-09-24
 
 ### Fixed

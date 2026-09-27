@@ -551,3 +551,62 @@ test("sweep: on the charts, the same button still refreshes only the pair you ar
     qx.close();
   }
 });
+
+// ── v1.60.0: the sweep, readable from another tab ───────────────────────────────────────────────
+// Every spec above passes and the sweep had still never been watched on a real page: it refuses to run
+// while `document.hidden`, which is exactly what an automated tab reports, so it cannot be driven from
+// one. These assert the diagnostics line carries enough to judge a press someone else made - what the
+// sweep is doing, and how far behind each open pair is, which is the number that proves it collected
+// something rather than just walking.
+
+test("sweep: the diagnostics line says which view the button is on and that the sweep is idle (v1.60.0)", async () => {
+  const qx = await bootSweep();
+  try {
+    await sleep(2400);
+    const d = JSON.parse(pref(qx, "__tradeCalc_diag") || "{}");
+    assert.equal(d.view, "scan", "the button sweeps on this view, so the view has to be in the line");
+    assert.equal(d.sweep, "idle", "nothing has been pressed yet: " + d.sweep);
+  } finally {
+    qx.close();
+  }
+});
+
+test("sweep: the line reports seconds behind per open pair, which is what a sweep is meant to fix (v1.60.0)", async () => {
+  const qx = await bootSweep();
+  try {
+    await sleep(2400);
+    const d = JSON.parse(pref(qx, "__tradeCalc_diag") || "{}");
+    assert.ok(d.stale && typeof d.stale === "object", "the line carries it: " + JSON.stringify(d.stale));
+    const names = Object.keys(d.stale);
+    assert.ok(names.length >= 3, "one entry per open tab: " + names.join(","));
+    // The two added tabs have never been visited, so nothing is held for them at all.
+    const behind = names.filter((n) => d.stale[n] === null);
+    assert.ok(behind.length >= 2, "a pair with no candles reads null rather than a number: " + JSON.stringify(d.stale));
+    // Every value is either null or a plain count of seconds - never Infinity, which JSON turns into null
+    // silently and would make "no candles" and "stopped an hour ago" indistinguishable.
+    for (const n of names) {
+      const v = d.stale[n];
+      assert.ok(v === null || (Number.isFinite(v) && v >= 0), n + " reads " + v);
+    }
+  } finally {
+    qx.close();
+  }
+});
+
+test("sweep: a press is visible in the line while it runs, and its result after (v1.60.0)", async () => {
+  const qx = await bootSweep();
+  try {
+    await sleep(2400);
+    press(qx, sweepBtn(qx));
+    // The line is written every 2s, so wait for the write rather than racing it.
+    await sleep(2200);
+    const during = JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").sweep;
+    assert.match(String(during), /running . [0-9]+ of [0-9]+/, "it says how far along it is: " + during);
+    press(qx, sweepBtn(qx));
+    await sleep(2400);
+    const after = JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").sweep;
+    assert.match(String(after), /stopped/, "and what became of it: " + after);
+  } finally {
+    qx.close();
+  }
+});

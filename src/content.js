@@ -8190,6 +8190,24 @@
     const symbolOfTab = (tab) => (tab && tab.getAttribute ? tab.getAttribute("data-symbol") : null);
     // Every open pair whose candles have fallen behind, stalest first. A pair already current is left
     // alone - the point is to spend chart time only where it buys something.
+    // How far behind one pair's candles are: the smallest gap across every series held for it. Extracted
+    // in v1.60.0 so the sweep's target list and the diagnostics line are answering with the same
+    // arithmetic - two copies of it is how "the board says stale, the sweep says nothing to do" happens.
+    // Infinity means no candles are held for the pair at all.
+    function pairBehindSec(sym, nowSec) {
+      const entries = sym === mtfSymbol ? mtfEntries : mtfArchive[sym];
+      let age = Infinity;
+      for (const key in entries || {}) {
+        const entry = entries[key],
+          c = entry && entry.candles,
+          at = key.lastIndexOf("@"),
+          sec = (at >= 0 && parseInt(key.slice(at + 1), 10)) || entry.periodSeconds || 0;
+        if (c && c.length && isFinite(c[c.length - 1].t)) {
+          age = Math.min(age, barsBehind(c[c.length - 1].t, sec, nowSec));
+        }
+      }
+      return age;
+    }
     function sweepTargets() {
       const now = Math.floor(Date.now() / 1000),
         assets = readQuotexAssets() || {},
@@ -8199,17 +8217,7 @@
         if (!sym) {
           return;
         }
-        const entries = sym === mtfSymbol ? mtfEntries : mtfArchive[sym];
-        let age = Infinity;
-        for (const key in entries || {}) {
-          const entry = entries[key],
-            c = entry && entry.candles,
-            at = key.lastIndexOf("@"),
-            sec = (at >= 0 && parseInt(key.slice(at + 1), 10)) || entry.periodSeconds || 0;
-          if (c && c.length && isFinite(c[c.length - 1].t)) {
-            age = Math.min(age, barsBehind(c[c.length - 1].t, sec, now));
-          }
-        }
+        const age = pairBehindSec(sym, now);
         if (age > SCAN_LIVE_SEC) {
           out.push({ sym, age, label: (assets[sym] && assets[sym].label) || sym });
         }
@@ -9126,6 +9134,30 @@
               return out;
             })(),
             autoOpen: autoOpenReason,
+            // v1.60.0: which view the panel is on, because the refresh button's scope depends on it.
+            view: getMtfView(),
+            sweep: sweepState
+              ? "running · " +
+                sweepState.done +
+                " of " +
+                sweepState.list.length +
+                (sweepState.at ? " · at " + sweepState.at : "")
+              : sweepNote || "idle",
+            // Seconds behind per open pair, by the same measure the sweep picks its targets with. A number
+            // over 90 is what the sweep exists to bring down; null means no candles are held at all.
+            stale: (() => {
+              const now = Math.floor(Date.now() / 1000),
+                out = {};
+              getPairTabs().forEach((tab) => {
+                const sym = symbolOfTab(tab);
+                if (!sym) {
+                  return;
+                }
+                const age = pairBehindSec(sym, now);
+                out[getTabName(tab) || sym] = isFinite(age) ? Math.round(age) : null;
+              });
+              return out;
+            })(),
             // v1.54.0: the win projection has been covered by a test since v1.34.0 and never once seen on
             // a live page - it only draws while a trade is running, which an automated tab cannot produce
             // (document.hidden pauses the render loop). Reporting what the chip holds turns "has it ever
