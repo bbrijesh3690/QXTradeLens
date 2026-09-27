@@ -5,7 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
-## [1.63.0] - 2026-09-27
+## [1.64.0] - 2026-09-28
+
+### Added
+- **The SL in the main panel can be typed into, in both directions.** Enter or leaving the field commits it,
+  the same as TP and PAYOUT; Escape puts back what was in force. It was `readonly` and that was not
+  arbitrary: the trailing ratchet reads the **current SL out of that very field** and only ever accepts a
+  higher one, so a lower number typed straight in would have been lifted back on the next pass and the edit
+  would have looked ignored. An edit now widens the day's trail gap to match, measured against the day's
+  **peak** rather than the current balance, because the peak is what the ratchet computes from. That is the
+  same mechanism the daily setup screen already used for a lower starting SL.
+- **Two values are refused rather than accepted and then corrected:** anything at or above the current
+  balance, which would lock you out the moment it was stored, and anything that is not a number above zero.
+  The field goes back to the SL in force and the warning line says which rule was hit. After TP is reached
+  the post-TP lock still floors the SL — a lower value is clamped to it on commit, so the number cannot
+  change by itself a moment later.
+
+
 
 ### Changed
 - **← and → halve and double the amount, with nothing to set up first.** They have multiplied the stake

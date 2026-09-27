@@ -308,3 +308,88 @@ test("panel: the build it is running is visible on the panel (v1.54.0)", async (
     qx.close();
   }
 });
+
+// ── v1.64.0: the SL can be typed into, both directions ──────────────────────────────────────────
+// It was readonly, and for a reason worth keeping in mind: the trailing ratchet reads the current SL out of
+// that field and only ever accepts a higher one. So an edit that lowers it has to widen the day's trail gap
+// as well, or the next tick lifts it straight back and the edit looks ignored.
+
+const slField = (qx) => qx.panelRoot().getElementById("__tcSLInput");
+const commitSl = (qx, value) => {
+  const el = slField(qx);
+  typeInto(qx, el, value);
+  el.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+};
+
+test("SL: it is not readonly any more (v1.64.0)", async () => {
+  const qx = await boot({ storage: slStorage(10000) });
+  try {
+    await sleep(600);
+    assert.equal(slField(qx).hasAttribute("readonly"), false, "the field accepts typing");
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL: raising it by hand sticks (v1.64.0)", async () => {
+  const qx = await boot({ storage: slStorage(10000) });
+  try {
+    await sleep(600);
+    commitSl(qx, "14000");
+    await sleep(200);
+    assert.equal(pref(qx, "__tradeCalc_sl"), "14000", "stored: " + pref(qx, "__tradeCalc_sl"));
+    // Long enough for several trailing passes to have had a go at it.
+    await sleep(2600);
+    assert.equal(parseFloat(String(slShown(qx)).replace(/,/g, "")), 14000, "still showing it: " + slShown(qx));
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL: lowering it by hand is not undone by the trail (v1.64.0)", async () => {
+  // The case the readonly attribute was hiding. Balance is 15,228 and the day's peak is too, so the ratchet
+  // wants 15228 x 0.8 = 12,182 - well above a hand-typed 9,000, which would have been overwritten.
+  const qx = await boot({ storage: slStorage(10000) });
+  try {
+    await sleep(600);
+    commitSl(qx, "9000");
+    await sleep(2600);
+    assert.equal(pref(qx, "__tradeCalc_sl"), "9000", "the lower SL was kept: " + pref(qx, "__tradeCalc_sl"));
+    assert.equal(parseFloat(String(slShown(qx)).replace(/,/g, "")), 9000, "and is what the panel shows: " + slShown(qx));
+    // The day's trail gap widened to match, which is what makes it stick rather than luck.
+    const trail = parseFloat(pref(qx, "__tradeCalc_sl_ls_trail"));
+    assert.ok(trail > 0.2, "the trail gap widened past the 20% default: " + trail);
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL: a value at or above the balance is refused (v1.64.0)", async () => {
+  // An SL at the balance is an instant lockout, which is never what someone typing means.
+  const qx = await boot({ storage: slStorage(10000) });
+  try {
+    await sleep(600);
+    // Read what is in force rather than assuming the fixture's number: the trail has already raised it.
+    const before = pref(qx, "__tradeCalc_sl");
+    commitSl(qx, "99000");
+    await sleep(200);
+    assert.equal(pref(qx, "__tradeCalc_sl"), before, "the SL in force is unchanged: " + pref(qx, "__tradeCalc_sl"));
+    assert.equal(parseFloat(String(slShown(qx)).replace(/,/g, "")), parseFloat(before), "and shown again: " + slShown(qx));
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL: nonsense is refused and the field goes back to what is in force (v1.64.0)", async () => {
+  const qx = await boot({ storage: slStorage(10000) });
+  try {
+    await sleep(600);
+    const before = pref(qx, "__tradeCalc_sl");
+    commitSl(qx, "abc");
+    await sleep(200);
+    assert.equal(pref(qx, "__tradeCalc_sl"), before, "unchanged: " + pref(qx, "__tradeCalc_sl"));
+    assert.equal(parseFloat(String(slShown(qx)).replace(/,/g, "")), parseFloat(before), "reverted: " + slShown(qx));
+  } finally {
+    qx.close();
+  }
+});
