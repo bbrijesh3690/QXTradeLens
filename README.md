@@ -27,7 +27,7 @@ Quotex pages. Drag it by its left grip; the position is remembered.
 | Field | Meaning |
 |---|---|
 | **TP** | Your take-profit target for the day. Hover it, type, press Enter |
-| **SL** | Your stop-loss floor for the day. Set once per day, then trails upward as your balance grows |
+| **SL** | Your stop loss. Type a number and press Enter; it stays until you change it. It is a reference only: nothing happens when your balance reaches it |
 | **PAYOUT** | Minimum payout % you are willing to trade. Trades are blocked below it |
 
 **← and → double and halve the trade amount** (v1.63.0), with nothing to configure — the factor is 2 by
@@ -49,7 +49,8 @@ The Up/Down buttons are disabled, with the reason shown in the panel, when:
 - **You already have the maximum trades open** (1–4, default 2).
 - **A second trade within 1.5 s**, unless MULT is on.
 
-The stop loss never blocks trading (changed in v1.21.0); it is tracked and displayed only.
+The stop loss never blocks trading (changed in v1.21.0), and since v1.67.0 it is simply a number you keep:
+nothing warns, sounds or blocks when your balance reaches it.
 
 ### The payout floor works both ways
 
@@ -77,21 +78,13 @@ running. The diagnostics line carries what it decided — `1 of 2 at or above 90
 
 ### Stop loss and take profit
 
-- **Daily setup screen**: once per trading day the panel asks for the day's stop loss. It suggests 85%
-  of your balance, and you can type any amount below your balance or pick 70 / 75 / 80 / 85 / 90%.
-  Enter confirms.
-- **Trailing**: the SL follows your balance upward — normally 20% below the day's peak. If you choose a
-  lower SL, that wider gap is kept for the day instead, so your choice sticks.
-- **Editing it mid-day** (v1.64.0): type over the SL in the panel and press Enter — up or down. Escape
-  cancels. The day's trail gap is recomputed from the peak so your number holds rather than being pulled
-  back on the next pass, and the trail's usual "no lower than 5% of the peak" limit does not apply to a value
-  you typed yourself — your number is your number. A value at or above your balance is refused, because
-  storing it would lock you out immediately; after TP is reached the post-TP floor still applies and a lower
-  value is clamped to it, unless that floor is itself above your balance, in which case the edit is refused.
-- **After TP is reached**: the SL tightens to 5% below the peak,
-  and never drops below TP.
-- **If the account has no funds**, the screen says so and offers **Close** instead of asking for a number.
-- **The trading day** resets at midnight in your Quotex account's timezone.
+- **SL** (v1.67.0): hover the SL in the panel, type a number and press **Enter**. It stays exactly as you set
+  it — across refreshes and across days — until you change it. **Escape** cancels an edit, and clearing the
+  field then pressing Enter removes the SL. A number at or above your balance is refused, since it is almost
+  always a slipped digit. There is no daily setup screen and no trailing any more: both existed to manage
+  the SL for you, and the SL itself does nothing when your balance reaches it.
+- **TP**: hover it, type, press Enter. It is dated by **the trading day**, which resets at midnight in your
+  Quotex account's timezone.
 
 ## On-chart widgets
 
@@ -193,7 +186,7 @@ first. See [The payout floor works both ways](#the-payout-floor-works-both-ways)
 | Section | Settings |
 |---|---|
 | **Display** | Panel scale, chip position (cursor / centre / anchored), light–dark theme, show or hide the panel |
-| **Risk** | Daily SL setup on/off, max concurrent trades (1–4) |
+| **Risk** | Max concurrent trades (1–4) |
 | **Hotkeys** | ↑↓ places trades, ←→ changes the trade amount (both off by default), and Hotkey Focus Mode (your Enter does the pressing, so the click comes from the browser) |
 | **Multi-timeframe charts** | Which timeframes (up to 4), whether a new pair is filled in automatically, and how long a pair must stay on screen first (default 15 s) |
 | **Health** | "Check Quotex compatibility" — see below |

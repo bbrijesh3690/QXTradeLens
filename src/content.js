@@ -55,15 +55,6 @@
       delete window.__tcKeyDelegator;
       delete window.__tcTradeBlocker;
       delete window.__tcAudioUnlock;
-      if (window.__tcSLBlocker) {
-        document.removeEventListener("click", window.__tcSLBlocker, {
-          capture: true,
-        });
-        document.removeEventListener("keydown", window.__tcSLBlocker, {
-          capture: true,
-        });
-        delete window.__tcSLBlocker;
-      }
       document.body.style.animation = "none";
       if (window.__tcViewportMeta) {
         if (window.__tcViewportMetaOld === null) {
@@ -78,7 +69,6 @@
         window.__tradeCalcObs.disconnect();
         delete window.__tradeCalcObs;
       }
-      delete window.__tcSLBreachNotified;
       if (window.__tcScheduler) {
         clearInterval(window.__tcScheduler);
         delete window.__tcScheduler;
@@ -386,6 +376,13 @@
         // v1.66.0: the trade-history tags and the section show/hide toggles.
         "__tradeCalc_entry_tags",
         "__tradeCalc_visibility",
+        // v1.67.0: the per-day SL backup. __tradeCalc_sl is NOT here - it is the SL itself.
+        "__tradeCalc_sl_ls_date",
+        "__tradeCalc_sl_ls_value",
+        "__tradeCalc_sl_ls_init_bal",
+        "__tradeCalc_sl_ls_trail",
+        "__tradeCalc_sl_ls_tp_lock",
+        "__tradeCalc_sl_ls_tp_lock_date",
       ]) {
         prefRemove(name);
       }
@@ -1196,8 +1193,6 @@
       KEY_FONT_SIZE = "__tradeCalc_fz",
       KEY_MIN_PAYOUT = "__tradeCalc_minrp",
       KEY_THEME = "__tradeCalc_theme",
-      KEY_SL_VALUE = "__tradeCalc_sl_value",
-      KEY_SL_DATE = "__tradeCalc_sl_date",
       getTheme = () => {
         try {
           return prefGet(KEY_THEME) || "dark";
@@ -1404,7 +1399,6 @@
           prefSet(KEY_MIN_PAYOUT, t);
         } catch (t) {}
       },
-      KEY_SL_INIT_BAL = "__tradeCalc_sl_init_bal",
       KEY_OTC_AUTO = "__tradeCalc_otc_auto",
       setOtcAutoStored = (t) => {
         try {
@@ -1671,8 +1665,8 @@
       }
       window.__tcViewportMeta.setAttribute("content", "width=device-width,initial-scale=1");
     })();
-    // v1.65.0: the SL setup screen and the payout overlay were sized by a "Journal Scale" slider that has
-    // gone with the journal. Fixed at 20px, which is what it was set to and what it defaulted to.
+    // v1.65.0: the payout overlay was sized by a "Journal Scale" slider (as was the SL setup screen, removed in
+    // v1.67.0). Fixed at 20px, which is what it was set to and what it defaulted to.
     const MODAL_FONT_PX = 20;
     let panelFontSize = parseInt(getFontSizeStored(), 10) || 16,
       isLightTheme = getTheme() === "light";
@@ -1821,7 +1815,7 @@
     const panel = document.createElement("div");
     panel.id = "__tradeCalc";
     panel.innerHTML =
-      ' <span class="tcGrip tcGripLeft" aria-hidden="true"><svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2" r="1.3"/><circle cx="7.5" cy="2" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="14" r="1.3"/><circle cx="7.5" cy="14" r="1.3"/></svg></span> <div id="__tcLoader" role="status" aria-live="polite" style="color:var(--tc-text-mut); font-size:0.72em; display:flex; align-items:center; justify-content:center; gap:var(--s-3); padding:var(--s-5) var(--s-6); width:22em; min-height:4.46em; font-weight:800; letter-spacing:0.14em;"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--tc-accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:tcSpin 1s linear infinite; opacity:0.8;" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg> <span id="__tcLoaderText"></span> </div> <div id="__tcContent" style="display:none;"> \x3c!-- Section 1: TARGETS (drag zone) --\x3e <div id="__tcSecTargets" class="tcSec"> <div class="tcSecFields" style="cursor:default; gap:0.615em;"> \x3c!-- TP --\x3e <div class="tcFld tcTPFld"> <span class="tcLbl" data-tc-tip="Day\'s take-profit target — hover the value to edit, Enter to save"><span class="tcDot"></span>TP</span> <div class="tcControlGroup tcTPGroup"> <span class="tcTPCur">₹</span> <input id="__tcTBInput" class="tcInput tcTPInput" type="text" placeholder="0" aria-label="Take profit balance target" autocomplete="off" readonly /> </div> </div> \x3c!-- SL (shown when active) --\x3e <div class="tcFld" id="__tcSLFld" style="display:none;"> <span class="tcLbl" data-tc-tip="Lock out at this balance floor — type a new one and press Enter">SL</span> <div class="tcControlGroup" id="__tcSLInputWrap"> <input id="__tcSLInput" class="tcInput" type="text" placeholder="—" aria-label="Stop loss balance floor" autocomplete="off" style="display:none;" /> </div> <span id="__tcSLDisplay" class="tcVal" style="font-weight:700; color:var(--tc-red); display:none;">—</span> </div> </div> </div> \x3c!-- Section 2: LIMITS — centred via margin:auto in CSS --\x3e <div id="__tcSecProtections" class="tcSec"> <div class="tcSecHdr"><span class="tcDot"></span></div> <div class="tcSecFields" style="gap:0.75em;"> \x3c!-- LOCK + TIME removed 2026-07-06: browser locking is GONE (user runs a system-level lock). Do NOT re-add #__tcArmLimits / #__tcBlockMinInput. --\x3e \x3c!-- FLOOR % --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Block trades and close tabs below this payout %">PAYOUT</span> <div class="tcControlGroup"> <input id="__tcMinRpInput" class="tcInput" type="text" aria-label="Minimum payout floor %" autocomplete="off" style="width:calc(3ch + 0.55em);" /> </div> </div> \x3c!-- STEP× moved OUT of the panel 2026-07-07 (user request): the investment multiplier now lives in the floating #__tcInvestMult panel (× N / N / ÷ N) beside the native trade controls. The factor still persists in __tradeCalc_step_mult and still drives ←/→ arrows. Do NOT re-add #__tcStepMultInput / #__tcStepMinus / #__tcStepPlus here. --\x3e \x3c!-- MULT --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Scale each trade by STEP× across consecutive trades">MULT</span> <button id="__tcMultiStatus" class="tcPill" aria-pressed="false" aria-label="Toggle multiplier mode" data-tc-tip="Scale each trade by STEP× across consecutive trades"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg> </button> </div> </div> </div> \x3c!-- Section 3: PROJECTION --\x3e <div id="__tcSecProjections" class="tcSec"> <div class="tcSecFields" style="gap:0.75em; flex-wrap:nowrap; align-items:stretch;"> <div class="tcFld"> <span class="tcLbl" data-tc-tip="Trades needed to reach your TP from current balance"><span class="tcDot"></span>REQ</span> <div style="display:flex; flex-direction:column; align-items:flex-start; gap:0.231em; margin-top:auto; margin-bottom:auto;"> <span class="tcReqWrap"><span id="__tcResultFrom" class="tcReqFrom"></span><span id="__tcResult" class="tcValLg">—</span></span> <div class="tcProjMarks" aria-hidden="true"> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark"></span> <span class="tcProjMark"></span> </div> </div> </div> <div class="tcFld"> <span class="tcLbl" data-tc-tip="Amount at risk per trade">RISK</span> <span id="__tcRisk" class="tcVal" style="font-weight:400; font-size:var(--fz-value-lg);">—</span> </div> <button id="__tcImToggle" class="tcLogBtn" style="align-self:center;" aria-label="Toggle investment multiplier panel" data-tc-tip="Show/hide the Invest ×÷ panel"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg> </button> <button id="__tcMtfToggle" class="tcLogBtn tcImToggleOff" style="align-self:center;" aria-label="Toggle multi-timeframe chart panel" data-tc-tip="Show/hide the multi-timeframe charts (C)"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="4" x2="6" y2="20"/><rect x="3.5" y="8" width="5" height="7" rx="1"/><line x1="18" y1="4" x2="18" y2="20"/><rect x="15.5" y="6" width="5" height="9" rx="1"/></svg> </button> </div> </div> <span id="__tcVer" class="tcVer">—</span> </div> <span class="tcGrip tcGripRight" aria-hidden="true"><svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2" r="1.3"/><circle cx="7.5" cy="2" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="14" r="1.3"/><circle cx="7.5" cy="14" r="1.3"/></svg></span> <button id="__tcClose" class="tcCloseBtn" aria-label="Close panel"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" style="width:0.62em; height:0.62em;" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> </button> <span id="__tcWarn" role="alert" aria-live="assertive" style="display:none; position:absolute; bottom:-2.3em; left:0; width:100%; text-align:center; font-size:0.92em; font-weight:900; color:var(--tc-red); text-transform:uppercase; letter-spacing:0.14em; filter:drop-shadow(0 2px 6px oklch(64% 0.18 25 / 0.4));"></span>';
+      ' <span class="tcGrip tcGripLeft" aria-hidden="true"><svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2" r="1.3"/><circle cx="7.5" cy="2" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="14" r="1.3"/><circle cx="7.5" cy="14" r="1.3"/></svg></span> <div id="__tcLoader" role="status" aria-live="polite" style="color:var(--tc-text-mut); font-size:0.72em; display:flex; align-items:center; justify-content:center; gap:var(--s-3); padding:var(--s-5) var(--s-6); width:22em; min-height:4.46em; font-weight:800; letter-spacing:0.14em;"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--tc-accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:tcSpin 1s linear infinite; opacity:0.8;" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg> <span id="__tcLoaderText"></span> </div> <div id="__tcContent" style="display:none;"> \x3c!-- Section 1: TARGETS (drag zone) --\x3e <div id="__tcSecTargets" class="tcSec"> <div class="tcSecFields" style="cursor:default; gap:0.615em;"> \x3c!-- TP --\x3e <div class="tcFld tcTPFld"> <span class="tcLbl" data-tc-tip="Day\'s take-profit target — hover the value to edit, Enter to save"><span class="tcDot"></span>TP</span> <div class="tcControlGroup tcTPGroup"> <span class="tcTPCur">₹</span> <input id="__tcTBInput" class="tcInput tcTPInput" type="text" placeholder="0" aria-label="Take profit balance target" autocomplete="off" readonly /> </div> </div> \x3c!-- SL (always shown; stays until changed) --\x3e <div class="tcFld" id="__tcSLFld"> <span class="tcLbl" data-tc-tip="Your stop loss — type a number and press Enter. It stays until you change it">SL</span> <div class="tcControlGroup" id="__tcSLInputWrap"> <input id="__tcSLInput" class="tcInput" type="text" placeholder="—" aria-label="Stop loss" autocomplete="off" /> </div> </div> </div> </div> \x3c!-- Section 2: LIMITS — centred via margin:auto in CSS --\x3e <div id="__tcSecProtections" class="tcSec"> <div class="tcSecHdr"><span class="tcDot"></span></div> <div class="tcSecFields" style="gap:0.75em;"> \x3c!-- LOCK + TIME removed 2026-07-06: browser locking is GONE (user runs a system-level lock). Do NOT re-add #__tcArmLimits / #__tcBlockMinInput. --\x3e \x3c!-- FLOOR % --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Block trades and close tabs below this payout %">PAYOUT</span> <div class="tcControlGroup"> <input id="__tcMinRpInput" class="tcInput" type="text" aria-label="Minimum payout floor %" autocomplete="off" style="width:calc(3ch + 0.55em);" /> </div> </div> \x3c!-- STEP× moved OUT of the panel 2026-07-07 (user request): the investment multiplier now lives in the floating #__tcInvestMult panel (× N / N / ÷ N) beside the native trade controls. The factor still persists in __tradeCalc_step_mult and still drives ←/→ arrows. Do NOT re-add #__tcStepMultInput / #__tcStepMinus / #__tcStepPlus here. --\x3e \x3c!-- MULT --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Scale each trade by STEP× across consecutive trades">MULT</span> <button id="__tcMultiStatus" class="tcPill" aria-pressed="false" aria-label="Toggle multiplier mode" data-tc-tip="Scale each trade by STEP× across consecutive trades"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg> </button> </div> </div> </div> \x3c!-- Section 3: PROJECTION --\x3e <div id="__tcSecProjections" class="tcSec"> <div class="tcSecFields" style="gap:0.75em; flex-wrap:nowrap; align-items:stretch;"> <div class="tcFld"> <span class="tcLbl" data-tc-tip="Trades needed to reach your TP from current balance"><span class="tcDot"></span>REQ</span> <div style="display:flex; flex-direction:column; align-items:flex-start; gap:0.231em; margin-top:auto; margin-bottom:auto;"> <span class="tcReqWrap"><span id="__tcResultFrom" class="tcReqFrom"></span><span id="__tcResult" class="tcValLg">—</span></span> <div class="tcProjMarks" aria-hidden="true"> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark"></span> <span class="tcProjMark"></span> </div> </div> </div> <div class="tcFld"> <span class="tcLbl" data-tc-tip="Amount at risk per trade">RISK</span> <span id="__tcRisk" class="tcVal" style="font-weight:400; font-size:var(--fz-value-lg);">—</span> </div> <button id="__tcImToggle" class="tcLogBtn" style="align-self:center;" aria-label="Toggle investment multiplier panel" data-tc-tip="Show/hide the Invest ×÷ panel"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg> </button> <button id="__tcMtfToggle" class="tcLogBtn tcImToggleOff" style="align-self:center;" aria-label="Toggle multi-timeframe chart panel" data-tc-tip="Show/hide the multi-timeframe charts (C)"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="4" x2="6" y2="20"/><rect x="3.5" y="8" width="5" height="7" rx="1"/><line x1="18" y1="4" x2="18" y2="20"/><rect x="15.5" y="6" width="5" height="9" rx="1"/></svg> </button> </div> </div> <span id="__tcVer" class="tcVer">—</span> </div> <span class="tcGrip tcGripRight" aria-hidden="true"><svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2" r="1.3"/><circle cx="7.5" cy="2" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="14" r="1.3"/><circle cx="7.5" cy="14" r="1.3"/></svg></span> <button id="__tcClose" class="tcCloseBtn" aria-label="Close panel"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" style="width:0.62em; height:0.62em;" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> </button> <span id="__tcWarn" role="alert" aria-live="assertive" style="display:none; position:absolute; bottom:-2.3em; left:0; width:100%; text-align:center; font-size:0.92em; font-weight:900; color:var(--tc-red); text-transform:uppercase; letter-spacing:0.14em; filter:drop-shadow(0 2px 6px oklch(64% 0.18 25 / 0.4));"></span>';
     if (!isMobileWidth()) {
       panel.style.fontSize = panelFontSize + "px";
     }
@@ -2069,25 +2063,20 @@
         });
       }
     }
-    const slDisplayEl = byId("__tcSLDisplay");
-    // v1.64.0: the SL is editable in the panel, in both directions, committed on Enter or on leaving the
-    // field - the same way TP and PAYOUT commit.
-    //
-    // It was readonly for a reason worth knowing before changing any of this: the trailing ratchet reads the
-    // CURRENT SL out of this very field (see updateTrailingSl) and only ever accepts a higher one. So a
-    // typed value below the ratchet's next target would be lifted straight back on the following tick, and
-    // the edit would look like it had been ignored. The setup screen already handles that case by widening
-    // the day's trail gap when a lower SL is picked; an edit does the same, measured against the day's PEAK
-    // rather than the current balance, because the peak is what the ratchet computes from.
+    // v1.67.0: the SL is a number you set, and it stays until you change it. The daily setup screen and the
+    // trailing are gone: both existed to manage the SL for you, and the SL itself does nothing when the
+    // balance reaches it - the lock it once triggered went in v1.21.0, and the signal left in its place had
+    // no listener. So it is a reference you keep yourself, and the only thing that changes it is you.
+    // Enter or leaving the field commits; Escape puts back what was there; an empty field clears it, which
+    // replaces the popup switch that used to turn the SL off.
     function commitSlEdit() {
-      if (!slInput || !slArmed) {
+      if (!slInput) {
         return;
       }
       const stored = parseFloat(prefGet(KEY_SL)),
-        typed = parsePlainNumber(slInput.value),
-        balance = readAccountBalance();
+        raw = slInput.value.trim();
       const revert = (why) => {
-        slInput.value = isFinite(stored) ? fmtInputMoney(stored) : "";
+        slInput.value = isFinite(stored) && stored > 0 ? fmtInputMoney(stored) : "";
         autosizeInput(slInput);
         if (why && warnEl) {
           setText(warnEl, why);
@@ -2095,53 +2084,28 @@
           warnEl.classList.add("tcWarnVisible");
         }
       };
+      if (raw === "") {
+        prefRemove(KEY_SL);
+        autosizeInput(slInput);
+        scheduleRecalc();
+        return;
+      }
+      const typed = parsePlainNumber(raw),
+        balance = readAccountBalance();
       if (isNaN(typed) || typed <= 0) {
         return revert("SL must be a number above zero");
       }
-      // An SL at or above the balance is an instant lockout, which is never what someone typing means.
+      // Nothing locks at the SL any more, so this is not a safety stop - but a number at or above the
+      // balance is almost always a slipped digit, and catching it costs nothing.
       if (isFinite(balance) && balance > 0 && typed >= balance) {
         return revert("SL must be below your balance");
       }
-      let value = Math.floor(typed);
-      // Once TP is reached the post-TP lock floors the SL, and the ratchet enforces it whatever is typed.
-      // Clamping here makes that visible instead of letting the number change by itself a moment later -
-      // but never past the balance, which is the one value this function has already refused outright. A TP
-      // floor sitting above the balance means the account is under its floor already, and raising the SL to
-      // meet it would lock the platform out on a keystroke meant to adjust a number.
-      if (!isNaN(slTpLock) && slTpLock > 0 && value < Math.floor(slTpLock)) {
-        const floored = Math.floor(slTpLock);
-        if (!isFinite(balance) || !(balance > 0) || floored < balance) {
-          value = floored;
-        } else {
-          return revert("TP floor is above your balance - SL left as it was");
-        }
-      }
-      const base = isFinite(slPeak) && slPeak > 0 ? slPeak : balance,
-        // v1.64.1: a hand-typed SL is not subject to the trail's own 5%-of-peak limit.
-        //
-        // slTrailFor caps the gap at 0.95, which is right for TRAILING - it stops the automatic floor
-        // drifting arbitrarily far below the peak. Applied to an explicit edit it silently overrode it:
-        // typing 1 against a peak of 19,655 needs a gap of 0.99995, got 0.95, and the ratchet then lifted
-        // the SL to 5% of the peak - 982. Measured live on 2026-09-28, which is how it was found.
-        //
-        // For an edit the gap is exactly the one the typed value implies, so the ratchet's next target IS
-        // that value and it is left alone. Still floored at the 20% default, because a gap tighter than that
-        // would have the trail pulling the SL up faster than the day's rule.
-        trail = Math.max(SL_PRE_TP_TRAIL, Math.min(0.999999, 1 - value / base)),
-        today = getDayKey();
-      if (hasSyncStorage()) {
-        chrome.storage.sync.set({
-          [KEY_SL_VALUE]: value,
-          [KEY_SL_DATE]: today,
-          [KEY_SL_INIT_BAL]: base,
-          [KEY_SL_TRAIL]: trail,
-        });
-      }
-      writeSlLocalBackup(value, today, base, trail);
-      slPreTpTrail = trail;
-      applySl(value);
+      applySl(Math.floor(typed));
     }
     if (slInput) {
+      const saved = parseFloat(prefGet(KEY_SL));
+      slInput.value = isFinite(saved) && saved > 0 ? fmtInputMoney(saved) : "";
+      autosizeInput(slInput);
       slInput.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter") {
           ev.preventDefault();
@@ -2150,7 +2114,7 @@
         } else if (ev.key === "Escape") {
           ev.preventDefault();
           const stored = parseFloat(prefGet(KEY_SL));
-          slInput.value = isFinite(stored) ? fmtInputMoney(stored) : "";
+          slInput.value = isFinite(stored) && stored > 0 ? fmtInputMoney(stored) : "";
           autosizeInput(slInput);
           slInput.blur();
         }
@@ -2158,7 +2122,7 @@
       slInput.addEventListener("blur", commitSlEdit);
     }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
-    // Stop loss: daily setup modal, persistence, trailing SL
+    // Stop loss: the trading day, and the SL you set
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Trading-day key "YYYY-MM-DD" in the account timezone (v1.24.0; was fixed at IST). Resets SL, TP
     // lock and the loss streak at local midnight.
@@ -2171,21 +2135,9 @@
         return;
       }
       setSlStored(String(e));
-      const n = byId("__tcSLFld");
-      if (n) {
-        n.style.display = "";
-      }
-      const o = byId("__tcSLInputWrap");
-      if (o) {
-        o.style.display = "";
-      }
       if (slInput) {
         slInput.value = fmtInputMoney(e);
-        slInput.style.display = "";
         autosizeInput(slInput);
-      }
-      if (slDisplayEl) {
-        slDisplayEl.style.display = "none";
       }
       scheduleRecalc();
     }
@@ -2194,454 +2146,6 @@
     // lower SL isn't immediately pulled back up by the trailing SL (see slPreTpTrail).
     const SL_SETUP_PRESETS = [70, 75, 80, 85, 90];
     const SL_SETUP_DEFAULT_PCT = 85;
-    function closeSlSetup() {
-      const t = byId("__tcSLSetup");
-      if (!t) {
-        return;
-      }
-      if (window.__tcSLBalanceTimer) {
-        clearTimeout(window.__tcSLBalanceTimer);
-        delete window.__tcSLBalanceTimer;
-      }
-      if (t._tcOnVisible) {
-        document.removeEventListener("visibilitychange", t._tcOnVisible);
-        t._tcOnVisible = null;
-      }
-      if (window.__tcSLBlocker) {
-        document.removeEventListener("click", window.__tcSLBlocker, { capture: true });
-        document.removeEventListener("keydown", window.__tcSLBlocker, { capture: true });
-        delete window.__tcSLBlocker;
-      }
-      const card = t.firstElementChild;
-      if (card) {
-        card.style.transition = "transform 0.3s cubic-bezier(0.16,1,0.3,1),opacity 0.25s";
-        card.style.transform = "scale(0.94) translateY(-8px)";
-        card.style.opacity = "0";
-      }
-      setTimeout(() => t.remove(), 320);
-    }
-    function confirmSl(balance, sl) {
-      const today = getDayKey();
-      const trail = slTrailFor(balance, sl);
-      if (hasSyncStorage()) {
-        chrome.storage.sync.set({
-          [KEY_SL_VALUE]: sl,
-          [KEY_SL_DATE]: today,
-          [KEY_SL_INIT_BAL]: balance,
-          [KEY_SL_TRAIL]: trail,
-        });
-      }
-      writeSlLocalBackup(sl, today, balance, trail);
-      slPeak = balance;
-      slPreTpTrail = trail;
-      slArmed = true;
-      applySl(sl);
-      closeSlSetup();
-    }
-    function showSlSetup() {
-      if (byId("__tcSLSetup")) {
-        return;
-      }
-      const t = document.createElement("div");
-      t.id = "__tcSLSetup";
-      t.style.cssText =
-        'position:fixed;inset:0;z-index:2147483647;background:oklch(0% 0 0/0.82);backdrop-filter:blur(24px);display:flex;align-items:center;justify-content:center;font-family:"DM Sans",system-ui,sans-serif;font-size:' +
-        MODAL_FONT_PX +
-        "px;";
-      const presetBtn = (pct) =>
-        `<button type="button" data-sl-pct="${pct}" style="flex:1;background:oklch(100% 0 0/0.06);color:oklch(90% 0.01 257);border:1px solid oklch(100% 0 0/0.12);border-radius:10px;padding:0.45em 0;font-size:0.8em;font-weight:700;cursor:pointer;">${pct}%</button>`;
-      t.innerHTML =
-        ' <div style="background:var(--tc-bg,oklch(13.5% 0.018 257/0.97));border:1px solid oklch(100% 0 0/0.1);border-radius:20px;padding:2.4em 2.8em;text-align:center;box-shadow:0 48px 120px oklch(0% 0 0/0.8),inset 0 1px 0 oklch(100% 0 0/0.15);max-width:380px;width:90%;">' +
-        ' <div style="font-size:0.62em;font-weight:900;text-transform:uppercase;letter-spacing:0.28em;color:oklch(67% 0.018 257);margin-bottom:1.2em;">Daily Risk Setup</div>' +
-        ' <div style="font-size:1.7em;font-weight:800;color:oklch(97% 0.005 257);letter-spacing:-0.02em;line-height:1.15;margin-bottom:0.45em;">Set Stop Loss</div>' +
-        ' <div style="font-size:0.82em;color:oklch(67% 0.018 257);margin-bottom:1.4em;line-height:1.5;">Suggested at 85% of your balance. Type an amount or pick a %.</div>' +
-        ' <div style="display:flex;align-items:center;gap:0.4em;background:oklch(100% 0 0/0.05);border:1px solid oklch(100% 0 0/0.14);border-radius:12px;padding:0.55em 0.9em;margin-bottom:0.7em;">' +
-        '   <span id="__tcSLSetupCur" style="font-weight:800;color:oklch(75% 0.015 257);">₹</span>' +
-        '   <input id="__tcSLSetupInput" type="text" inputmode="decimal" autocomplete="off" aria-label="Stop loss amount" placeholder="Reading balance…" disabled style="flex:1;min-width:0;background:transparent;border:none;outline:none;color:oklch(97% 0.005 257);font-family:\'DM Mono\',monospace;font-size:1.25em;font-weight:700;text-align:right;" />' +
-        '   <span id="__tcSLSetupPct" style="font-family:\'DM Mono\',monospace;font-size:0.8em;color:oklch(67% 0.018 257);min-width:3.2em;text-align:right;"></span>' +
-        " </div>" +
-        ' <div style="display:flex;gap:0.35em;margin-bottom:1.3em;">' +
-        SL_SETUP_PRESETS.map(presetBtn).join("") +
-        " </div>" +
-        ' <button id="__tcSLConfirmBtn" type="button" disabled style="background:var(--tc-grn,oklch(76% 0.16 145));color:oklch(12% 0 0);border:none;border-radius:12px;padding:0.82em 2em;font-size:1em;font-weight:800;cursor:pointer;width:100%;letter-spacing:0.02em;opacity:0.5;transition:opacity 0.2s,filter 0.2s;">Calculating…</button>' +
-        ' <div id="__tcSLSetupMeta" style="font-size:0.68em;color:oklch(55% 0.015 257);margin-top:1em;letter-spacing:0.04em;">Reading balance…</div>' +
-        " </div>";
-      shadow.appendChild(t);
-      // Blocks page clicks/keys until the SL is confirmed; anything coming from the panel's own shadow tree
-      // (the setup form) passes. Checks the whole event path, so it works for open and closed roots alike.
-      window.__tcSLBlocker = (e) => {
-        if (!t.isConnected) {
-          return;
-        }
-        const path = e.composedPath ? e.composedPath() : [];
-        const fromPanel = path.includes(shadowHost) || e.target === shadowHost || shadowHost.contains(e.target);
-        if (!fromPanel) {
-          e.stopPropagation();
-          e.preventDefault();
-        }
-      };
-      document.addEventListener("click", window.__tcSLBlocker, {
-        capture: true,
-      });
-      document.addEventListener("keydown", window.__tcSLBlocker, {
-        capture: true,
-      });
-      requestAnimationFrame(() => {
-        const e = t.firstElementChild;
-        e.style.cssText +=
-          "transform:scale(0.92) translateY(16px);opacity:0;transition:transform 0.45s cubic-bezier(0.16,1,0.3,1),opacity 0.35s;";
-        requestAnimationFrame(() => {
-          e.style.transform = "";
-          e.style.opacity = "1";
-        });
-      });
-      const input = t.querySelector("#__tcSLSetupInput"),
-        pctEl = t.querySelector("#__tcSLSetupPct"),
-        confirmBtn = t.querySelector("#__tcSLConfirmBtn"),
-        meta = t.querySelector("#__tcSLSetupMeta");
-      let balance = NaN;
-      const cur = () => detectCurrency();
-      // Valid SL: a positive amount below the current balance.
-      const update = () => {
-        const sl = parsePlainNumber(input.value);
-        const valid = !isNaN(balance) && sl > 0 && sl < balance;
-        pctEl.textContent = !isNaN(balance) && sl > 0 ? Math.round((sl / balance) * 100) + "%" : "";
-        confirmBtn.disabled = !valid;
-        confirmBtn.style.opacity = valid ? "1" : "0.5";
-        confirmBtn.textContent = valid ? `Set SL: ${cur()}${fmtInputMoney(Math.floor(sl))}` : isNaN(balance) ? "Calculating…" : "Enter an amount below your balance";
-        t.querySelectorAll("[data-sl-pct]").forEach((b) => {
-          const on = valid && Math.floor((balance * parseInt(b.getAttribute("data-sl-pct"), 10)) / 100) === Math.floor(sl);
-          b.style.background = on ? "var(--tc-grn,oklch(76% 0.16 145))" : "oklch(100% 0 0/0.06)";
-          b.style.color = on ? "oklch(12% 0 0)" : "oklch(90% 0.01 257)";
-        });
-        return valid ? Math.floor(sl) : NaN;
-      };
-      const setPct = (pct) => {
-        input.value = String(Math.floor((balance * pct) / 100));
-        update();
-      };
-      input.addEventListener("input", update);
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-          const sl = update();
-          if (!isNaN(sl)) {
-            confirmSl(balance, sl);
-          }
-        }
-      });
-      t.addEventListener("click", (e) => {
-        const b = e.target.closest && e.target.closest("[data-sl-pct]");
-        if (b && !isNaN(balance)) {
-          setPct(parseInt(b.getAttribute("data-sl-pct"), 10));
-        }
-      });
-      confirmBtn.onclick = () => {
-        const sl = update();
-        if (!isNaN(sl)) {
-          confirmSl(balance, sl);
-        }
-      };
-      // Wait for Quotex to render the balance (v1.24.5: keeps waiting instead of giving up after ~21 s
-      // and leaving a dead screen with the page still click-blocked — Quotex can take longer to render,
-      // especially in a background tab where timers are throttled).
-      let attempts = 0;
-      let skipBtn = null;
-      function offerSkip(label) {
-        if (skipBtn) {
-          skipBtn.textContent = label || skipBtn.textContent;
-          return;
-        }
-        // Release the page blocker so Quotex stays usable while we keep waiting.
-        if (window.__tcSLBlocker) {
-          document.removeEventListener("click", window.__tcSLBlocker, { capture: true });
-          document.removeEventListener("keydown", window.__tcSLBlocker, { capture: true });
-          delete window.__tcSLBlocker;
-        }
-        skipBtn = document.createElement("button");
-        skipBtn.type = "button";
-        skipBtn.id = "__tcSLSkipBtn";
-        skipBtn.textContent = label || "Skip for now";
-        skipBtn.style.cssText =
-          "margin-top:0.9em;background:transparent;color:oklch(72% 0.015 257);border:1px solid oklch(100% 0 0/0.15);border-radius:10px;padding:0.5em 1.2em;font-size:0.78em;font-weight:700;cursor:pointer;width:100%;";
-        skipBtn.onclick = closeSlSetup;
-        meta.parentElement.appendChild(skipBtn);
-      }
-      function waitForBalance() {
-        if (!t.isConnected) {
-          return;
-        }
-        const n = readAccountBalance();
-        // A zero balance is a real balance, not a failure (v1.24.5): the account simply has no funds, so
-        // there is nothing to protect. Say so, let the screen be closed, and keep watching in case the
-        // balance changes (a deposit, or switching between the live and demo account).
-        if (n === 0) {
-          balance = NaN;
-          input.disabled = true;
-          input.value = "";
-          input.placeholder = "—";
-          confirmBtn.disabled = true;
-          confirmBtn.style.opacity = "0.5";
-          confirmBtn.textContent = "No balance to protect";
-          meta.textContent = `Balance: ${cur()}0 — set a stop loss once the account has funds.`;
-          offerSkip("Close");
-          window.__tcSLBalanceTimer = setTimeout(waitForBalance, 2000);
-          return;
-        }
-        if (!isNaN(n) && n > 0) {
-          balance = n;
-          t.querySelector("#__tcSLSetupCur").textContent = cur();
-          input.disabled = false;
-          input.placeholder = "";
-          meta.textContent = `Balance: ${cur()}${fmtInputMoney(n)}`;
-          if (skipBtn) {
-            skipBtn.remove();
-            skipBtn = null;
-          }
-          setPct(SL_SETUP_DEFAULT_PCT);
-          confirmBtn.classList.remove("tcSLBtnReveal");
-          requestAnimationFrame(() => confirmBtn.classList.add("tcSLBtnReveal"));
-          confirmBtn.addEventListener("animationend", () => confirmBtn.classList.remove("tcSLBtnReveal"), {
-            once: true,
-          });
-          return;
-        }
-        attempts++;
-        if (attempts >= 10) {
-          meta.textContent = "Waiting for your balance — Quotex may still be loading.";
-          offerSkip();
-        }
-        // 1 s while the page is probably still loading, then every 3 s, for as long as the screen is open.
-        window.__tcSLBalanceTimer = setTimeout(waitForBalance, attempts < 30 ? 1000 : 3000);
-      }
-      window.__tcSLBalanceTimer = setTimeout(waitForBalance, 800);
-      // A background tab throttles timers; re-check as soon as it's shown again.
-      t._tcOnVisible = () => {
-        if (t.isConnected && isNaN(balance)) {
-          waitForBalance();
-        }
-      };
-      document.addEventListener("visibilitychange", t._tcOnVisible);
-    }
-    const KEY_SL_LS_DATE = "__tradeCalc_sl_ls_date",
-      KEY_SL_LS_VALUE = "__tradeCalc_sl_ls_value",
-      KEY_SL_LS_INIT_BAL = "__tradeCalc_sl_ls_init_bal",
-      KEY_SL_TP_LOCK = "__tradeCalc_sl_tp_lock",
-      KEY_SL_TP_LOCK_DATE = "__tradeCalc_sl_tp_lock_date",
-      KEY_SL_LS_TP_LOCK = "__tradeCalc_sl_ls_tp_lock",
-      KEY_SL_LS_TP_LOCK_DATE = "__tradeCalc_sl_ls_tp_lock_date",
-      // v1.24.0: pre-TP trail distance for today (fraction below the peak), set by the SL setup screen.
-      KEY_SL_TRAIL = "__tradeCalc_sl_trail",
-      KEY_SL_LS_TRAIL = "__tradeCalc_sl_ls_trail";
-    function readSlLocalBackup() {
-      try {
-        return {
-          [KEY_SL_DATE]: prefGet(KEY_SL_LS_DATE),
-          [KEY_SL_VALUE]: prefGet(KEY_SL_LS_VALUE),
-          [KEY_SL_INIT_BAL]: prefGet(KEY_SL_LS_INIT_BAL),
-          [KEY_SL_TP_LOCK]: prefGet(KEY_SL_LS_TP_LOCK),
-          [KEY_SL_TP_LOCK_DATE]: prefGet(KEY_SL_LS_TP_LOCK_DATE),
-          [KEY_SL_TRAIL]: prefGet(KEY_SL_LS_TRAIL),
-        };
-      } catch (t) {
-        return {};
-      }
-    }
-    function writeSlLocalBackup(t, e, n, trail) {
-      try {
-        prefSet(KEY_SL_LS_DATE, e);
-        prefSet(KEY_SL_LS_VALUE, String(t));
-        if (!(n == null || isNaN(n))) {
-          prefSet(KEY_SL_LS_INIT_BAL, String(n));
-        }
-        if (typeof trail == "number" && !isNaN(trail)) {
-          prefSet(KEY_SL_LS_TRAIL, String(trail));
-        }
-      } catch (t) {}
-    }
-    let slPeak = NaN,
-      slTpLock = NaN,
-      slArmed = false;
-    // v1.65.0: after TP the SL trails 5% below the day's peak. It was a popup setting; it was never changed.
-    const postTpGapPct = 5;
-    const SL_PRE_TP_TRAIL = 0.2,
-      SL_POST_TP_GAP_DEFAULT = 0.05,
-      SL_POST_TP_GAP_MAX = 0.15;
-    // Pre-TP trail distance for today. 20% by default; a lower SL chosen in the setup screen widens it
-    // so the trailing SL doesn't immediately lift the SL back to 80% of the balance (v1.24.0).
-    let slPreTpTrail = SL_PRE_TP_TRAIL;
-    function slTrailFor(balance, sl) {
-      const gap = 1 - sl / balance;
-      return isFinite(gap) ? Math.min(0.95, Math.max(SL_PRE_TP_TRAIL, Math.round(gap * 10000) / 10000)) : SL_PRE_TP_TRAIL;
-    }
-    function updateTrailingSl(t, e) {
-      if (!slArmed) {
-        return;
-      }
-      const n = (function (t, e, n, o, r, a) {
-        if (isNaN(e) || e <= 0) {
-          return null;
-        }
-        const i = isNaN(a) ? SL_POST_TP_GAP_DEFAULT : Math.min(SL_POST_TP_GAP_MAX, Math.max(0.01, a)),
-          c = isNaN(t) || e > t ? e : t,
-          s = !isNaN(n) && n > 0,
-          l = !isNaN(o) || (s && e >= n),
-          d = isNaN(o) ? (l ? n : NaN) : o,
-          u = l ? Math.max(Math.floor(d), Math.floor(c * (1 - i))) : Math.floor(c * (1 - slPreTpTrail));
-        return {
-          newPeak: c,
-          tpLock: d,
-          newSL: u > (isNaN(r) ? 0 : r) ? u : NaN,
-        };
-      })(slPeak, t, e, slTpLock, parsePlainNumber(slInput ? slInput.value : ""), postTpGapPct / 100);
-      if (!n) {
-        return;
-      }
-      const o = getDayKey(),
-        r = isNaN(slPeak) || n.newPeak > slPeak,
-        a = isNaN(slTpLock) && !isNaN(n.tpLock);
-      slPeak = n.newPeak;
-      slTpLock = n.tpLock;
-      if (a) {
-        try {
-          prefSet(KEY_SL_LS_TP_LOCK, String(n.tpLock));
-          prefSet(KEY_SL_LS_TP_LOCK_DATE, o);
-        } catch (t) {}
-        if (typeof chrome != "undefined" && chrome.storage && chrome.storage.sync) {
-          chrome.storage.sync.set({
-            [KEY_SL_TP_LOCK]: n.tpLock,
-            [KEY_SL_TP_LOCK_DATE]: o,
-          });
-        }
-      }
-      if (isNaN(n.newSL)) {
-        if (r) {
-          try {
-            prefSet(KEY_SL_LS_INIT_BAL, String(n.newPeak));
-          } catch (t) {}
-        }
-      } else {
-        if (typeof chrome != "undefined" && chrome.storage && chrome.storage.sync) {
-          chrome.storage.sync.set({
-            [KEY_SL_VALUE]: n.newSL,
-            [KEY_SL_DATE]: o,
-            [KEY_SL_INIT_BAL]: n.newPeak,
-          });
-        }
-        writeSlLocalBackup(n.newSL, o, n.newPeak);
-        applySl(n.newSL);
-      }
-    }
-    // ────────────────────────────────────────────────────────────────────────────────────────────────
-    // SL bootstrap from storage, font sizes, min payout, sheet URL, logging, theme
-    // ────────────────────────────────────────────────────────────────────────────────────────────────
-    const KEY_SL_ENABLED = "__tradeCalc_sl_enabled";
-    const hasSyncStorage = () => typeof chrome != "undefined" && chrome.storage && chrome.storage.sync;
-    // Picks today's stop loss from synced storage or the localStorage backup (v1.21.1, B14). It used to
-    // trust sync only: when sync had no SL for today (e.g. a dropped write, since storage.sync has write
-    // quotas) the setup screen reappeared even though today's SL was saved locally. Both stores are
-    // written together and the trailing SL only moves up, so if both have today's SL the higher one wins.
-    function pickTodaysSl(syncData) {
-      const today = getDayKey();
-      const candidates = [syncData, readSlLocalBackup()].filter(
-        (s) => s && s[KEY_SL_DATE] === today && parseFloat(s[KEY_SL_VALUE]) > 0,
-      );
-      if (!candidates.length) {
-        return null;
-      }
-      const best = candidates.reduce((a, b) => (parseFloat(b[KEY_SL_VALUE]) > parseFloat(a[KEY_SL_VALUE]) ? b : a));
-      const tpLockSource = candidates.find((s) => s[KEY_SL_TP_LOCK_DATE] === today && parseFloat(s[KEY_SL_TP_LOCK]) > 0);
-      const trail = parseFloat(best[KEY_SL_TRAIL]);
-      return {
-        value: parseFloat(best[KEY_SL_VALUE]),
-        peak: parseFloat(best[KEY_SL_INIT_BAL]),
-        trail: trail > 0 && trail < 1 ? trail : SL_PRE_TP_TRAIL,
-        tpLock: tpLockSource ? parseFloat(tpLockSource[KEY_SL_TP_LOCK]) : NaN,
-        fromSync: best === syncData,
-      };
-    }
-    function applySlSettings(stored, forceEnabled) {
-      if (!forceEnabled && stored[KEY_SL_ENABLED] === false) {
-        disableSl();
-        return;
-      }
-      const sl = pickTodaysSl(stored);
-      if (!sl) {
-        showSlSetup();
-        return;
-      }
-      slPeak = isNaN(sl.peak) ? sl.value / 0.85 : sl.peak;
-      slTpLock = sl.tpLock;
-      slPreTpTrail = sl.trail;
-      slArmed = true;
-      applySl(sl.value);
-      if (!sl.fromSync && hasSyncStorage()) {
-        // Repair sync so other tabs and devices see today's SL too.
-        chrome.storage.sync.set({
-          [KEY_SL_VALUE]: sl.value,
-          [KEY_SL_DATE]: getDayKey(),
-          [KEY_SL_INIT_BAL]: slPeak,
-          [KEY_SL_TRAIL]: slPreTpTrail,
-        });
-      }
-    }
-    // Reads SL settings (sync, falling back to the local backup after 1.5 s) and applies them.
-    // `forceEnabled` is used when the popup switch turns SL on before its storage write has landed.
-    function bootstrapSl(forceEnabled) {
-      let done = false;
-      const once = (stored) => {
-        if (done) {
-          return;
-        }
-        done = true;
-        applySlSettings(stored || readSlLocalBackup(), forceEnabled);
-      };
-      if (!hasSyncStorage()) {
-        once(readSlLocalBackup());
-        return;
-      }
-      const timer = setTimeout(() => once(readSlLocalBackup()), 1500);
-      chrome.storage.sync.get(
-        [
-          KEY_SL_VALUE,
-          KEY_SL_DATE,
-          KEY_SL_ENABLED,
-          KEY_SL_INIT_BAL,
-          KEY_SL_TP_LOCK,
-          KEY_SL_TP_LOCK_DATE,
-          KEY_SL_TRAIL,
-        ],
-        (stored) => {
-          clearTimeout(timer);
-          once(stored);
-        },
-      );
-    }
-    // Turns the stop loss off without a reload (v1.21.1, B10): hides the SL field, stops trailing and
-    // closes the daily setup screen if it's open. The saved SL stays in storage for re-enabling.
-    function disableSl() {
-      slArmed = false;
-      slPeak = NaN;
-      slTpLock = NaN;
-      slPreTpTrail = SL_PRE_TP_TRAIL;
-      if (slInput) {
-        slInput.value = "";
-      }
-      const field = byId("__tcSLFld");
-      if (field) {
-        field.style.display = "none";
-      }
-      const setup = byId("__tcSLSetup");
-      if (setup) {
-        setup.remove();
-      }
-      if (window.__tcSLBlocker) {
-        document.removeEventListener("click", window.__tcSLBlocker, { capture: true });
-        document.removeEventListener("keydown", window.__tcSLBlocker, { capture: true });
-        delete window.__tcSLBlocker;
-      }
-      scheduleRecalc();
-    }
-    bootstrapSl(false);
     const setPanelFontSize = (t) => {
         if (isMobileWidth()) {
           return;
@@ -3071,7 +2575,6 @@
       eqAreaEl = null,
       lastEquity = NaN,
       equityHistory = [];
-    let noTradesSince = Date.now() - 2000;
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Sounds, auto-close of low-payout tabs, trade-button lock
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -3466,12 +2969,7 @@
       }
       const tpRaw = tpInput.value,
         tpValue = parsePlainNumber(tpRaw);
-      if (hasBalance) {
-        updateTrailingSl(balanceNow, tpValue);
-      }
-      const slRaw = slInput.value,
-        slValue = parsePlainNumber(slRaw),
-        minPayout = parseInt(minPayoutInput.value, 10) || 89;
+      const minPayout = parseInt(minPayoutInput.value, 10) || 89;
       if (!isNaN(minPayout)) {
         autoCloseLowPayoutTabs(minPayout);
         maybeAutoOpenPair(minPayout);
@@ -3545,34 +3043,6 @@
         setTpStep(1000);
       } else {
         setTpStep(equity > 20000 ? 10000 : 1000);
-      }
-      if (openPnlEls.length > 0) {
-        noTradesSince = 0;
-      } else if (noTradesSince === 0) {
-        noTradesSince = Date.now();
-        setTimeout(scheduleRecalc, 2000);
-      }
-      const hasSl = !isNaN(slValue) && slValue > 0;
-      if (hasSl && hasBalance && openPnlEls.length === 0 && Date.now() - noTradesSince >= 1800) {
-        if (balanceNow <= slValue) {
-          if (!window.__tcSLBreachNotified) {
-            window.__tcSLBreachNotified = true;
-            try {
-              document.dispatchEvent(
-                new CustomEvent("__tcSLBreach", {
-                  detail: {
-                    balance: balanceNow,
-                    sl: slValue,
-                  },
-                }),
-              );
-            } catch (t) {}
-            // v1.21.0: an SL breach no longer locks anything. It used to lock Quotex's "Set limit"
-            // button for the day and send SYS_LOCK "sl" (6 h site block + close tabs).
-          }
-        } else if (window.__tcSLBreachNotified) {
-          window.__tcSLBreachNotified = false;
-        }
       }
       setText(riskEl, isNaN(riskPct) ? "—" : riskPct.toFixed(2) + "%");
       const riskColor = (function (t) {
@@ -8867,12 +8337,6 @@
             } else {
               undoRelabel();
             }
-          }
-        } else if (t.type === "SET_SL_ENABLED") {
-          if (t.enabled) {
-            bootstrapSl(true);
-          } else {
-            disableSl();
           }
         } else if (t.type === "SET_MTF") {
           if ("tfs" in t) {

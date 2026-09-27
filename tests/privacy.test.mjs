@@ -55,9 +55,9 @@ test("privacy: no __tradeCalc_* keys are left in page storage", async () => {
   try {
     const keys = Object.keys(qx.window.localStorage);
     assert.equal(keys.filter((k) => /^__tradeCalc|^tc_pos$/.test(k)).length, 0, "old names are gone: " + keys.join(","));
-    // The values still work: today's SL is stored under its opaque name (the trailing SL may have raised it).
-    assert.ok(Number(pref(qx, "__tradeCalc_sl_ls_value")) >= 10000, "SL value kept");
-    assert.equal(pref(qx, "__tradeCalc_sl_ls_date"), istToday());
+    // The values still work: the SL is stored under its opaque name, exactly as it was set (v1.67.0: nothing
+    // trails it any more).
+    assert.equal(pref(qx, "__tradeCalc_sl"), "10000", "SL value kept");
     assert.ok(keys.length > 0 && keys.every((k) => /^q[0-9a-z]+$/.test(k)), "opaque names only: " + keys.join(","));
   } finally {
     qx.close();

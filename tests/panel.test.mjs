@@ -224,74 +224,6 @@ test("bug 4: Cmd+↑ steps from the full formatted value (not 20 from \"20,000.0
   assert.equal(await pressTpStep("metaKey"), "21000");
 });
 
-// ── v1.21.1: B14 SL setup source, B10 live popup SL switch ─────────────────────────────────────────
-
-test("B14: today's SL in the local backup is used when sync has none, and sync is repaired", async () => {
-  const qx = await boot({ storage: slStorage(14466), sync: { __tradeCalc_sl_value: 12000, __tradeCalc_sl_date: "2026-01-01" } });
-  try {
-    assert.equal(slSetupOpen(qx), false, "no setup screen");
-    assert.equal(slShown(qx), "14,466.00");
-    const data = qx.window.chrome.storage.sync.data;
-    assert.equal(data.__tradeCalc_sl_value, 14466);
-    assert.equal(data.__tradeCalc_sl_date, istToday());
-  } finally {
-    qx.close();
-  }
-});
-
-test("B14: when sync and local both have today's SL, the higher (trailed) one wins", async () => {
-  const qx = await boot({
-    storage: slStorage(13000),
-    sync: { __tradeCalc_sl_value: 13500, __tradeCalc_sl_date: istToday(), __tradeCalc_sl_init_bal: 15228 },
-  });
-  try {
-    assert.equal(slShown(qx), "13,500.00");
-  } finally {
-    qx.close();
-  }
-});
-
-test("B14: with no SL saved for today anywhere, the setup screen still appears", async () => {
-  const storage = { __tradeCalc_tb: "20000" };
-  const qx = await boot({ storage, sync: {} });
-  try {
-    assert.equal(slSetupOpen(qx), true);
-  } finally {
-    qx.close();
-  }
-});
-
-test("B10: the popup SL switch applies without a reload", async () => {
-  const qx = await boot();
-  try {
-    const field = qx.panelRoot().getElementById("__tcSLFld");
-    assert.notEqual(field.style.display, "none", "SL shown at start");
-    const before = slShown(qx); // 12,182.00: the trailing SL lifts 10,000 to 20% below the 15,228 peak
-    assert.ok(before);
-    await qx.sendToPanel({ type: "SET_SL_ENABLED", enabled: false });
-    assert.equal(field.style.display, "none", "hidden after switching off");
-    assert.equal(slShown(qx), "");
-    await qx.sendToPanel({ type: "SET_SL_ENABLED", enabled: true });
-    assert.notEqual(field.style.display, "none", "shown again after switching on");
-    assert.equal(slShown(qx), before);
-  } finally {
-    qx.close();
-  }
-});
-
-test("B10: switching SL off closes an open setup screen and its click blocker", async () => {
-  const qx = await boot({ storage: { __tradeCalc_tb: "20000" } });
-  try {
-    assert.equal(slSetupOpen(qx), true);
-    await qx.sendToPanel({ type: "SET_SL_ENABLED", enabled: false });
-    assert.equal(slSetupOpen(qx), false);
-    assert.equal(qx.window.__tcSLBlocker, undefined);
-  } finally {
-    qx.close();
-  }
-});
-
-
 // ── v1.54.0: the build is on the panel, not only in the popup ──────────────────────────────────────
 
 test("panel: the build it is running is visible on the panel (v1.54.0)", async () => {
@@ -356,9 +288,6 @@ test("SL: lowering it by hand is not undone by the trail (v1.64.0)", async () =>
     await sleep(2600);
     assert.equal(pref(qx, "__tradeCalc_sl"), "9000", "the lower SL was kept: " + pref(qx, "__tradeCalc_sl"));
     assert.equal(parseFloat(String(slShown(qx)).replace(/,/g, "")), 9000, "and is what the panel shows: " + slShown(qx));
-    // The day's trail gap widened to match, which is what makes it stick rather than luck.
-    const trail = parseFloat(pref(qx, "__tradeCalc_sl_ls_trail"));
-    assert.ok(trail > 0.2, "the trail gap widened past the 20% default: " + trail);
   } finally {
     qx.close();
   }
@@ -405,20 +334,6 @@ test("SL: a very low typed value is kept, not lifted to 5% of the peak (v1.64.1)
     await sleep(2600); // several trailing passes
     assert.equal(pref(qx, "__tradeCalc_sl"), "1", "the SL that was typed is the SL in force: " + pref(qx, "__tradeCalc_sl"));
     assert.equal(parseFloat(String(slShown(qx)).replace(/,/g, "")), 1, "and the panel shows it: " + slShown(qx));
-    const trail = parseFloat(pref(qx, "__tradeCalc_sl_ls_trail"));
-    assert.ok(trail > 0.95, "the gap went past the trail's own 0.95 cap: " + trail);
-  } finally {
-    qx.close();
-  }
-});
-
-test("SL: the trail's own 5% limit still applies when it is trailing (v1.64.1)", async () => {
-  // Only an explicit edit is exempt. Nothing here touches slTrailFor, which the daily setup screen uses.
-  const qx = await boot({ storage: slStorage(10000) });
-  try {
-    await sleep(2600);
-    const trail = parseFloat(pref(qx, "__tradeCalc_sl_ls_trail") || "0.2");
-    assert.ok(trail <= 0.95, "the automatic trail gap is still capped: " + trail);
   } finally {
     qx.close();
   }
@@ -476,6 +391,78 @@ test("sections: every group of the panel shows, whatever an older setting said (
       assert.ok(root.getElementById(id), id + " is on the panel");
     }
     assert.equal(pref(qx, "__tradeCalc_visibility"), null, "and the old setting is cleared");
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.67.0: the SL is one number, kept until it is changed ─────────────────────────────────────
+// No daily setup screen, no trailing, no per-day backup. The SL does nothing when the balance reaches it -
+// the lock went in v1.21.0 and the breach signal left behind had no listener - so it is a reference the
+// trader keeps, and the only thing that changes it is the trader.
+
+test("SL: the field is on the panel even with no SL set, and no setup screen appears (v1.67.0)", async () => {
+  const qx = await boot({ storage: { __tradeCalc_tb: "20000" } });
+  try {
+    await sleep(600);
+    const root = qx.panelRoot();
+    assert.equal(root.getElementById("__tcSLSetup"), null, "no setup screen");
+    const fld = root.getElementById("__tcSLFld");
+    assert.ok(fld, "the SL field is there");
+    assert.notEqual(fld.style.display, "none", "and shown, so there is somewhere to type one");
+    assert.notEqual(slField(qx).style.display, "none", "the input too");
+    assert.equal(slField(qx).value, "", "empty until one is typed");
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL: yesterday's SL is still the SL today - nothing asks again (v1.67.0)", async () => {
+  const yesterday = new Date(Date.now() - 36 * 3600000).toISOString().slice(0, 10);
+  const qx = await boot({ storage: { ...slStorage(10000), __tradeCalc_sl_ls_date: yesterday } });
+  try {
+    await sleep(600);
+    assert.equal(qx.panelRoot().getElementById("__tcSLSetup"), null, "no setup screen on a new day");
+    assert.equal(parseFloat(String(slShown(qx)).replace(/,/g, "")), 10000, "the SL is exactly what it was: " + slShown(qx));
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL: it does not move when the balance is above it (v1.67.0)", async () => {
+  // Balance 15,228 against an SL of 10,000: the trail used to lift it to 15,228 x 0.8 = 12,182 on its own.
+  const qx = await boot({ storage: slStorage(10000) });
+  try {
+    await sleep(2800); // several recalc passes
+    assert.equal(pref(qx, "__tradeCalc_sl"), "10000", "stored as set: " + pref(qx, "__tradeCalc_sl"));
+    assert.equal(parseFloat(String(slShown(qx)).replace(/,/g, "")), 10000, "shown as set: " + slShown(qx));
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL: clearing the field and pressing Enter removes it (v1.67.0)", async () => {
+  // This replaces the popup's Daily SL Setup switch as the way to have no SL.
+  const qx = await boot({ storage: slStorage(10000) });
+  try {
+    await sleep(600);
+    commitSl(qx, "");
+    await sleep(200);
+    assert.equal(pref(qx, "__tradeCalc_sl"), null, "no SL stored");
+    assert.equal(slField(qx).value, "", "and the field is empty");
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL: the per-day backup is cleared on load, the SL itself is not (v1.67.0)", async () => {
+  const qx = await boot({ storage: slStorage(10000) });
+  try {
+    await sleep(300);
+    for (const k of ["__tradeCalc_sl_ls_date", "__tradeCalc_sl_ls_value", "__tradeCalc_sl_ls_init_bal"]) {
+      assert.equal(pref(qx, k), null, k + " is gone");
+    }
+    assert.equal(pref(qx, "__tradeCalc_sl"), "10000", "__tradeCalc_sl stays");
   } finally {
     qx.close();
   }

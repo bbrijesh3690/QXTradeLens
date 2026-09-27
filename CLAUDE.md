@@ -165,6 +165,12 @@ check will say so if only one happened.
   **v1.66.0** took the trade-history "Entry" tags (the trade log they read stays: `projectedPayout` prices an
   open trade from it when the store cannot) and the popup's Section show/hide toggles - every group of the
   panel is always shown.
+  **v1.67.0** reduced the SL to one stored number, `__tradeCalc_sl`, kept until the user changes it: no daily
+  setup screen, no trailing (pre- or post-TP), no per-day local/sync backup, no popup switch, and no
+  `__tcSLBreach` event - it had no listener, so the SL has done nothing on breach since v1.21.0. The field is
+  always on the panel; empty + Enter clears it. Do not delete `__tradeCalc_sl` in any clean-up: it is the
+  SL. `getDayKey` stays - TP saving dates itself by the trading day, and the account timezone is now
+  cached the first time that happens rather than at load.
 - Offered and not started: a sound for the trend-flip mark (left visual on purpose — a tone mid-trade
   is intrusive and gives no clue which chart it came from), and per-asset rather than per-timeframe
   zoom memory.

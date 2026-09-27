@@ -5,6 +5,39 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.67.0] - 2026-09-28
+
+### Changed
+- **The SL is one number, and it stays until you change it.** Type it into the panel and press Enter; it is
+  kept across refreshes and across days, and nothing moves it but you. The field is always on the panel -
+  it used to stay hidden until the daily setup screen had been answered - and clearing it then pressing
+  Enter removes the SL, which replaces the popup switch that turned it off. Escape cancels. A number at or
+  above the balance is still refused: not as a safety stop, but because it is almost always a slipped digit.
+
+### Removed
+- **The daily SL setup screen**, which covered the page once per trading day and blocked it until a number
+  was entered.
+- **Trailing**: the SL rising 20% below the day's peak, and the post-TP rule that floored it 5% below the
+  peak once TP was reached.
+- **The per-day SL bookkeeping** - its local backup and its Chrome-sync copy across devices - and the
+  popup's **Daily SL Setup** switch. The SL is now per browser profile.
+- **The SL breach signal.** When the balance reached the SL the panel fired `__tcSLBreach`, and nothing
+  listened: the lock it once triggered was removed in v1.21.0. So the SL has done nothing on breach for a
+  long time, which is why removing the screen and the trailing costs no protection. Found by tracing every
+  reader of the SL before cutting.
+- About 11 KB of the page script (176.0 KB -> 165.2 KB built), and the stored per-day values, cleared on
+  load. **`__tradeCalc_sl`, the SL itself, is deliberately kept** - on the reporting page it held `1`, and it
+  still does.
+
+### Tests
+- Twelve specs for the removed screen, backup and switch are gone, along with one that had started passing
+  for nothing (it checked a trail gap that is no longer written and fell back to a passing default). The
+  timezone specs used the setup screen to observe the trading day; they now observe it through the TP date.
+  Five new specs, all failing on 1.66.0: the field is there with no SL set, yesterday's SL is still today's,
+  the SL does not move when the balance is above it, an empty field clears it, and the per-day backup is
+  cleared while the SL is not. The shared fixture now seeds `__tradeCalc_sl`, without which several SL specs
+  had been passing on an empty field.
+
 ## [1.66.0] - 2026-09-28
 
 ### Removed

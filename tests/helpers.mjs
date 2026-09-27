@@ -26,6 +26,10 @@ const istToday = () => new Date(Date.now() + 19800000).toISOString().slice(0, 10
 // Today's stop loss in the local backup, so boot skips the daily SL setup modal. Peak balance and a
 // take profit above the balance keep the trailing SL from moving during the test.
 const slStorage = (sl) => ({
+  // v1.67.0: the SL is this one value, kept until it is changed. The _ls_ keys below are the per-day backup
+  // the panel used to keep; it now deletes them on load, and they stay here only as what an existing
+  // install has in storage.
+  __tradeCalc_sl: String(sl),
   __tradeCalc_sl_ls_date: istToday(),
   __tradeCalc_sl_ls_value: String(sl),
   __tradeCalc_sl_ls_init_bal: "15228",

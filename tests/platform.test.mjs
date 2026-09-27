@@ -221,143 +221,45 @@ test("perf: the scheduler still runs periodic work (v1.65.0: the diagnostics lin
   }
 });
 
-// ── v1.24.0: editable SL setup, account timezone, any-language fallbacks, clean page head ──────────
-
-test("SL setup: suggests 85% of the balance in an editable field", async () => {
-  const { qx, input, confirm } = await openSetup();
-  try {
-    assert.equal(input.disabled, false);
-    assert.equal(input.value, "12943"); // floor(15,228 × 0.85)
-    assert.equal(confirm.disabled, false);
-    assert.match(confirm.textContent, /Set SL: ₹12,943\.00/);
-  } finally {
-    qx.close();
-  }
-});
-
-test("SL setup: a typed amount is saved and not pulled back up by the trailing SL", async () => {
-  const { qx, root, input, confirm } = await openSetup();
-  try {
-    typeInto(qx, input, "10,500");
-    assert.equal(root.getElementById("__tcSLSetupPct").textContent, "69%");
-    confirm.click();
-    await sleep(900); // close animation + a few recalc ticks (trailing SL runs on recalc)
-    assert.equal(root.getElementById("__tcSLSetup"), null, "setup closed");
-    assert.equal(root.getElementById("__tcSLInput").value, "10,500.00", "SL kept at the typed value");
-    assert.equal(pref(qx, "__tradeCalc_sl_ls_value"), "10500");
-    assert.equal(pref(qx, "__tradeCalc_sl_ls_trail"), String(Math.round((1 - 10500 / 15228) * 10000) / 10000));
-  } finally {
-    qx.close();
-  }
-});
-
-test("SL setup: % buttons fill the amount, and an amount at or above the balance can't be confirmed", async () => {
-  const { qx, root, input, confirm } = await openSetup();
-  try {
-    root.querySelector('[data-sl-pct="75"]').click();
-    assert.equal(input.value, "11421"); // floor(15,228 × 0.75)
-    typeInto(qx, input, "15228");
-    assert.equal(confirm.disabled, true);
-    assert.match(confirm.textContent, /below your balance/);
-  } finally {
-    qx.close();
-  }
-});
-
-test("SL setup: Enter in the field confirms", async () => {
-  const { qx, root, input } = await openSetup();
-  try {
-    typeInto(qx, input, "12000");
-    input.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    await sleep(400);
-    assert.equal(root.getElementById("__tcSLInput").value, "12,000.00");
-  } finally {
-    qx.close();
-  }
-});
-
-test("SL setup: a zero balance says so instead of 'Balance not found', and unblocks the page (v1.24.5)", async () => {
-  // A live account with no funds: the balance reads ₹0.00, which used to be treated as unreadable.
-  const html = FIXTURE.replace("₹15,228.00", "₹0.00");
-  const qx = await boot({ storage: noSl, html });
-  await sleep(2000);
-  try {
-    const root = qx.panelRoot();
-    assert.match(root.getElementById("__tcSLSetupMeta").textContent, /no funds|once the account has funds/i);
-    assert.equal(root.getElementById("__tcSLConfirmBtn").disabled, true);
-    assert.ok(root.getElementById("__tcSLSkipBtn"), "a way out of the screen");
-    // The page must not stay click-blocked.
-    let clicked = false;
-    const up = qx.window.document.querySelector("#trade-button button");
-    up.addEventListener("click", () => (clicked = true));
-    up.dispatchEvent(new qx.window.MouseEvent("click", { bubbles: true, cancelable: true }));
-    assert.equal(clicked, true, "page clicks work again");
-    // When the account is funded (or switched), the screen picks the balance up.
-    qx.window.document.querySelector(".Zt1hG").textContent = "₹15,228.00";
-    await sleep(2600);
-    assert.equal(root.getElementById("__tcSLSetupInput").value, "12943");
-    assert.equal(root.getElementById("__tcSLSkipBtn"), null, "skip button gone once a balance exists");
-  } finally {
-    qx.close();
-  }
-});
-
-test("SL setup: keeps waiting when the balance is slow, and offers a way out (v1.24.5)", async () => {
-  const html = FIXTURE.replace('<div class="Zt1hG">₹15,228.00</div>', "");
-  const qx = await boot({ storage: noSl, html });
-  try {
-    const root = qx.panelRoot();
-    await sleep(11000); // the skip button appears after ~10 tries
-    assert.match(root.getElementById("__tcSLSetupMeta").textContent, /Waiting for your balance/i);
-    assert.ok(root.getElementById("__tcSLSkipBtn"), "skip offered instead of a dead end");
-    assert.equal(qx.window.__tcSLBlocker, undefined, "page no longer blocked");
-    // Still watching: a balance that appears later is picked up.
-    const bal = qx.window.document.createElement("div");
-    bal.className = "Zt1hG";
-    bal.textContent = "₹15,228.00";
-    qx.window.document.querySelector(".zfJUm").appendChild(bal);
-    await sleep(3200);
-    assert.equal(root.getElementById("__tcSLSetupInput").value, "12943");
-  } finally {
-    qx.close();
-  }
-});
-
-test("SL setup: page clicks stay blocked while the setup screen is open", async () => {
-  const { qx } = await openSetup();
-  try {
-    let clicked = false;
-    const up = qx.window.document.querySelector("#trade-button button");
-    up.addEventListener("click", () => (clicked = true));
-    up.dispatchEvent(new qx.window.MouseEvent("click", { bubbles: true, cancelable: true }));
-    assert.equal(clicked, false);
-  } finally {
-    qx.close();
-  }
-});
+// ── v1.24.0: account timezone, any-language fallbacks, clean page head ──────────
 
 test("timezone: the trading day follows the account timezone from the store and is cached", async () => {
-  const qx = await boot({ storage: slForDay(dayKeyAt(50400)), store: quotexStore({ timeZone: 50400 }) });
+  // The SL setup screen used to be what exercised this; it went in v1.67.0. The trading day now dates the TP
+  // you save, so that is where it is observed: UTC+14 and UTC-10 are always on different calendar days.
+  const saveTp = (qx) => {
+    const tp = qx.panelRoot().getElementById("__tcTBInput");
+    tp.focus();
+    typeInto(qx, tp, "25000");
+    tp.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  };
+  const qx = await boot({ store: quotexStore({ timeZone: 50400 }) });
   try {
-    assert.equal(qx.panelRoot().getElementById("__tcSLSetup"), null, "today's SL (UTC+14 day) recognized");
-    assert.equal(pref(qx, "__tradeCalc_tz_offset_sec"), "50400");
+    await sleep(300);
+    saveTp(qx);
+    assert.equal(pref(qx, "__tradeCalc_tp_manual_date"), dayKeyAt(50400), "the TP is dated by the account's day");
+    assert.equal(pref(qx, "__tradeCalc_tz_offset_sec"), "50400", "and the timezone is cached");
   } finally {
     qx.close();
   }
-  const other = await boot({ storage: slForDay(dayKeyAt(50400)), store: quotexStore({ timeZone: -36000 }) });
+  const other = await boot({ store: quotexStore({ timeZone: -36000 }) });
   try {
     await sleep(300);
-    assert.ok(other.panelRoot().getElementById("__tcSLSetup"), "a different day in UTC−10 asks for a new SL");
+    saveTp(other);
+    assert.equal(pref(other, "__tradeCalc_tp_manual_date"), dayKeyAt(-36000), "a UTC-10 account dates it by its own day");
   } finally {
     other.close();
   }
 });
 
 test("timezone: without the store the cached timezone is used", async () => {
-  const storage = { ...slForDay(dayKeyAt(50400)), __tradeCalc_tz_offset_sec: "50400" };
-  const qx = await boot({ storage });
+  const qx = await boot({ storage: { ...slStorage(10000), __tradeCalc_tz_offset_sec: "50400" } });
   try {
-    assert.equal(qx.panelRoot().getElementById("__tcSLSetup"), null);
+    await sleep(300);
+    const tp = qx.panelRoot().getElementById("__tcTBInput");
+    tp.focus();
+    typeInto(qx, tp, "25000");
+    tp.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    assert.equal(pref(qx, "__tradeCalc_tp_manual_date"), dayKeyAt(50400), "the cached UTC+14 day was used");
   } finally {
     qx.close();
   }
