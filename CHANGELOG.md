@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.60.1] - 2026-09-27
+
+### Fixed
+- **The sweep's note in the diagnostics line says when it was written.** `sweepNote` is only replaced by the
+  next press, so with no age on it the field read as a verdict on the press just made. Seen within an hour
+  of shipping 1.60.0: the line said `every open pair is already current` while four open pairs held no
+  candles at all — that note was written earlier, when one already-current pair was the only tab open, and
+  it was believed for a moment before the `stale` numbers contradicted it. It now reads
+  `every open pair is already current · 42m ago`. One setter (`setSweepNote`) records the time, so no site
+  can leave a note without one.
+
 ## [1.60.0] - 2026-09-27
 
 ### Added

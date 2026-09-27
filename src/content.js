@@ -8186,7 +8186,12 @@
     const barsBehind = (lastT, periodSec, nowSec) =>
       Math.max(0, nowSec - lastT - (periodSec > 0 ? periodSec : 0));
     let sweepState = null,
-      sweepNote = "";
+      sweepNote = "",
+      sweepNoteAt = 0;
+    const setSweepNote = (t) => {
+      sweepNote = t || "";
+      sweepNoteAt = sweepNote ? Date.now() : 0;
+    };
     const symbolOfTab = (tab) => (tab && tab.getAttribute ? tab.getAttribute("data-symbol") : null);
     // Every open pair whose candles have fallen behind, stalest first. A pair already current is left
     // alone - the point is to spend chart time only where it buys something.
@@ -8255,7 +8260,7 @@
     function sweepFinish(note) {
       const back = sweepState && sweepState.back;
       sweepState = null;
-      sweepNote = note || "";
+      setSweepNote(note);
       if (window.__tcSweepTimer) {
         clearTimeout(window.__tcSweepTimer);
         delete window.__tcSweepTimer;
@@ -8335,7 +8340,7 @@
         return;
       }
       const stop = (why) => {
-        sweepNote = why;
+        setSweepNote(why);
         renderSweep(panel);
       };
       if (document.hidden) {
@@ -8352,7 +8357,7 @@
         return stop("every open pair is already current");
       }
       sweepState = { list, idx: 0, done: 0, back: mtfSymbol, at: "", stop: false };
-      sweepNote = "";
+      setSweepNote("");
       renderSweep(panel);
       sweepStep();
     }
@@ -9142,7 +9147,9 @@
                 " of " +
                 sweepState.list.length +
                 (sweepState.at ? " · at " + sweepState.at : "")
-              : sweepNote || "idle",
+              : sweepNote
+                ? sweepNote + " · " + fmtAgo(Math.round((Date.now() - sweepNoteAt) / 1000))
+                : "idle",
             // Seconds behind per open pair, by the same measure the sweep picks its targets with. A number
             // over 90 is what the sweep exists to bring down; null means no candles are held at all.
             stale: (() => {

@@ -610,3 +610,27 @@ test("sweep: a press is visible in the line while it runs, and its result after 
     qx.close();
   }
 });
+
+test("sweep: the note in the line says how long ago it was written (v1.60.1)", async () => {
+  // v1.60.0 reported the note with no age, so it read as a verdict on the press just made. Live, the line
+  // said "every open pair is already current" while four pairs held no candles at all - that note had been
+  // written an hour earlier, when one current pair was the only tab open.
+  const qx = await bootSweep();
+  try {
+    await sleep(2400);
+    press(qx, sweepBtn(qx));
+    await sleep(300);
+    press(qx, sweepBtn(qx)); // stop, which leaves a note behind
+    await sleep(2400);
+    const first = String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").sweep);
+    assert.match(first, /stopped/, "a note was left: " + first);
+    assert.match(first, /[0-9]+s ago/, "and it carries its own age: " + first);
+    const age1 = parseInt(first.match(/([0-9]+)s ago/)[1], 10);
+    await sleep(4400);
+    const later = String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").sweep);
+    const age2 = parseInt(later.match(/([0-9]+)s ago/)[1], 10);
+    assert.ok(age2 > age1, "which grows, so it cannot be mistaken for a fresh one: " + first + " -> " + later);
+  } finally {
+    qx.close();
+  }
+});
