@@ -3779,11 +3779,23 @@
       }
     };
     let lastAutoCloseAt = 0,
-      autoCloseRunning = false;
+      autoCloseRunning = false,
+      // v1.61.0: when auto-close last actually removed a tab. A tab that has gone is a real change to the
+      // board, unlike a payout dipping for one pass, so the replacement does not sit out the settle window.
+      autoCloseClosedAt = 0;
     function autoCloseStep(t, e) {
-      if (e >= 20) {
+      // `e` counts the tabs this run has closed. A run that closed something hands straight over to the
+      // replacement instead of leaving it to the next five-second pass - that plus the settle window is
+      // nine seconds of staring at a board that has just lost a pair.
+      const finish = () => {
         autoCloseRunning = false;
-        return;
+        if (e > 0) {
+          autoCloseClosedAt = Date.now();
+          maybeAutoOpenPair(t);
+        }
+      };
+      if (e >= 20) {
+        return finish();
       }
       const n = getPairTabs().find((e) => {
         const n = tabPayout(e);
@@ -3791,16 +3803,14 @@
         return !isNaN(n) && n < t && !tabHasOpenTrade(e) && !!getTabCloseBtn(e);
       });
       if (!n) {
-        autoCloseRunning = false;
-        return;
+        return finish();
       }
       const tabsBefore = getPairTabs().length;
       synthClick(getTabCloseBtn(n));
       window.__tcAutoCloseStepTimer = setTimeout(() => {
         // Stop if the click didn't close anything, instead of clicking again every 300 ms (v1.24.4).
         if (getPairTabs().length >= tabsBefore) {
-          autoCloseRunning = false;
-          return;
+          return finish();
         }
         autoCloseStep(t, e + 1);
       }, 300);
@@ -5676,10 +5686,17 @@
     // only the fallback for choosing when the bridge cannot answer.
     const AUTO_OPEN_AGAIN_MS = 30000,
       // A payout that dips for a single pass is not a reason to open a pair; it has to stay down.
-      AUTO_OPEN_SETTLE_MS = 4000;
+      AUTO_OPEN_SETTLE_MS = 4000,
+      // v1.61.0: how many pairs the board keeps at or above the floor. Two, because one is not a choice -
+      // with a single pair left there is nothing to switch to when it turns, which is the position the old
+      // rule walked into: it waited for EVERY pair to fall below, so two open and the weaker one dropping
+      // meant auto-close took it and the survivor, being above the floor, was never given company.
+      AUTO_OPEN_MIN_GOOD = 2,
+      // How long after auto-close removed a tab the replacement treats the shortfall as already proven.
+      AUTO_OPEN_AFTER_CLOSE_MS = 15000;
     let lastAutoOpenAt = 0,
       autoOpenBusy = false,
-      allBelowSince = 0,
+      tooFewGoodSince = 0,
       // v1.54.1: why this did or did not act, for the diagnostics line. Whether a pair SHOULD have been
       // opened cannot be judged from outside the tab without the payouts it was looking at.
       autoOpenReason = "starting up";
@@ -5834,19 +5851,32 @@
       if (!payouts.length) {
         return stop("no pair tabs");
       }
-      if (payouts.some((p) => p >= min)) {
-        allBelowSince = 0;
-        return stop("a pair is at or above " + min + "%");
+      const good = payouts.filter((p) => p >= min).length;
+      if (good >= AUTO_OPEN_MIN_GOOD) {
+        tooFewGoodSince = 0;
+        return stop(good + " pairs at or above " + min + "%");
       }
-      if (!allBelowSince) {
-        allBelowSince = now;
-        return stop("every pair below " + min + "% - waiting to see if it holds");
+      const short = good + " of " + payouts.length + " at or above " + min + "%";
+      // Being thin is not on its own a reason to add a pair - the board is the trader's, and a single tab
+      // they chose to sit on is not a fault. What makes it a reason is the board LOSING something: a pair
+      // that has fallen below the floor, or one auto-close has just taken away.
+      const justClosed = now - autoCloseClosedAt < AUTO_OPEN_AFTER_CLOSE_MS;
+      if (!payouts.some((p) => p < min) && !justClosed) {
+        tooFewGoodSince = 0;
+        return stop(short + ", none below it");
       }
-      if (now - allBelowSince < AUTO_OPEN_SETTLE_MS) {
-        return stop("every pair below " + min + "% - waiting to see if it holds");
+      // A tab auto-close has just removed is not a flicker, so the replacement does not wait it out.
+      if (!justClosed) {
+        if (!tooFewGoodSince) {
+          tooFewGoodSince = now;
+          return stop(short + " - waiting to see if it holds");
+        }
+        if (now - tooFewGoodSince < AUTO_OPEN_SETTLE_MS) {
+          return stop(short + " - waiting to see if it holds");
+        }
       }
-      allBelowSince = 0;
-      autoOpenReason = "every pair below " + min + "% - opening one";
+      tooFewGoodSince = 0;
+      autoOpenReason = short + " - opening one";
       autoOpenBetterPair(min);
     }
     function closeAssetDropdown() {

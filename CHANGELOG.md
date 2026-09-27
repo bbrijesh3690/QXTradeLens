@@ -5,6 +5,28 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.61.0] - 2026-09-27
+
+### Changed
+- **The payout floor keeps two pairs clear of it, not one.** Auto-open only acted once *every* open pair had
+  fallen below the floor, which let the board shrink a tab at a time: two pairs open, the weaker one drops,
+  the close pass takes it, and the survivor — being above the floor — was never given company. The next dip
+  left a single pair with no close control and nothing to switch to. It now opens a replacement whenever
+  fewer than two open pairs clear the floor **and** the board is losing something: a pair has fallen below
+  it, or auto-close has just removed one.
+- **The replacement starts as soon as the close finishes.** A tab auto-close actually removed is a real
+  change to the board, not a payout flickering for one pass, so it does not sit out the settle window on
+  top of waiting for the next five-second pass — that was about nine seconds of looking at a board which
+  had just lost a pair. `autoCloseStep` hands over directly when it has closed something. Sequenced rather
+  than literally simultaneous, deliberately: both of these move the tab bar, and interleaving a close click
+  with opening the asset list is how the board gets corrupted.
+- **Thin is not the same as losing something.** One tab that clears the floor, with nothing below it and
+  nothing just closed, is left alone — the board is the trader's, and a single pair they chose to sit on is
+  not a fault to correct. The v1.54.0 behaviour in that case is unchanged, and its spec still covers it.
+- **The diagnostics line counts instead of generalising**: `1 of 2 at or above 90% - opening one`,
+  `2 pairs at or above 90%`, or `1 of 1 at or above 90%, none below it`. The old wording said
+  "every pair below 90%", which could not distinguish one pair from five.
+
 ## [1.60.1] - 2026-09-27
 
 ### Fixed

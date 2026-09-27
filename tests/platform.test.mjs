@@ -619,6 +619,101 @@ test("payout floor: a pair above it is reason enough to open nothing (v1.54.0)",
   }
 });
 
+// ── v1.61.0: the board is topped up as it loses pairs, not only once it has lost them all ────────
+// The old rule waited for EVERY open pair to fall below the floor. Two open, the weaker one drops, and
+// auto-close takes it - leaving one tab which, being above the floor, was never given company. The next
+// dip left a single pair with nothing to switch to. It now keeps two pairs clear of the floor.
+
+test("payout floor: closing the weaker of two pairs opens a replacement (v1.61.0)", async () => {
+  const store = quotexStore({ payout: 91 });
+  store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  // The tab in the fixture pays 91% - over the floor. Beside it, one at 70% with a working close button:
+  // exactly the position the old rule walked into.
+  const lowTab =
+    '<div class="dJ15T vXMlv" data-symbol="EURJPY_otc"><div class="WRocw">EUR/JPY (OTC)</div><div class="ElyTP">70 %</div>' +
+    '<button id="closeLow" aria-label="Close"><svg class="icon-close-tiny"><use href="#icon-close-tiny"></use></svg></button></div>';
+  const html = lowTabWithAssetList()
+    .replace('<div class="ElyTP">70 %</div>', '<div class="ElyTP">91 %</div>')
+    .replace('<span class="UI2Kh">70 %</span>', '<span class="UI2Kh">91 %</span>')
+    .replace('<div class="ElyTP">91 %</div>\n          </div>', '<div class="ElyTP">91 %</div>\n          </div>' + lowTab);
+  const clicked = [];
+  const setup = (w) => {
+    w.document.getElementById("closeLow").addEventListener("click", (e) => e.currentTarget.closest("[data-symbol]").remove());
+    ["rowEur", "rowAud", "rowGbp"].forEach((id) =>
+      w.document.getElementById(id).addEventListener("click", (e) => {
+        const el = e.currentTarget;
+        if (clicked.includes(el.id)) return;
+        clicked.push(el.id);
+        const tab = w.document.createElement("div");
+        tab.className = "dJ15T vXMlv";
+        tab.setAttribute("data-symbol", "AUDCAD_otc");
+        tab.innerHTML = '<div class="WRocw">' + el.querySelector(".teoXG").textContent + '</div><div class="ElyTP">93 %</div>';
+        w.document.querySelector(".Q02Z1").appendChild(tab);
+      }),
+    );
+  };
+  const qx = await boot({ html, store, setup });
+  try {
+    await sleep(7000);
+    assert.equal(qx.window.document.querySelector('[data-symbol="EURJPY_otc"]'), null, "the pair below the floor was closed");
+    assert.deepEqual(clicked, ["rowAud"], "and a replacement above it was opened, once: " + clicked.join(","));
+  } finally {
+    qx.close();
+  }
+});
+
+test("payout floor: two pairs already clear of it are left alone (v1.61.0)", async () => {
+  // Three tabs, two of them over the floor. Closing the third leaves two - which is the target, so the
+  // asset list is never touched. The rule tops the board up; it does not grow it.
+  const store = quotexStore({ payout: 91 });
+  const tab = (sym, name, pct, btn) =>
+    '<div class="dJ15T vXMlv" data-symbol="' + sym + '"><div class="WRocw">' + name + '</div><div class="ElyTP">' + pct + ' %</div>' +
+    (btn ? '<button id="' + btn + '" aria-label="Close"><svg class="icon-close-tiny"><use href="#icon-close-tiny"></use></svg></button>' : "") +
+    "</div>";
+  const html = lowTabWithAssetList()
+    .replace('<div class="ElyTP">70 %</div>', '<div class="ElyTP">91 %</div>')
+    .replace('<span class="UI2Kh">70 %</span>', '<span class="UI2Kh">91 %</span>')
+    .replace(
+      '<div class="ElyTP">91 %</div>\n          </div>',
+      '<div class="ElyTP">91 %</div>\n          </div>' + tab("CHFJPY_otc", "CHF/JPY (OTC)", 92, null) + tab("EURJPY_otc", "EUR/JPY (OTC)", 70, "closeLow"),
+    );
+  const clicked = [];
+  const setup = (w) => {
+    w.document.getElementById("closeLow").addEventListener("click", (e) => e.currentTarget.closest("[data-symbol]").remove());
+    ["rowEur", "rowAud", "rowGbp"].forEach((id) =>
+      w.document.getElementById(id).addEventListener("click", (e) => clicked.push(e.currentTarget.id)),
+    );
+  };
+  const qx = await boot({ html, store, setup });
+  try {
+    await sleep(7000);
+    assert.equal(qx.window.document.querySelector('[data-symbol="EURJPY_otc"]'), null, "the pair below the floor still goes");
+    assert.deepEqual(clicked, [], "but nothing was opened - two pairs already clear it: " + clicked.join(","));
+  } finally {
+    qx.close();
+  }
+});
+
+test("payout floor: a lone pair over the floor is not company the trader asked for (v1.61.0)", async () => {
+  // Thin is not the same as losing something. One tab, over the floor, nothing below it and nothing closed:
+  // the board is the trader's and stays as they left it.
+  const html = lowTabWithAssetList().replace('<div class="ElyTP">70 %</div>', '<div class="ElyTP">91 %</div>');
+  const clicked = [];
+  const setup = (w) =>
+    ["rowEur", "rowAud", "rowGbp"].forEach((id) =>
+      w.document.getElementById(id).addEventListener("click", (e) => clicked.push(e.currentTarget.id)),
+    );
+  const qx = await boot({ html, store: quotexStore({ payout: 91 }), setup });
+  try {
+    await sleep(7000);
+    assert.deepEqual(clicked, [], "nothing was opened: " + clicked.join(","));
+    const diag = JSON.parse(pref(qx, "__tradeCalc_diag"));
+    assert.match(String(diag.autoOpen), /none below it/, "and the line says why: " + diag.autoOpen);
+  } finally {
+    qx.close();
+  }
+});
+
 test("payout floor: nothing is opened while a trade is running (v1.54.0)", async () => {
   const store = quotexStore({ payout: 70, opened: [openDealNow()] });
   store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
@@ -672,7 +767,7 @@ test("diagnostics: the payout floor says what it is looking at (v1.54.1)", async
     const diag = JSON.parse(pref(qx, "__tradeCalc_diag"));
     assert.equal(diag.floor, 89, "the floor it is holding to");
     assert.deepEqual(diag.pairs, { "USD/DZD (OTC)": 70 }, "and what each open pair pays: " + JSON.stringify(diag.pairs));
-    assert.match(String(diag.autoOpen), /below 89%/, "and what it decided: " + diag.autoOpen);
+    assert.match(String(diag.autoOpen), /0 of 1 at or above 89%/, "and what it decided: " + diag.autoOpen);
   } finally {
     qx.close();
   }

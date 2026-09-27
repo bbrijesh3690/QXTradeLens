@@ -50,14 +50,25 @@ The stop loss never blocks trading (changed in v1.21.0); it is tracked and displ
 ### The payout floor works both ways
 
 Every 5 s, pairs paying below your **PAYOUT** minimum are closed. Quotex gives the last remaining tab no
-close control, so when the final pair drops below the floor there used to be nothing left to trade and
-nothing to switch to. Since v1.54.0, when *every* open pair is below the floor the panel opens one that
-clears it, and the close pass removes the stale one on its next turn.
+close control, so when the final pair drops below the floor there is nothing left to trade and nothing to
+switch to — so the panel opens pairs as well as closing them.
+
+Since **v1.61.0** it keeps **two** pairs clear of the floor. Waiting for *every* pair to fall below it, as
+v1.54.0 did, meant the board shrank a tab at a time: two open, the weaker one drops, the close pass takes
+it, and the survivor — being above the floor — was never given company. The next dip then left a single
+pair with nothing to switch to. Now, whenever fewer than two open pairs clear the floor **and** the board
+is losing something (a pair has fallen below it, or the close pass has just removed one), a replacement is
+opened. A tab that auto-close actually removed counts as proof on its own, so the replacement starts as
+soon as the close finishes instead of sitting out the settle window.
+
+Being thin is not by itself a reason to add a pair. One tab that clears the floor, with nothing below it
+and nothing just closed, is left alone — the board is yours.
 
 Which pair is Quotex's decision, not a list kept here: their own asset table gives the payout, whether
 the market is active and the label for every instrument they offer, so the best available pair is picked
-from the whole board. It waits for the condition to hold across two passes, leaves the asset list alone
-while you have it open, and never moves the board while a trade is running.
+from the whole board. A payout that dips for a single pass is ignored, the asset list is left alone while
+you have it open, at most one pair is opened every 30 s, and the board is never moved while a trade is
+running. The diagnostics line carries what it decided — `1 of 2 at or above 90% - opening one`.
 
 ### Stop loss and take profit
 
