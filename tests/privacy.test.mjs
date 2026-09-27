@@ -305,3 +305,30 @@ test("the x/÷ widget stays hidden once hidden (v1.63.0)", async () => {
     second.close();
   }
 });
+
+// ── v1.65.1: nothing of the removed features stays in the site's storage ────────────────────────
+
+const REMOVED_FEATURE_KEYS = [
+  "__tradeCalc_journal_cache", "__tradeCalc_journal_goal_cache", "__tradeCalc_sheet_url", "__tradeCalc_journal_fz",
+  "__tradeCalc_loss_streak", "__tradeCalc_seen_trades", "__tradeCalc_streak_date", "__tradeCalc_last_loss_ts",
+  "__tradeCalc_sys_lock_disabled", "__tradeCalc_sl_post_tp_gap", "__tradeCalc_marquee_msg", "__tradeCalc_marquee_speed",
+];
+
+test("privacy: keys left by the features removed in v1.65.0 are cleared on load (v1.65.1)", async () => {
+  // Measured on the live page after updating to 1.65.0: six of these were still sitting there, read by
+  // nothing - loss_streak, seen_trades, streak_date, last_loss_ts, journal_fz, sys_lock_disabled.
+  const storage = { ...slStorage(10000), __tradeCalc_mtf_count: "60" };
+  for (const k of REMOVED_FEATURE_KEYS) {
+    storage[k] = k.endsWith("_cache") ? "[]" : "1";
+  }
+  const qx = await boot({ storage });
+  try {
+    await sleep(300);
+    const left = REMOVED_FEATURE_KEYS.filter((k) => pref(qx, k) !== null);
+    assert.deepEqual(left, [], "none of them survive the load: " + left.join(", "));
+    // And not one that is still in use.
+    assert.equal(pref(qx, "__tradeCalc_mtf_count"), "60", "the starting zoom for an unscrolled timeframe is kept");
+  } finally {
+    qx.close();
+  }
+});

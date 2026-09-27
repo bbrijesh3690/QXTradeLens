@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.65.1] - 2026-09-28
+
+### Removed
+- **What the removed features left in the site's storage.** Measured on the live page after updating to
+  1.65.0: six values were still there, read by nothing - `loss_streak`, `seen_trades`, `streak_date`,
+  `last_loss_ts`, `journal_fz` and `sys_lock_disabled`. None held anything private (no sheet rows, no sheet
+  URL, no marquee text). The panel now removes those and the other six keys of the removed features each time
+  it loads, after the legacy-key migration so an old unhashed copy is caught too; once they are gone it
+  removes nothing. `__tradeCalc_mtf_count` is deliberately kept - it is still the starting zoom for a
+  timeframe that has never been scrolled.
+
 ## [1.65.0] - 2026-09-28
 
 ### Removed

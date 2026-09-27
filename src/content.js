@@ -364,6 +364,30 @@
         }
       } catch (t) {}
     })();
+    // v1.65.1: settings and state left behind by features removed in v1.65.0 - the sheet journal, the
+    // loss-streak lock, the marquee, and the popup's journal-scale and post-TP-gap controls. Nothing reads
+    // them any more; they are removed so nothing of those features stays in the site's storage. Runs after
+    // the legacy migration above, so an old unhashed copy is converted first and then removed with the rest.
+    // Idempotent: once they are gone it removes nothing. `__tradeCalc_mtf_count` is NOT here - it is still
+    // the starting zoom for a timeframe that has never been scrolled.
+    (function dropRemovedFeatureKeys() {
+      for (const name of [
+        "__tradeCalc_journal_cache",
+        "__tradeCalc_journal_goal_cache",
+        "__tradeCalc_sheet_url",
+        "__tradeCalc_journal_fz",
+        "__tradeCalc_loss_streak",
+        "__tradeCalc_seen_trades",
+        "__tradeCalc_streak_date",
+        "__tradeCalc_last_loss_ts",
+        "__tradeCalc_sys_lock_disabled",
+        "__tradeCalc_sl_post_tp_gap",
+        "__tradeCalc_marquee_msg",
+        "__tradeCalc_marquee_speed",
+      ]) {
+        prefRemove(name);
+      }
+    })();
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Self-repairing element lookup (v1.22.0)
     // Order: last element (if still attached) → learned selector → SELECTORS (hashed classes) →
