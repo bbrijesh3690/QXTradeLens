@@ -117,8 +117,6 @@ running. The diagnostics line carries what it decided — `1 of 2 at or above 90
   switching pairs does not lose them. Press **C** to show or hide the panel.
 - **Scan view** — the same panel, showing the whole board instead of one pair. See
   [The scan view](#the-scan-view).
-- **Entry balance tags** — each row in the trade history is tagged with the balance you had when you
-  placed that trade.
 - **Tab title** — 🟢/🔴 for winning/losing trades plus the nearest expiry countdown, so you can watch
   from another tab.
 - **Sounds** — short tones when open trades turn winning or losing.
@@ -197,7 +195,6 @@ first. See [The payout floor works both ways](#the-payout-floor-works-both-ways)
 | **Display** | Panel scale, chip position (cursor / centre / anchored), light–dark theme, show or hide the panel |
 | **Risk** | Daily SL setup on/off, max concurrent trades (1–4) |
 | **Hotkeys** | ↑↓ places trades, ←→ changes the trade amount (both off by default), and Hotkey Focus Mode (your Enter does the pressing, so the click comes from the browser) |
-| **Sections** | Show or hide the panel's Targets, Protections and Projection groups |
 | **Multi-timeframe charts** | Which timeframes (up to 4), whether a new pair is filled in automatically, and how long a pair must stay on screen first (default 15 s) |
 | **Health** | "Check Quotex compatibility" — see below |
 | **Deposits** | "Scan Deposits" — see below |
@@ -265,7 +262,8 @@ into a single look.
   popup now uses your system's own fonts.
 - **Footprint on Quotex's page is kept small**: no webfont request, no stylesheet naming their classes, and
   their buttons are never disabled by the panel (blocked trades are stopped before the click reaches them).
-  The two cosmetic marks — "Show Live as Demo" and "Entry Balance Tags" — can be switched off in the popup.
+  The one cosmetic mark left — "Show Live as Demo" — can be switched off in the popup; the trade-history
+  "Entry" tags were removed in v1.66.0, so nothing else is written into their page.
   Amount changes are **typed** into Quotex's field through the browser's own editing pipeline, so they look
   like you typing rather than a script writing the value. Trades placed by the ↑/↓ shortcut dispatch a
   scripted click; switch on **Hotkey Focus Mode** and your Enter does the pressing — for the trade buttons

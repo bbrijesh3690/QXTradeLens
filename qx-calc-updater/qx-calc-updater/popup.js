@@ -4,8 +4,6 @@ const sunIcon = document.getElementById('sunIcon');
 const moonIcon = document.getElementById('moonIcon');
 const sizeSlider = document.getElementById('sizeSlider');
 const sizeVal = document.getElementById('sizeVal');
-const visCheckboxes = document.querySelectorAll('.toggles-container input[type="checkbox"][data-idx]');
-const saveVisibilityBtn = document.getElementById('saveVisibility');
 const slEnabledToggle = document.getElementById('slEnabledToggle');
 const hkUpDownToggle = document.getElementById('hkUpDownToggle');
 const hkLeftRightToggle = document.getElementById('hkLeftRightToggle');
@@ -20,27 +18,24 @@ const mtfFlipBarsInput = document.getElementById('mtfFlipBarsInput');
 const chipPosSelect = document.getElementById('chipPosSelect');
 const maxTradesSelect = document.getElementById('maxTradesSelect');
 const relabelDemoToggle = document.getElementById('relabelDemoToggle');
-const entryTagsToggle = document.getElementById('entryTagsToggle');
 
 let currentTheme = 'dark';
-let currentVisibility = [1, 1, 1];
 
 
 async function init() {
   // v1.65.0: settings for features that were removed. Cleared so they cannot linger in sync. Best effort
   // and never fatal: it runs first, so a throw here would stop the rest of init() loading the popup.
   try {
-    const r = chrome.storage.sync.remove(['sheetUrl', '__tradeCalc_sl_post_tp_gap', '__tradeCalc_sys_lock_disabled', '__tradeCalc_marquee_msg', '__tradeCalc_marquee_speed', '__tradeCalc_mtf_count']);
+    const r = chrome.storage.sync.remove(['sheetUrl', '__tradeCalc_sl_post_tp_gap', '__tradeCalc_sys_lock_disabled', '__tradeCalc_marquee_msg', '__tradeCalc_marquee_speed', '__tradeCalc_mtf_count', '__tradeCalc_entry_tags', 'sectionVisibility']);
     if (r && typeof r.catch === 'function') r.catch(() => {});
   } catch (e) {}
   // Load the settings from storage directly — doesn’t need an active tab
-  const stored = await chrome.storage.sync.get(['__tradeCalc_sl_enabled', '__tradeCalc_chip_pos', '__tradeCalc_max_trades', '__tradeCalc_max_two', 'sectionVisibility', '__tradeCalc_hk_updown', '__tradeCalc_hk_leftright', '__tradeCalc_mtf_tfs', '__tradeCalc_mtf_autofill', '__tradeCalc_mtf_settle', '__tradeCalc_mtf_flip', '__tradeCalc_mtf_flip_bars', '__tradeCalc_relabel_demo', '__tradeCalc_entry_tags', '__tradeCalc_hk_focus_mode']);
+  const stored = await chrome.storage.sync.get(['__tradeCalc_sl_enabled', '__tradeCalc_chip_pos', '__tradeCalc_max_trades', '__tradeCalc_max_two', '__tradeCalc_hk_updown', '__tradeCalc_hk_leftright', '__tradeCalc_mtf_tfs', '__tradeCalc_mtf_autofill', '__tradeCalc_mtf_settle', '__tradeCalc_mtf_flip', '__tradeCalc_mtf_flip_bars', '__tradeCalc_relabel_demo', '__tradeCalc_hk_focus_mode']);
   if (slEnabledToggle) {
     slEnabledToggle.checked = stored['__tradeCalc_sl_enabled'] !== false;
   }
   // Page marks default ON, so nothing changes until they are switched off (v1.27.0).
   if (relabelDemoToggle) relabelDemoToggle.checked = stored['__tradeCalc_relabel_demo'] !== false;
-  if (entryTagsToggle) entryTagsToggle.checked = stored['__tradeCalc_entry_tags'] !== false;
   if (chipPosSelect) { const cp = stored['__tradeCalc_chip_pos']; chipPosSelect.value = (cp === 'center' || cp === 'anchored') ? cp : 'cursor'; }
   if (maxTradesSelect) {
     // Prefer the new int key; migrate the legacy boolean (max_two===false → 4, else 2); default 2.
@@ -62,9 +57,6 @@ async function init() {
     if (mtfFlipToggle) mtfFlipToggle.checked = stored['__tradeCalc_mtf_flip'] !== false;
     if (mtfFlipBarsInput) mtfFlipBarsInput.value = clampFlipBars(stored['__tradeCalc_mtf_flip_bars']);
   }
-  if (stored.sectionVisibility && Array.isArray(stored.sectionVisibility)) {
-    updateUI(undefined, undefined, stored.sectionVisibility);
-  }
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) return;
@@ -72,7 +64,7 @@ async function init() {
   try {
     const state = await chrome.tabs.sendMessage(tab.id, { type: 'GET_STATE' });
     if (state) {
-      updateUI(state.theme, state.fontSize, state.visibility);
+      updateUI(state.theme, state.fontSize);
       if (state.chipPos !== undefined && chipPosSelect) chipPosSelect.value = state.chipPos;
       if (state.maxTrades !== undefined && maxTradesSelect) maxTradesSelect.value = String(Math.max(1, Math.min(4, parseInt(state.maxTrades, 10) || 2)));
       if (state.hkUpDown !== undefined && hkUpDownToggle) hkUpDownToggle.checked = state.hkUpDown === true;
@@ -84,14 +76,13 @@ async function init() {
       if (state.mtfFlip !== undefined && mtfFlipToggle) mtfFlipToggle.checked = state.mtfFlip === true;
       if (state.mtfFlipBars !== undefined && mtfFlipBarsInput) mtfFlipBarsInput.value = clampFlipBars(state.mtfFlipBars);
       if (state.relabelDemo !== undefined && relabelDemoToggle) relabelDemoToggle.checked = state.relabelDemo !== false;
-      if (state.entryTags !== undefined && entryTagsToggle) entryTagsToggle.checked = state.entryTags !== false;
     }
   } catch (e) {
     console.log('Could not get state from content script', e);
   }
 }
 
-function updateUI(theme, fontSize, visibility) {
+function updateUI(theme, fontSize) {
   if (theme !== undefined) currentTheme = theme;
   if (theme !== undefined) {
     if (theme === 'light') {
@@ -106,14 +97,6 @@ function updateUI(theme, fontSize, visibility) {
   if (fontSize) {
     sizeSlider.value = fontSize;
     sizeVal.textContent = fontSize + 'px';
-  }
-
-  if (visibility && Array.isArray(visibility)) {
-    currentVisibility = visibility;
-    visCheckboxes.forEach(cb => {
-      const idx = parseInt(cb.dataset.idx, 10);
-      cb.checked = !!currentVisibility[idx];
-    });
   }
 }
 
@@ -145,32 +128,7 @@ sizeSlider.addEventListener('input', (e) => {
   sendMessage({ type: 'SET_SIZE', size: parseInt(val, 10) });
 });
 
-visCheckboxes.forEach(cb => {
-  cb.addEventListener('change', (e) => {
-    const idx = parseInt(e.target.dataset.idx, 10);
-    currentVisibility[idx] = e.target.checked ? 1 : 0;
-    if (saveVisibilityBtn) {
-      saveVisibilityBtn.textContent = 'Save Sections';
-      saveVisibilityBtn.style.color = '';
-      saveVisibilityBtn.style.borderColor = '';
-    }
-  });
-});
 
-if (saveVisibilityBtn) {
-  saveVisibilityBtn.addEventListener('click', async () => {
-    await chrome.storage.sync.set({ sectionVisibility: currentVisibility });
-    broadcastMessage({ type: 'SET_VISIBILITY', visibility: currentVisibility });
-    saveVisibilityBtn.textContent = 'Saved ✓';
-    saveVisibilityBtn.style.color = 'oklch(76% 0.16 145)';
-    saveVisibilityBtn.style.borderColor = 'oklch(76% 0.16 145 / 0.35)';
-    setTimeout(() => {
-      saveVisibilityBtn.textContent = 'Save Sections';
-      saveVisibilityBtn.style.color = '';
-      saveVisibilityBtn.style.borderColor = '';
-    }, 1500);
-  });
-}
 
 if (slEnabledToggle) {
   slEnabledToggle.addEventListener('change', () => {
@@ -193,12 +151,6 @@ if (relabelDemoToggle) {
   relabelDemoToggle.addEventListener('change', () => {
     chrome.storage.sync.set({ '__tradeCalc_relabel_demo': relabelDemoToggle.checked });
     broadcastMessage({ type: 'SET_PAGE_MARKS', relabel: relabelDemoToggle.checked });
-  });
-}
-if (entryTagsToggle) {
-  entryTagsToggle.addEventListener('change', () => {
-    chrome.storage.sync.set({ '__tradeCalc_entry_tags': entryTagsToggle.checked });
-    broadcastMessage({ type: 'SET_PAGE_MARKS', entryTags: entryTagsToggle.checked });
   });
 }
 

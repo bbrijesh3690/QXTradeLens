@@ -5,6 +5,22 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.66.0] - 2026-09-28
+
+### Removed
+- **The trade-history "Entry" tags.** They stamped "Entry ₹X" - your balance when you placed the trade - on
+  each row of Quotex's trade history, and were on by default. Removing only their popup switch would have left
+  them on for good, so the feature itself is gone: the tagger, its page-observer hook, the popup switch and its
+  stored setting. That was one of the two things this extension wrote into Quotex's own page; "Show Live as
+  Demo" is now the only one. **The trade log the tags read from stays** - `projectedPayout` also uses it to
+  price an open trade when the store cannot, which is part of the win projection - and a spec checks a placed
+  trade is still logged.
+- **The popup's Section show/hide toggles** (Targets, Protections, Projection) and their Save button. Every
+  group of the panel is always shown. Nothing else read them. Hiding a group took its controls off the panel
+  entirely - PAYOUT, MULT, the ×÷ and chart buttons - which can no longer happen by accident. The stored
+  setting was already being ignored on the reporting page: it held three entries and the loader wanted four.
+- Both settings are cleared from the site's storage and from Chrome sync.
+
 ## [1.65.2] - 2026-09-28
 
 ### Removed

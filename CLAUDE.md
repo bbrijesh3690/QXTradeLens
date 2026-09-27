@@ -162,6 +162,9 @@ check will say so if only one happened.
   it, and the popup's Journal Scale, Post-TP Trail Gap %, Disable System Lock and Candles-per-chart controls.
   Post-TP trailing is fixed at 5%; the SL setup screen and payout overlay are fixed at 20px; a timeframe never
   scrolled still starts at the stored `__tradeCalc_mtf_count`.
+  **v1.66.0** took the trade-history "Entry" tags (the trade log they read stays: `projectedPayout` prices an
+  open trade from it when the store cannot) and the popup's Section show/hide toggles - every group of the
+  panel is always shown.
 - Offered and not started: a sound for the trend-flip mark (left visual on purpose — a tone mid-trade
   is intrusive and gives no clue which chart it came from), and per-asset rather than per-timeframe
   zoom memory.

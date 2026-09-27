@@ -423,3 +423,60 @@ test("SL: the trail's own 5% limit still applies when it is trailing (v1.64.1)",
     qx.close();
   }
 });
+
+// ── v1.66.0: the trade-history "Entry" tags and the section show/hide toggles are gone ─────────────
+
+// A history row shaped the way tagHistoryEntryBalances read them, and a trade-log entry it would have
+// matched: same pair, same amount, no open time to rule it out.
+const historyRow = (pair, amount) =>
+  '<div class="ib6yR"><div class="RxOUE">' + pair + '</div><div class="Fqtla">' + amount + "</div></div>";
+
+test("history: no \"Entry\" tag is written into Quotex's trade history (v1.66.0)", async () => {
+  const log = [{ uuid: null, ts: Date.now() - 30000, pair: "EUR/USD (OTC)", amount: 100, bal: 5000 }];
+  const qx = await boot({ storage: { ...slStorage(10000), __tradeCalc_trade_log: JSON.stringify(log) } });
+  try {
+    await sleep(400);
+    // Added after load, so the page observer sees it the way it sees a trade settling on the live page.
+    const holder = qx.window.document.createElement("div");
+    holder.innerHTML = historyRow("EUR/USD (OTC)", "100");
+    qx.window.document.body.appendChild(holder);
+    await sleep(900); // the tagger was debounced by 300 ms
+    const row = holder.querySelector(".ib6yR");
+    const tagged = [...row.querySelectorAll("*")].filter((el) => /^Entry /.test(el.textContent || ""));
+    assert.equal(tagged.length, 0, "nothing was stamped on the row: " + row.textContent);
+    assert.equal(row.children.length, 2, "the row is exactly as Quotex drew it");
+  } finally {
+    qx.close();
+  }
+});
+
+test("trade log: a placed trade is still recorded, because the win projection falls back on it (v1.66.0)", async () => {
+  // The tags were only one reader of this log. projectedPayout also uses it to price an open trade when
+  // the store cannot, so removing the tags must not stop recordPlacement.
+  const qx = await boot();
+  try {
+    await sleep(400);
+    assert.equal(tradeReachesPlatform(qx), true, "the trade went through");
+    const log = JSON.parse(pref(qx, "__tradeCalc_trade_log") || "[]");
+    assert.ok(log.length >= 1, "the placement was logged: " + JSON.stringify(log));
+    assert.ok(log[0].bal > 0 && log[0].ts > 0, "with the balance and the time: " + JSON.stringify(log[0]));
+  } finally {
+    qx.close();
+  }
+});
+
+test("sections: every group of the panel shows, whatever an older setting said (v1.66.0)", async () => {
+  // Stored in the four-entry shape the old loader accepted, with everything hidden. It used to take the
+  // TP/SL, PAYOUT/MULT and REQ/RISK groups off the panel entirely.
+  const qx = await boot({ storage: { ...slStorage(10000), __tradeCalc_visibility: "[0,0,0,0]" } });
+  try {
+    await sleep(400);
+    const root = qx.panelRoot();
+    for (const id of ["__tcSecTargets", "__tcSecProtections", "__tcSecProjections"]) {
+      assert.ok(root.getElementById(id), id + " is on the panel");
+    }
+    assert.equal(pref(qx, "__tradeCalc_visibility"), null, "and the old setting is cleared");
+  } finally {
+    qx.close();
+  }
+});

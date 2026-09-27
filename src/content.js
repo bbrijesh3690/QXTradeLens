@@ -78,7 +78,6 @@
         window.__tradeCalcObs.disconnect();
         delete window.__tradeCalcObs;
       }
-      document.querySelectorAll("." + ids.tcPlacedBal).forEach((t) => t.remove());
       delete window.__tcSLBreachNotified;
       if (window.__tcScheduler) {
         clearInterval(window.__tcScheduler);
@@ -384,6 +383,9 @@
         "__tradeCalc_sl_post_tp_gap",
         "__tradeCalc_marquee_msg",
         "__tradeCalc_marquee_speed",
+        // v1.66.0: the trade-history tags and the section show/hide toggles.
+        "__tradeCalc_entry_tags",
+        "__tradeCalc_visibility",
       ]) {
         prefRemove(name);
       }
@@ -853,7 +855,6 @@
       "tcProjBalRow",
       "tcTradeTimer",
       "tcProjChip",
-      "tcPlacedBal",
       "tcMonitored",
     ].forEach((t, e) => {
       ids[t] = "x" + idToken + (e + 1).toString(36);
@@ -1195,7 +1196,6 @@
       KEY_FONT_SIZE = "__tradeCalc_fz",
       KEY_MIN_PAYOUT = "__tradeCalc_minrp",
       KEY_THEME = "__tradeCalc_theme",
-      KEY_VISIBILITY = "__tradeCalc_visibility",
       KEY_SL_VALUE = "__tradeCalc_sl_value",
       KEY_SL_DATE = "__tradeCalc_sl_date",
       getTheme = () => {
@@ -1539,17 +1539,11 @@
         try {
           prefSet(KEY_STEP_MULT, String(t));
         } catch (t) {}
-      },
-      saveVisibilityStored = (t) => {
-        try {
-          prefSet(KEY_VISIBILITY, JSON.stringify(t.slice(0, 4).map((t) => (t ? 1 : 0))));
-        } catch (t) {}
       };
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Account label spoof: rewrites "Live Account" as "Demo Account" everywhere
     // ────────────────────────────────────────────────────────────────────────────────────────────────
-    const KEY_RELABEL_DEMO = "__tradeCalc_relabel_demo",
-      KEY_ENTRY_TAGS = "__tradeCalc_entry_tags";
+    const KEY_RELABEL_DEMO = "__tradeCalc_relabel_demo";
     const KEY_HK_FOCUS_MODE = "__tradeCalc_hk_focus_mode";
     // Off by default: ↑/↓ keep placing the trade directly.
     let hkFocusMode = readFlag(KEY_HK_FOCUS_MODE, false);
@@ -1599,8 +1593,7 @@
         prefSet(KEY_MTF_FLIP, mtfFlipOn ? "1" : "0");
       } catch (t) {}
     }
-    let relabelDemo = readFlag(KEY_RELABEL_DEMO, true),
-      entryTagsOn = readFlag(KEY_ENTRY_TAGS, true);
+    let relabelDemo = readFlag(KEY_RELABEL_DEMO, true);
     // Restores the platform's own label when the switch is turned off.
     function undoRelabel() {
       document.querySelectorAll("[data-tc-relabel]").forEach((el) => {
@@ -1976,12 +1969,6 @@
     if (riskEl) {
       riskEl._tcNoFlash = true;
     }
-    const sections = Array.from(panel.querySelectorAll("#__tcContent > .tcSec")),
-      sectionAnchors = sections.map((t) => {
-        const e = document.createComment(t.id);
-        t.parentNode.insertBefore(e, t);
-        return e;
-      });
     function updateScrollAffordance() {
       if (!contentEl) {
         return;
@@ -1999,37 +1986,6 @@
       window.addEventListener("resize", updateScrollAffordance);
       requestAnimationFrame(() => requestAnimationFrame(updateScrollAffordance));
     }
-    let sectionVisibility = (() => {
-      try {
-        const t = JSON.parse(prefGet(KEY_VISIBILITY) || "null");
-        return Array.isArray(t) && t.length === 4 ? t.map((t) => (t ? 1 : 0)) : [1, 1, 1, 1];
-      } catch (t) {
-        return [1, 1, 1, 1];
-      }
-    })();
-    function applyVisibility(t) {
-      if (Array.isArray(t)) {
-        for (
-          sectionVisibility = t.slice(0, sections.length).map((t) => (t ? 1 : 0));
-          sectionVisibility.length < sections.length;
-
-        ) {
-          sectionVisibility.push(1);
-        }
-        saveVisibilityStored(sectionVisibility);
-      }
-      sections.forEach((t, e) => {
-        const n = sectionVisibility[e] !== 0,
-          o = t.isConnected;
-        if (n && !o) {
-          sectionAnchors[e].parentNode.insertBefore(t, sectionAnchors[e].nextSibling);
-        } else if (!n && o) {
-          t.remove();
-        }
-      });
-      requestAnimationFrame(updateScrollAffordance);
-    }
-    applyVisibility(sectionVisibility);
     let multiMode = (() => {
       try {
         return prefGet("__tradeCalc_multi") === "1";
@@ -4545,9 +4501,6 @@
         chrome.storage.sync.get([KEY_TRADE_LOG], (t) => {
           const e = t && Array.isArray(t[KEY_TRADE_LOG]) ? t[KEY_TRADE_LOG] : readTradeLogLocal();
           tradeLog = e.slice(0, TRADE_LOG_MAX);
-          if (tradeLog.length) {
-            tagHistoryEntryBalances();
-          }
         });
       } catch (t) {
         tradeLog = readTradeLogLocal();
@@ -4590,91 +4543,7 @@
       }
       return "";
     }
-    function tagHistoryEntryBalances() {
-      if (!entryTagsOn) {
-        return;
-      }
-      const t = document.querySelectorAll(".ib6yR, .SDEZP");
-      let e = false;
-      for (let n = 0; n < t.length; n++) {
-        const o = t[n],
-          r = o.querySelector(".Fqtla"),
-          a = o.querySelector(".O5xJP");
-        if (!r && !a) {
-          continue;
-        }
-        const i = a || o;
-        if (i.querySelector("." + ids.tcPlacedBal)) {
-          continue;
-        }
-        const s = o.querySelector(".RxOUE") || o.querySelector(".glItV"),
-          l = s ? s.textContent.trim() : "";
-        let d = NaN;
-        if (r) {
-          let t = r.textContent || "";
-          const e = r.querySelector(".lCITV");
-          if (e) {
-            t = t.replace(e.textContent, "");
-          }
-          d = parseNum(t);
-        } else {
-          const t = a.querySelector(".h6J0L");
-          let e = t ? t.textContent : "";
-          const n = t && t.querySelector(".B7WYW");
-          if (n) {
-            e = e.replace(n.textContent, "");
-          }
-          d = parseNum(e);
-        }
-        const u = o.querySelector(".ow8Ej") || o.querySelector(".b98_V"),
-          p = readDetailField(u, "id"),
-          h = readDetailField(u, "open time"),
-          f = h ? new Date(h.replace(" ", "T")).getTime() : NaN;
-        let g = p ? tradeLog.find((t) => t.uuid === p) : null;
-        if (!g) {
-          const t = normKey(l);
-          for (let n = 0; n < tradeLog.length; n++) {
-            const o = tradeLog[n];
-            if (
-              !o.uuid &&
-              (!t || normKey(o.pair) === t) &&
-              (o.amount == null || isNaN(d) || !(Math.abs(o.amount - d) > 0.5)) &&
-              (isNaN(f) || !(Math.abs(o.ts - f) > 90000))
-            ) {
-              g = o;
-              if (p) {
-                o.uuid = p;
-                e = true;
-              }
-              break;
-            }
-          }
-        }
-        if (!g) {
-          continue;
-        }
-        const _ = document.createElement("span");
-        _.className = ids.tcPlacedBal;
-        _.style.cssText =
-          "flex:0 0 100%;width:100%;margin-top:1px;text-align:right;font-weight:700;font-size:11px;line-height:1.3;color:rgb(255 185 0);white-space:nowrap;opacity:0.92;";
-        _.textContent = "Entry " + fmtMoney(g.bal) + " " + detectCurrency();
-        i.appendChild(_);
-      }
-      if (e) {
-        saveTradeLog();
-      }
-    }
     window.__tcRecordPlacement = recordPlacement;
-    let historyTagQueued = false;
-    function onPageMutationsForHistory() {
-      if (!historyTagQueued) {
-        historyTagQueued = true;
-        setTimeout(() => {
-          historyTagQueued = false;
-          tagHistoryEntryBalances();
-        }, 300);
-      }
-    }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Asset dropdown automation (OTC rebuild `R`, close tabs)
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -4827,13 +4696,12 @@
     }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Page observer (v1.23.0): one MutationObserver on document.body feeds the three consumers that used
-    // to each observe the whole body subtree: the account-label spoof, recalc scheduling and the trade
-    // history "Entry balance" tags. Cleanup disconnects it through window.__tradeCalcObs.
+    // to each observe the whole body subtree: the account-label spoof, and recalc scheduling
+    // (v1.66.0: the trade-history "Entry balance" tags are gone). Cleanup disconnects it through window.__tradeCalcObs.
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     const pageObserver = new MutationObserver((records) => {
       onPageMutationsForSpoof(records);
       onPageMutationsForRecalc(records);
-      onPageMutationsForHistory();
     });
     pageObserver.observe(document.body, {
       childList: true,
@@ -8917,7 +8785,6 @@
           n({
             theme: getTheme(),
             fontSize: parseInt(getFontSizeStored(), 10),
-            visibility: sectionVisibility.slice(),
             otcAuto: otcAuto,
             chipPos: chipPos,
             maxTrades: maxTrades,
@@ -8931,7 +8798,6 @@
             mtfFlip: mtfFlipOn,
             mtfFlipBars: getMtfFlipBars(),
             relabelDemo,
-            entryTags: entryTagsOn,
             hkFocusMode,
           });
         } else if (t.type === "SET_THEME") {
@@ -8950,10 +8816,6 @@
           }
         } else if (t.type === "SET_SIZE") {
           setPanelFontSize(t.size);
-        } else if (t.type === "SET_VISIBILITY") {
-          const e = Array.isArray(t.visibility) ? t.visibility : sectionVisibility;
-          saveVisibilityStored(e);
-          applyVisibility(e);
         } else if (t.type === "SET_MAX_TRADES") {
           maxTrades = clampMaxTrades(t.value);
           setMaxTradesStored(maxTrades);
@@ -9004,15 +8866,6 @@
               spoofLiveAccountLabel();
             } else {
               undoRelabel();
-            }
-          }
-          if ("entryTags" in t) {
-            entryTagsOn = !!t.entryTags;
-            prefSet(KEY_ENTRY_TAGS, entryTagsOn ? "1" : "0");
-            if (entryTagsOn) {
-              tagHistoryEntryBalances();
-            } else {
-              document.querySelectorAll("." + ids.tcPlacedBal).forEach((el) => el.remove());
             }
           }
         } else if (t.type === "SET_SL_ENABLED") {
