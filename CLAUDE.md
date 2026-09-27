@@ -119,6 +119,15 @@ check will say so if only one happened.
   the board than collecting candles is, and `R` already stocks the tabs. Extending it to open the top
   payouts itself is the obvious next step if the tab-stocking step becomes the annoying part. Still not
   built: the one-line "best right now" chip on the Charts view.
+- **The sweep was watched on the live page on 2026-09-27** (v1.60.0 put `view`, `sweep` and `stale` in the
+  diagnostics line so it could be). Two runs, seven open pairs: it selected exactly the pairs that were
+  behind, took all of them from `null` or four figures of seconds down to `0`, and returned to the pair it
+  started from. A pair that was current on the first run and had gone stale by the second was picked up
+  then, which is the behaviour to check if the target list is ever changed. `stale` is the field that
+  settles it — `null` means no candles are held, a number means there are and this is the gap, so
+  `null → 0` is collection rather than just navigation. Not caught live: the `running · 2 of 4` state. The
+  whole walk is about 60 s at ~15 s a pair, which is finer than a read from another tab can reliably land
+  inside; it is covered by a spec only.
 - **"Show Live as Demo" rewrites Quotex's own label and nothing else** — byte-for-byte as frozen in
   v1.54.4. Their 2026-09-23 build moved that label into the closed `<qx-usermenu-trigger>`, so on those
   pages the switch does nothing at all; the tab-title cover still works. **Do not paint over their
