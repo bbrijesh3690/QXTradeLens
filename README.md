@@ -53,16 +53,17 @@ Every 5 s, pairs paying below your **PAYOUT** minimum are closed. Quotex gives t
 close control, so when the final pair drops below the floor there is nothing left to trade and nothing to
 switch to — so the panel opens pairs as well as closing them.
 
-Since **v1.61.0** it keeps **two** pairs clear of the floor. Waiting for *every* pair to fall below it, as
-v1.54.0 did, meant the board shrank a tab at a time: two open, the weaker one drops, the close pass takes
-it, and the survivor — being above the floor — was never given company. The next dip then left a single
-pair with nothing to switch to. Now, whenever fewer than two open pairs clear the floor **and** the board
-is losing something (a pair has fallen below it, or the close pass has just removed one), a replacement is
-opened. A tab that auto-close actually removed counts as proof on its own, so the replacement starts as
-soon as the close finishes instead of sitting out the settle window.
+Since **v1.62.0** a close refills the board. When the close pass removes a pair, the panel opens every
+instrument Quotex rates at or above your floor that is not already open — best-paying first, one per pass —
+and stops when there are none left. The close is the only trigger: how many pairs you have open, and how
+many of them clear the floor, are not consulted.
 
-Being thin is not by itself a reason to add a pair. One tab that clears the floor, with nothing below it
-and nothing just closed, is left alone — the board is yours.
+A pass that closes nothing opens nothing, so the board is left alone while every pair is clearing your
+floor. **This can open a lot of tabs** — as many as the platform lists above your floor.
+
+One separate trigger remains, from v1.54.0: when *every* open pair is below the floor, one that clears it is
+opened. It exists because Quotex gives the last remaining tab no close control, so when your final pair
+drops below the floor nothing is removed and a fill would never start.
 
 Which pair is Quotex's decision, not a list kept here: their own asset table gives the payout, whether
 the market is active and the label for every instrument they offer, so the best available pair is picked

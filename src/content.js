@@ -3782,15 +3782,21 @@
       autoCloseRunning = false,
       // v1.61.0: when auto-close last actually removed a tab. A tab that has gone is a real change to the
       // board, unlike a payout dipping for one pass, so the replacement does not sit out the settle window.
-      autoCloseClosedAt = 0;
+      autoCloseClosedAt = 0,
+      // v1.62.0: auto-close has removed something and the board has not been refilled yet. A close is the
+      // only trigger - how many pairs are open, and how many of them clear the floor, are not consulted.
+      autoOpenFill = false;
     function autoCloseStep(t, e) {
       // `e` counts the tabs this run has closed. A run that closed something hands straight over to the
       // replacement instead of leaving it to the next five-second pass - that plus the settle window is
       // nine seconds of staring at a board that has just lost a pair.
       const finish = () => {
         autoCloseRunning = false;
+        // Only a run that actually closed a tab starts a fill. This pass runs every five seconds and
+        // usually closes nothing; triggering on the run rather than on a close would open pairs for ever.
         if (e > 0) {
           autoCloseClosedAt = Date.now();
+          autoOpenFill = true;
           maybeAutoOpenPair(t);
         }
       };
@@ -5692,14 +5698,7 @@
     // only the fallback for choosing when the bridge cannot answer.
     const AUTO_OPEN_AGAIN_MS = 30000,
       // A payout that dips for a single pass is not a reason to open a pair; it has to stay down.
-      AUTO_OPEN_SETTLE_MS = 4000,
-      // v1.61.0: how many pairs the board keeps at or above the floor. Two, because one is not a choice -
-      // with a single pair left there is nothing to switch to when it turns, which is the position the old
-      // rule walked into: it waited for EVERY pair to fall below, so two open and the weaker one dropping
-      // meant auto-close took it and the survivor, being above the floor, was never given company.
-      AUTO_OPEN_MIN_GOOD = 2,
-      // How long after auto-close removed a tab the replacement treats the shortfall as already proven.
-      AUTO_OPEN_AFTER_CLOSE_MS = 15000;
+      AUTO_OPEN_SETTLE_MS = 4000;
     let lastAutoOpenAt = 0,
       autoOpenBusy = false,
       tooFewGoodSince = 0,
@@ -5819,6 +5818,7 @@
           target = pick && (pick.click || pick.row);
         if (!target || !target.isConnected) {
           autoOpenReason = "nothing in the asset list clears " + min + "%";
+          autoOpenFill = false;
           autoOpenFinish();
           return;
         }
@@ -5840,7 +5840,10 @@
         return stop("no payout floor set");
       }
       const now = Date.now();
-      if (now - lastAutoOpenAt < AUTO_OPEN_AGAIN_MS) {
+      // The 30 s throttle exists for the path with no close behind it, where nothing limits how often this
+      // could fire. A fill stops on its own once every qualifying pair is open, so holding each one back by
+      // half a minute would only make refilling a board take a quarter of an hour.
+      if (!autoOpenFill && now - lastAutoOpenAt < AUTO_OPEN_AGAIN_MS) {
         return stop("opened one " + fmtAgo(Math.round((now - lastAutoOpenAt) / 1000)));
       }
       // The list is the trader's while they have it open, and nothing moves the board under a running trade.
@@ -5857,32 +5860,37 @@
       if (!payouts.length) {
         return stop("no pair tabs");
       }
-      const good = payouts.filter((p) => p >= min).length;
-      if (good >= AUTO_OPEN_MIN_GOOD) {
+      // v1.62.0: auto-close removed something, so the board is refilled - every pair the platform rates at
+      // or above the floor that is not already open, best first, one per pass. No count of open pairs and no
+      // count of pairs clearing the floor comes into it: the close is the trigger, and the asset table
+      // decides when there is nothing left to do.
+      if (autoOpenFill) {
         tooFewGoodSince = 0;
-        return stop(good + " pairs at or above " + min + "%");
+        // From the store, not the dropdown, so running out costs nothing and touches no part of their UI.
+        const next = bestAssetAboveFloor(min);
+        if (!next) {
+          autoOpenFill = false;
+          return stop("every pair at or above " + min + "% is already open");
+        }
+        autoOpenReason = "refilling the board - " + next.label + " at " + next.payout + "%";
+        return autoOpenBetterPair(min);
       }
-      const short = good + " of " + payouts.length + " at or above " + min + "%";
-      // Being thin is not on its own a reason to add a pair - the board is the trader's, and a single tab
-      // they chose to sit on is not a fault. What makes it a reason is the board LOSING something: a pair
-      // that has fallen below the floor, or one auto-close has just taken away.
-      const justClosed = now - autoCloseClosedAt < AUTO_OPEN_AFTER_CLOSE_MS;
-      if (!payouts.some((p) => p < min) && !justClosed) {
+      // The case with no close to trigger on: Quotex gives the last remaining tab no close control, so when
+      // the final pair falls below the floor nothing is removed and a fill would never start. v1.54.0's
+      // rule, unchanged, and the only path that runs without a close behind it.
+      if (payouts.some((p) => p >= min)) {
         tooFewGoodSince = 0;
-        return stop(short + ", none below it");
+        return stop("a pair is at or above " + min + "%");
       }
-      // A tab auto-close has just removed is not a flicker, so the replacement does not wait it out.
-      if (!justClosed) {
-        if (!tooFewGoodSince) {
-          tooFewGoodSince = now;
-          return stop(short + " - waiting to see if it holds");
-        }
-        if (now - tooFewGoodSince < AUTO_OPEN_SETTLE_MS) {
-          return stop(short + " - waiting to see if it holds");
-        }
+      if (!tooFewGoodSince) {
+        tooFewGoodSince = now;
+        return stop("every pair below " + min + "% - waiting to see if it holds");
+      }
+      if (now - tooFewGoodSince < AUTO_OPEN_SETTLE_MS) {
+        return stop("every pair below " + min + "% - waiting to see if it holds");
       }
       tooFewGoodSince = 0;
-      autoOpenReason = short + " - opening one";
+      autoOpenReason = "every pair below " + min + "% - opening one";
       autoOpenBetterPair(min);
     }
     function closeAssetDropdown() {

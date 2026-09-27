@@ -5,7 +5,31 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
-## [1.61.1] - 2026-09-27
+## [1.62.0] - 2026-09-27
+
+### Changed
+- **A close refills the board.** Auto-close removing a pair now puts the panel into a fill: it opens every
+  instrument the platform rates at or above the floor that is not already open, best-paying first, one per
+  pass, and stops when there are none left. The close is the only trigger, and the asset table decides when
+  there is nothing left to do.
+- **All the counting is gone.** 1.61.0 kept two pairs clear of the floor — a rule nobody asked for, and one
+  that took three exchanges to even describe. How many pairs are open, and how many of them clear the floor,
+  are no longer consulted at all. `AUTO_OPEN_MIN_GOOD` and `AUTO_OPEN_AFTER_CLOSE_MS` are removed.
+- **A pass that closes nothing opens nothing.** The close pass runs every five seconds and usually closes
+  nothing; triggering a fill on the run rather than on an actual close would open pairs for ever.
+- **The 30 s throttle no longer applies during a fill.** It exists for the one path with no close behind it,
+  where nothing bounds how often auto-open could fire. A fill is bounded by the asset table, so holding each
+  open back by half a minute would only make refilling a board take a quarter of an hour.
+- **The v1.54.0 trigger is unchanged and is still the only path that runs without a close**: when every open
+  pair is below the floor, one that clears it is opened. It has to exist separately, because Quotex gives the
+  last remaining tab no close control — so when your final pair drops below the floor nothing is removed and
+  a fill would never start.
+
+### Note
+- This opens as many tabs as the platform lists above your floor, which can be most of the asset list. That
+  is the stated intent, not an oversight. A cap would be one line if it turns out to be too many.
+
+
 
 ### Fixed
 - **The payout floor had two sources, and they could disagree.** The five-second pass that closes and opens
