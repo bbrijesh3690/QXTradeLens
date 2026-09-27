@@ -3829,7 +3829,13 @@
       if (void 0 === minPayoutInput || !minPayoutInput) {
         return;
       }
-      const t = parseInt(minPayoutInput.value, 10) || 89;
+      // v1.61.1: the COMMITTED floor, not whatever is currently in the box. The diagnostics line has
+      // always reported the stored value, so a number typed but not yet entered had the board closing tabs
+      // against one figure while the line stated another - and this is the number every decision here turns
+      // on. Enter or leaving the field commits it; half-typed digits no longer close anything either, which
+      // "95" passing through "9" used to risk. getMinPayoutStored already falls back to 89, so the old
+      // `|| 89` is carried by it.
+      const t = parseInt(getMinPayoutStored(), 10);
       if (!isNaN(t)) {
         autoCloseLowPayoutTabs(t);
         maybeAutoOpenPair(t);

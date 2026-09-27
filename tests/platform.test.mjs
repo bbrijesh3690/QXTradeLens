@@ -784,3 +784,27 @@ test("diagnostics: with a pair above the floor, the line says so (v1.54.1)", asy
     qx.close();
   }
 });
+
+test("payout floor: the floor in force is the committed one, not what is in the box (v1.61.1)", async () => {
+  // The five-second tick read minPayoutInput.value while the diagnostics line reported the stored floor, so
+  // a number typed and not yet entered had the board acting on one figure and the line stating another.
+  // Measured on the 1.60.1 build: floor reported 89 while the decision read "every pair below 95%". Found
+  // on 2026-09-27 while raising the floor to test v1.61.0 - storage said 90, the typed 93 had not
+  // committed, and that is when the two sources became visible.
+  const qx = await boot({ store: quotexStore({ payout: 91 }) });
+  try {
+    await sleep(600);
+    const input = qx.panelRoot().querySelector("#__tcMinRpInput");
+    assert.ok(input, "the payout field is there");
+    // Typed, never entered, never blurred - the state the field sits in while someone is still deciding.
+    input.value = "95%";
+    await sleep(5800);
+    const diag = JSON.parse(pref(qx, "__tradeCalc_diag"));
+    assert.equal(diag.floor, 89, "the line reports the committed floor: " + diag.floor);
+    // The decision has to be about the SAME number the line just stated.
+    assert.match(String(diag.autoOpen), /89%/, "and the decision was made on it: " + diag.autoOpen);
+    assert.doesNotMatch(String(diag.autoOpen), /95%/, "not on the uncommitted 95: " + diag.autoOpen);
+  } finally {
+    qx.close();
+  }
+});

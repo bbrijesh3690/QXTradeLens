@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.61.1] - 2026-09-27
+
+### Fixed
+- **The payout floor had two sources, and they could disagree.** The five-second pass that closes and opens
+  pairs read the PAYOUT box's current contents, while the diagnostics line reported the *stored* floor. The
+  box only commits on Enter or on leaving the field, so a number typed and left sitting there had the board
+  closing tabs against one figure while the line stated another. Measured on the 1.60.1 build: the line
+  reported `floor 89` while the decision read `every pair below 95%`. Both now read the committed value, so
+  half-typed digits decide nothing either — `95` passing through `9` on its way in used to be a floor of 9.
+  Found while raising the floor to test 1.61.0 live, which is also why that test could not be set up: the
+  typed 93 had never committed and storage still held 90.
+
 ## [1.61.0] - 2026-09-27
 
 ### Changed
