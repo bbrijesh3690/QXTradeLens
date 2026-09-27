@@ -156,9 +156,12 @@ test("focus mode: guards still stop a trusted click (v1.28.0)", async () => {
   }
 });
 // ── v1.29.0: how the investment change is produced ────────────────────────────────
+// These two cover the arrows' OTHER path - pressing Quotex's own -/+ buttons rather than multiplying. Until
+// v1.63.0 that was what a page with no stored factor did, so the fixture said nothing about it; the factor
+// now defaults to 2, so the precondition has to be stated. `1` is how it is selected.
 
 test("← still steps the amount with a click when focus mode is off (v1.29.0)", async () => {
-  const qx = await boot({ storage: amtStorage });
+  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_step_mult: "1" } });
   try {
     const minus = qx.window.document.querySelector(".deal-amount-input .VK9Nw");
     let clicks = 0;
@@ -171,7 +174,7 @@ test("← still steps the amount with a click when focus mode is off (v1.29.0)",
 });
 
 test("focus mode: ← selects the platform's − button and steps nothing until Enter (v1.29.0)", async () => {
-  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_hk_focus_mode: "1" } });
+  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_hk_focus_mode: "1", __tradeCalc_step_mult: "1" } });
   try {
     const [minus, plus] = qx.window.document.querySelectorAll(".deal-amount-input .VK9Nw");
     let clicks = 0;
@@ -241,5 +244,64 @@ test("no uncaught errors while the panel runs", async () => {
     assert.deepEqual(qx.errors.map((e) => e.message), []);
   } finally {
     qx.close();
+  }
+});
+
+// ── v1.63.0: the arrows double and halve, and hiding the x/÷ widget sticks ──────────────────────
+
+test("arrows: with no factor chosen, → doubles the amount and ← halves it (v1.63.0)", async () => {
+  // The factor used to default to 1 - which meant the arrows clicked Quotex's own -/+ buttons instead of
+  // multiplying, and the only way to get multiplying at all was the floating widget. 2 is the default now.
+  const qx = await boot({ storage: amtStorage });
+  try {
+    const input = stakeField(qx);
+    const start = input.value;
+    pressSideArrow(qx, "ArrowRight");
+    assert.equal(input.value, "4000", "→ doubled it, from " + start);
+    pressSideArrow(qx, "ArrowLeft");
+    assert.equal(input.value, "2000", "← halved it back");
+    pressSideArrow(qx, "ArrowLeft");
+    assert.equal(input.value, "1000", "and again");
+  } finally {
+    qx.close();
+  }
+});
+
+test("arrows: a stored 1 still means step with Quotex's own buttons (v1.63.0)", async () => {
+  // The other arrow path has to survive the new default, or the platform's own small nudge is unreachable.
+  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_step_mult: "1" } });
+  try {
+    const input = stakeField(qx);
+    const before = input.value;
+    pressSideArrow(qx, "ArrowRight");
+    assert.equal(input.value, before, "the amount was not multiplied: " + input.value);
+  } finally {
+    qx.close();
+  }
+});
+
+test("the x/÷ widget stays hidden once hidden (v1.63.0)", async () => {
+  // It had a toggle, but the toggle only set style.display, so it came back on every reload - which is what
+  // made it feel like a third panel on the page that could not be got rid of.
+  const first = await boot({ storage: amtStorage });
+  try {
+    const widget = () => first.panelRoot().querySelector("#__tcInvestMult");
+    assert.ok(widget(), "it is there to begin with");
+    assert.notEqual(widget().style.display, "none", "and shown");
+    first.panelRoot().querySelector("#__tcImToggle").dispatchEvent(new first.window.Event("click", { bubbles: true }));
+    assert.equal(widget().style.display, "none", "the toggle hides it");
+    // The part that was missing: the choice was never written down.
+    assert.equal(pref(first, "__tradeCalc_im_shown"), "0", "and the choice is remembered");
+  } finally {
+    first.close();
+  }
+  // A fresh page carrying that choice: it must come up hidden.
+  const second = await boot({ storage: { ...amtStorage, __tradeCalc_im_shown: "0" } });
+  try {
+    const w = second.panelRoot().querySelector("#__tcInvestMult");
+    assert.ok(w, "the widget is still built");
+    assert.equal(w.style.display, "none", "and is still hidden after a reload");
+  } finally {
+    second.close();
   }
 });

@@ -30,6 +30,12 @@ Quotex pages. Drag it by its left grip; the position is remembered.
 | **SL** | Your stop-loss floor for the day. Set once per day, then trails upward as your balance grows |
 | **P/L** | Today's profit/loss %, from your journal sheet |
 | **PAYOUT** | Minimum payout % you are willing to trade. Trades are blocked below it |
+
+**← and → double and halve the trade amount** (v1.63.0), with nothing to configure — the factor is 2 by
+default. The floating `× ÷` widget cycles it to 1.5 or 1.3 if you want a gentler step, and `1` makes the
+arrows use Quotex's own −/+ buttons instead. Hide the widget with the `×` button in the main panel and it
+stays hidden; the arrows keep working, because they read the factor from storage rather than from the widget.
+Arrows are ignored while the caret is in any input, so typing is never intercepted.
 | **MULT** | Multi mode: allows several trades in quick succession (off = one trade per 1.5 s) |
 | **REQ** | How many winning trades are still needed to reach TP, at your current stake and payout |
 | **RISK** | Your stake as a % of balance — green under 2%, amber to 5%, red above |

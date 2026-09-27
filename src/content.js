@@ -1552,11 +1552,29 @@
     const KEY_BAL_LOGGED_DATE = "__tradeCalc_bal_logged_date",
       KEY_NATIVE_LIMIT_LOCK_DATE = "__tradeCalc_native_limit_lock_date",
       KEY_STEP_MULT = "__tradeCalc_step_mult",
+      // v1.63.0: whether the floating x/÷ widget is shown. The toggle used to set style.display only, so it
+      // reappeared on every reload. Hiding it does not affect the arrows - they read the factor from
+      // storage, not from the widget.
+      KEY_IM_SHOWN = "__tradeCalc_im_shown",
+      getImShown = () => {
+        try {
+          return prefGet(KEY_IM_SHOWN) !== "0";
+        } catch (t) {
+          return true;
+        }
+      },
+      setImShown = (t) => {
+        try {
+          prefSet(KEY_IM_SHOWN, t ? "1" : "0");
+        } catch (e) {}
+      },
+      // v1.63.0: 2 by default, so ArrowRight doubles the stake and ArrowLeft halves it out of the box. A
+      // stored 1 still means "step with Quotex's own -/+ buttons instead", which is the other arrow path.
       getStepMult = () => {
         try {
-          return parseFloat(prefGet(KEY_STEP_MULT) || "1") || 1;
+          return parseFloat(prefGet(KEY_STEP_MULT) || "2") || 2;
         } catch (t) {
-          return 1;
+          return 2;
         }
       },
       setStepMult = (t) => {
@@ -3451,7 +3469,9 @@
       investMultToggleBtn.addEventListener("click", () => {
         const e = byId("__tcInvestMult");
         if (e) {
-          e.style.display = e.style.display === "none" ? "" : "none";
+          const show = e.style.display === "none";
+          e.style.display = show ? "" : "none";
+          setImShown(show);
         }
         t();
       });
@@ -6598,14 +6618,16 @@
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Investment multiplier widget
     // ────────────────────────────────────────────────────────────────────────────────────────────────
-    const STEP_FACTORS = [1.3, 1.5];
+    // v1.63.0: doubling is the default, which is what ArrowRight/ArrowLeft are for - 1.3 and 1.5 stay on
+    // the cycle for anyone who wants a gentler step.
+    const STEP_FACTORS = [2, 1.5, 1.3];
     function getStepFactor() {
       const t = Math.round(10 * getStepMult()) / 10;
       return t > 1
         ? -1 !== STEP_FACTORS.indexOf(t)
           ? t
           : STEP_FACTORS.reduce((e, n) => (Math.abs(n - t) < Math.abs(e - t) ? n : e), STEP_FACTORS[0])
-        : 1.5;
+        : 2;
     }
     function multiplyStake(t) {
       if (!(stakeInputEl && stakeInputEl.isConnected)) {
@@ -9612,7 +9634,10 @@
         }
         const e = byId("__tcInvestMult");
         if (e) {
-          e.style.display = "";
+          // v1.63.0: coming back to the desktop layout restores it only if it is meant to be shown. This
+          // line used to show it unconditionally, so the toggle was undone by any resize as well as by a
+          // reload - which is most of why hiding it never seemed to stick.
+          e.style.display = getImShown() ? "" : "none";
         }
         if (readFlag(KEY_MTF_ON, false)) {
           createMtf();
@@ -9646,6 +9671,9 @@
           }
         });
         shadow.appendChild(t);
+      }
+      if (!getImShown()) {
+        t.style.display = "none";
       }
       renderInvestMultLabels(t);
     })();

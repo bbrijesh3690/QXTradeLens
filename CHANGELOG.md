@@ -5,7 +5,28 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
-## [1.62.0] - 2026-09-27
+## [1.63.0] - 2026-09-27
+
+### Changed
+- **← and → halve and double the amount, with nothing to set up first.** They have multiplied the stake
+  since v1.29.0, but only once a factor had been chosen, and the only way to choose one was the floating
+  `× ÷` widget — so out of the box the arrows clicked Quotex's own −/+ buttons instead. The factor now
+  defaults to **2**, and 2 is first on the widget's cycle. 1.5 and 1.3 are still there for a gentler step,
+  and a stored `1` still means "step with the platform's own buttons", which is the other arrow path.
+
+### Fixed
+- **Hiding the `× ÷` widget sticks.** The `×` button in the main panel has always hidden it, but the choice
+  was never written down: it came back on the next reload. Worse, the desktop branch of the layout handler
+  re-showed it unconditionally, so **any window resize** undid the toggle too — which is most of why hiding
+  it never seemed to work. Now stored under `__tradeCalc_im_shown`, honoured when the widget is built and
+  when the desktop layout is restored. Hiding it does not affect the arrows; they read the factor from
+  storage, not from the widget.
+
+### Note
+- The multiplier feeds the `MULT` mode as well, which scales consecutive trades by the same factor. With the
+  default now 2 rather than 1.5, that mode scales faster — the same one number drives both, deliberately.
+
+
 
 ### Changed
 - **A close refills the board.** Auto-close removing a pair now puts the panel into a fill: it opens every
