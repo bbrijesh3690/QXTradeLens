@@ -346,20 +346,24 @@ test("SL: a very low typed value is kept, not lifted to 5% of the peak (v1.64.1)
 const historyRow = (pair, amount) =>
   '<div class="ib6yR"><div class="RxOUE">' + pair + '</div><div class="Fqtla">' + amount + "</div></div>";
 
-test("history: no \"Entry\" tag is written into Quotex's trade history (v1.66.0)", async () => {
+test("history: every placed trade is tagged \"Entry\" with the balance it was placed at - always on (v1.68.0)", async () => {
+  // v1.66.0 removed the tags with their popup switch; the switch was what was meant to go. They are back with
+  // no switch at all, so an "off" left in storage by an older build must not turn them off.
   const log = [{ uuid: null, ts: Date.now() - 30000, pair: "EUR/USD (OTC)", amount: 100, bal: 5000 }];
-  const qx = await boot({ storage: { ...slStorage(10000), __tradeCalc_trade_log: JSON.stringify(log) } });
+  const qx = await boot({
+    storage: { ...slStorage(10000), __tradeCalc_trade_log: JSON.stringify(log), __tradeCalc_entry_tags: "0" },
+  });
   try {
     await sleep(400);
     // Added after load, so the page observer sees it the way it sees a trade settling on the live page.
     const holder = qx.window.document.createElement("div");
     holder.innerHTML = historyRow("EUR/USD (OTC)", "100");
     qx.window.document.body.appendChild(holder);
-    await sleep(900); // the tagger was debounced by 300 ms
+    await sleep(900); // the tagger is debounced by 300 ms
     const row = holder.querySelector(".ib6yR");
-    const tagged = [...row.querySelectorAll("*")].filter((el) => /^Entry /.test(el.textContent || ""));
-    assert.equal(tagged.length, 0, "nothing was stamped on the row: " + row.textContent);
-    assert.equal(row.children.length, 2, "the row is exactly as Quotex drew it");
+    const tag = [...row.querySelectorAll("*")].find((el) => /^Entry /.test(el.textContent || ""));
+    assert.ok(tag, "the row carries its entry balance: " + row.textContent);
+    assert.match(tag.textContent, /5,000/, "and it is the balance the trade was placed at: " + tag.textContent);
   } finally {
     qx.close();
   }

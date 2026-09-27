@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.68.0] - 2026-09-28
+
+### Restored
+- **The trade-history "Entry" tags, always on.** v1.66.0 removed them together with their popup switch. The
+  request was to remove the switch and keep the tags permanent; my confirming question said "the Entry Balance
+  Tags feature (keeping the trade log)", and "trade log" read, reasonably, as the trade history the tags live
+  in. The tagger is restored verbatim from 1.65.2 minus its on/off check, so it runs whatever an older build
+  left in storage - an "off" setting cannot turn it off. There is still no popup switch. The trade log it
+  reads from was never removed, so trades placed while the tags were gone are labelled too.
+
 ## [1.67.1] - 2026-09-28
 
 ### Fixed

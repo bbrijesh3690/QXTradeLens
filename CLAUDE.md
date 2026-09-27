@@ -163,9 +163,10 @@ check will say so if only one happened.
   it, and the popup's Journal Scale, Post-TP Trail Gap %, Disable System Lock and Candles-per-chart controls.
   Post-TP trailing is fixed at 5%; the SL setup screen and payout overlay are fixed at 20px; a timeframe never
   scrolled still starts at the stored `__tradeCalc_mtf_count`.
-  **v1.66.0** took the trade-history "Entry" tags (the trade log they read stays: `projectedPayout` prices an
-  open trade from it when the store cannot) and the popup's Section show/hide toggles - every group of the
-  panel is always shown.
+  **v1.66.0** took the popup's Section show/hide toggles - every group of the panel is always shown. It also
+  took the trade-history "Entry" tags, which was a misread request: the user meant the switch, not the tags.
+  **v1.68.0 restored the tags, always on, with no switch.** `__tradeCalc_entry_tags` stays in the clean-up list
+  and nothing reads it. The trade log they read from was never removed; `projectedPayout` also uses it.
   **v1.67.0** reduced the SL to one stored number, `__tradeCalc_sl`, kept until the user changes it: no daily
   setup screen, no trailing (pre- or post-TP), no per-day local/sync backup, no popup switch, and no
   `__tcSLBreach` event - it had no listener, so the SL has done nothing on breach since v1.21.0. The field is

@@ -69,6 +69,7 @@
         window.__tradeCalcObs.disconnect();
         delete window.__tradeCalcObs;
       }
+      document.querySelectorAll("." + ids.tcPlacedBal).forEach((t) => t.remove());
       if (window.__tcScheduler) {
         clearInterval(window.__tcScheduler);
         delete window.__tcScheduler;
@@ -852,6 +853,7 @@
       "tcProjBalRow",
       "tcTradeTimer",
       "tcProjChip",
+      "tcPlacedBal",
       "tcMonitored",
     ].forEach((t, e) => {
       ids[t] = "x" + idToken + (e + 1).toString(36);
@@ -3971,6 +3973,9 @@
         chrome.storage.sync.get([KEY_TRADE_LOG], (t) => {
           const e = t && Array.isArray(t[KEY_TRADE_LOG]) ? t[KEY_TRADE_LOG] : readTradeLogLocal();
           tradeLog = e.slice(0, TRADE_LOG_MAX);
+          if (tradeLog.length) {
+            tagHistoryEntryBalances();
+          }
         });
       } catch (t) {
         tradeLog = readTradeLogLocal();
@@ -4013,7 +4018,90 @@
       }
       return "";
     }
+    function tagHistoryEntryBalances() {
+      // v1.68.0: always on. v1.66.0 removed this along with its popup switch; it was the switch that was
+      // meant to go. The balance at entry is read from the trade log, which was never removed.
+      const t = document.querySelectorAll(".ib6yR, .SDEZP");
+      let e = false;
+      for (let n = 0; n < t.length; n++) {
+        const o = t[n],
+          r = o.querySelector(".Fqtla"),
+          a = o.querySelector(".O5xJP");
+        if (!r && !a) {
+          continue;
+        }
+        const i = a || o;
+        if (i.querySelector("." + ids.tcPlacedBal)) {
+          continue;
+        }
+        const s = o.querySelector(".RxOUE") || o.querySelector(".glItV"),
+          l = s ? s.textContent.trim() : "";
+        let d = NaN;
+        if (r) {
+          let t = r.textContent || "";
+          const e = r.querySelector(".lCITV");
+          if (e) {
+            t = t.replace(e.textContent, "");
+          }
+          d = parseNum(t);
+        } else {
+          const t = a.querySelector(".h6J0L");
+          let e = t ? t.textContent : "";
+          const n = t && t.querySelector(".B7WYW");
+          if (n) {
+            e = e.replace(n.textContent, "");
+          }
+          d = parseNum(e);
+        }
+        const u = o.querySelector(".ow8Ej") || o.querySelector(".b98_V"),
+          p = readDetailField(u, "id"),
+          h = readDetailField(u, "open time"),
+          f = h ? new Date(h.replace(" ", "T")).getTime() : NaN;
+        let g = p ? tradeLog.find((t) => t.uuid === p) : null;
+        if (!g) {
+          const t = normKey(l);
+          for (let n = 0; n < tradeLog.length; n++) {
+            const o = tradeLog[n];
+            if (
+              !o.uuid &&
+              (!t || normKey(o.pair) === t) &&
+              (o.amount == null || isNaN(d) || !(Math.abs(o.amount - d) > 0.5)) &&
+              (isNaN(f) || !(Math.abs(o.ts - f) > 90000))
+            ) {
+              g = o;
+              if (p) {
+                o.uuid = p;
+                e = true;
+              }
+              break;
+            }
+          }
+        }
+        if (!g) {
+          continue;
+        }
+        const _ = document.createElement("span");
+        _.className = ids.tcPlacedBal;
+        _.style.cssText =
+          "flex:0 0 100%;width:100%;margin-top:1px;text-align:right;font-weight:700;font-size:11px;line-height:1.3;color:rgb(255 185 0);white-space:nowrap;opacity:0.92;";
+        _.textContent = "Entry " + fmtMoney(g.bal) + " " + detectCurrency();
+        i.appendChild(_);
+      }
+      if (e) {
+        saveTradeLog();
+      }
+    }
     window.__tcRecordPlacement = recordPlacement;
+    let historyTagQueued = false;
+    function onPageMutationsForHistory() {
+      if (!historyTagQueued) {
+        historyTagQueued = true;
+        setTimeout(() => {
+          historyTagQueued = false;
+          tagHistoryEntryBalances();
+        }, 300);
+      }
+    }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Asset dropdown automation (OTC rebuild `R`, close tabs)
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -4166,12 +4254,13 @@
     }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Page observer (v1.23.0): one MutationObserver on document.body feeds the three consumers that used
-    // to each observe the whole body subtree: the account-label spoof, and recalc scheduling
-    // (v1.66.0: the trade-history "Entry balance" tags are gone). Cleanup disconnects it through window.__tradeCalcObs.
+    // to each observe the whole body subtree: the account-label spoof, recalc scheduling and
+    // the trade-history "Entry balance" tags. Cleanup disconnects it through window.__tradeCalcObs.
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     const pageObserver = new MutationObserver((records) => {
       onPageMutationsForSpoof(records);
       onPageMutationsForRecalc(records);
+      onPageMutationsForHistory();
     });
     pageObserver.observe(document.body, {
       childList: true,

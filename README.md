@@ -110,6 +110,8 @@ running. The diagnostics line carries what it decided — `1 of 2 at or above 90
   switching pairs does not lose them. Press **C** to show or hide the panel.
 - **Scan view** — the same panel, showing the whole board instead of one pair. See
   [The scan view](#the-scan-view).
+- **Entry balance tags** — each trade in Quotex's trade history is labelled "Entry ₹X": the balance you had
+  when you placed it. Always on; there is no switch.
 - **Tab title** — 🟢/🔴 for winning/losing trades plus the nearest expiry countdown, so you can watch
   from another tab.
 - **Sounds** — short tones when open trades turn winning or losing.
@@ -255,8 +257,8 @@ into a single look.
   popup now uses your system's own fonts.
 - **Footprint on Quotex's page is kept small**: no webfont request, no stylesheet naming their classes, and
   their buttons are never disabled by the panel (blocked trades are stopped before the click reaches them).
-  The one cosmetic mark left — "Show Live as Demo" — can be switched off in the popup; the trade-history
-  "Entry" tags were removed in v1.66.0, so nothing else is written into their page.
+  Two things are written into their page: "Show Live as Demo", which can be switched off in the popup, and
+  the trade-history "Entry" tags, which are always on.
   Amount changes are **typed** into Quotex's field through the browser's own editing pipeline, so they look
   like you typing rather than a script writing the value. Trades placed by the ↑/↓ shortcut dispatch a
   scripted click; switch on **Hotkey Focus Mode** and your Enter does the pressing — for the trade buttons
