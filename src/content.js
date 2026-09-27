@@ -2635,12 +2635,30 @@
       }
       let value = Math.floor(typed);
       // Once TP is reached the post-TP lock floors the SL, and the ratchet enforces it whatever is typed.
-      // Clamping here makes that visible instead of letting the number change by itself a moment later.
+      // Clamping here makes that visible instead of letting the number change by itself a moment later -
+      // but never past the balance, which is the one value this function has already refused outright. A TP
+      // floor sitting above the balance means the account is under its floor already, and raising the SL to
+      // meet it would lock the platform out on a keystroke meant to adjust a number.
       if (!isNaN(slTpLock) && slTpLock > 0 && value < Math.floor(slTpLock)) {
-        value = Math.floor(slTpLock);
+        const floored = Math.floor(slTpLock);
+        if (!isFinite(balance) || !(balance > 0) || floored < balance) {
+          value = floored;
+        } else {
+          return revert("TP floor is above your balance - SL left as it was");
+        }
       }
       const base = isFinite(slPeak) && slPeak > 0 ? slPeak : balance,
-        trail = slTrailFor(base, value),
+        // v1.64.1: a hand-typed SL is not subject to the trail's own 5%-of-peak limit.
+        //
+        // slTrailFor caps the gap at 0.95, which is right for TRAILING - it stops the automatic floor
+        // drifting arbitrarily far below the peak. Applied to an explicit edit it silently overrode it:
+        // typing 1 against a peak of 19,655 needs a gap of 0.99995, got 0.95, and the ratchet then lifted
+        // the SL to 5% of the peak - 982. Measured live on 2026-09-28, which is how it was found.
+        //
+        // For an edit the gap is exactly the one the typed value implies, so the ratchet's next target IS
+        // that value and it is left alone. Still floored at the 20% default, because a gap tighter than that
+        // would have the trail pulling the SL up faster than the day's rule.
+        trail = Math.max(SL_PRE_TP_TRAIL, Math.min(0.999999, 1 - value / base)),
         today = getDayKey();
       if (hasSyncStorage()) {
         chrome.storage.sync.set({

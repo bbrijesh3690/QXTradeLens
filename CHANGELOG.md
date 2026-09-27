@@ -5,7 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
-## [1.64.0] - 2026-09-28
+## [1.64.1] - 2026-09-28
+
+### Fixed
+- **A hand-typed SL is no longer capped at 5% of the day's peak.** Reported and then measured live: typing
+  `1` against a peak of 19,655.32 stored **982**. `slTrailFor` caps the trail gap at 0.95, which is correct
+  for the automatic trail — it stops the floor drifting arbitrarily far below the peak — but applied to an
+  explicit edit it silently overrode it, because the ratchet's next target became peak × 0.05 and that is
+  above 1. An edit now uses exactly the gap its value implies, so the ratchet's target *is* that value and it
+  is left alone. The 20% floor still applies, and `slTrailFor` itself is untouched, so the automatic trail
+  and the daily setup screen keep the 0.95 cap.
+- **The post-TP floor can no longer push a typed SL above the balance.** It is clamped to the TP lock as
+  before, but if that lock sits above the current balance the edit is refused instead — storing it would lock
+  the platform out on a keystroke meant to adjust a number, which is exactly what this function already
+  refuses for a value typed directly. Dormant on the reporting page (the TP lock was four days stale and so
+  not loaded), found by reading the code path rather than by hitting it.
+
+
 
 ### Added
 - **The SL in the main panel can be typed into, in both directions.** Enter or leaving the field commits it,

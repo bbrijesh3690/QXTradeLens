@@ -86,8 +86,10 @@ running. The diagnostics line carries what it decided — `1 of 2 at or above 90
   lower SL, that wider gap is kept for the day instead, so your choice sticks.
 - **Editing it mid-day** (v1.64.0): type over the SL in the panel and press Enter — up or down. Escape
   cancels. The day's trail gap is recomputed from the peak so your number holds rather than being pulled
-  back on the next pass. A value at or above your balance is refused, because storing it would lock you out
-  immediately; after TP is reached the post-TP floor still applies and a lower value is clamped to it.
+  back on the next pass, and the trail's usual "no lower than 5% of the peak" limit does not apply to a value
+  you typed yourself — your number is your number. A value at or above your balance is refused, because
+  storing it would lock you out immediately; after TP is reached the post-TP floor still applies and a lower
+  value is clamped to it, unless that floor is itself above your balance, in which case the edit is refused.
 - **After TP is reached**: the SL tightens to the "post-TP trail gap" (1–15%, default 5%) below the peak,
   and never drops below TP.
 - **If the account has no funds**, the screen says so and offers **Close** instead of asking for a number.

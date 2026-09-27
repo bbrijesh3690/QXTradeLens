@@ -393,3 +393,33 @@ test("SL: nonsense is refused and the field goes back to what is in force (v1.64
     qx.close();
   }
 });
+
+test("SL: a very low typed value is kept, not lifted to 5% of the peak (v1.64.1)", async () => {
+  // Found live on 2026-09-28: typing 1 against a peak of 19,655.32 stored 982. slTrailFor caps the trail gap
+  // at 0.95, which is right for the automatic trail but silently overrode an explicit edit - the ratchet's
+  // next target became peak x 0.05, which is above 1, so it lifted the SL there.
+  const qx = await boot({ storage: slStorage(10000) });
+  try {
+    await sleep(600);
+    commitSl(qx, "1");
+    await sleep(2600); // several trailing passes
+    assert.equal(pref(qx, "__tradeCalc_sl"), "1", "the SL that was typed is the SL in force: " + pref(qx, "__tradeCalc_sl"));
+    assert.equal(parseFloat(String(slShown(qx)).replace(/,/g, "")), 1, "and the panel shows it: " + slShown(qx));
+    const trail = parseFloat(pref(qx, "__tradeCalc_sl_ls_trail"));
+    assert.ok(trail > 0.95, "the gap went past the trail's own 0.95 cap: " + trail);
+  } finally {
+    qx.close();
+  }
+});
+
+test("SL: the trail's own 5% limit still applies when it is trailing (v1.64.1)", async () => {
+  // Only an explicit edit is exempt. Nothing here touches slTrailFor, which the daily setup screen uses.
+  const qx = await boot({ storage: slStorage(10000) });
+  try {
+    await sleep(2600);
+    const trail = parseFloat(pref(qx, "__tradeCalc_sl_ls_trail") || "0.2");
+    assert.ok(trail <= 0.95, "the automatic trail gap is still capped: " + trail);
+  } finally {
+    qx.close();
+  }
+});
