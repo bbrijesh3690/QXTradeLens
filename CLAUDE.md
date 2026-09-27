@@ -136,6 +136,16 @@ check will say so if only one happened.
   transparent up to `<body>`, which computes to white on a page that renders dark — and the result looked
   wrong on the real page both times. If their label returns to the light DOM, the relabel resumes on its
   own.
+- **The payout floor was watched both ways on the live page on 2026-09-27** (v1.61.0, v1.61.1). Floor raised
+  from 90 to 93 with twelve pairs open: ten went, a replacement was opened as the board thinned, and it
+  settled at exactly two pairs with `2 pairs at or above 93%` once the 30 s throttle expired - so the
+  "top up, do not grow" guard holds. Not observed: the timing. The read caught `opened one 1s ago`, which
+  proves the open happened but not that it followed the close immediately rather than a tick and a settle
+  window later; that path is covered by specs only.
+- **The floor is committed on Enter or blur, and nothing acts on the box's contents** (v1.61.1). Worth
+  knowing before setting up any live test that depends on it: a typed number that was never entered is not
+  the floor, and until v1.61.1 the pass that closes tabs read the box while the diagnostics line read
+  storage, so the two could name different figures.
 - Offered and not started: a sound for the trend-flip mark (left visual on purpose — a tone mid-trade
   is intrusive and gives no clue which chart it came from), and per-asset rather than per-timeframe
   zoom memory.
