@@ -5,6 +5,43 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.65.0] - 2026-09-28
+
+### Removed
+- **The Google Sheet journal, entirely.** The journal window with its editable cells, the log button and
+  Enter-to-log, TP pulled from the sheet, the **P/L** and **GOAL** fields, and the popup's "Activity Log"
+  section — which was the Apps Script URL, not a log. No sheet was connected on the reporting page, so none of
+  it was doing anything. The service worker's fetch proxy went with it.
+- **The TP refresh and save buttons.** Save was a duplicate: Enter in the TP field has always called the same
+  `saveTp()`. Refresh only re-pulled TP from the sheet. TP is still edited the same way: hover, type, Enter.
+- **The panel's Actions section** (LOG, JOURNAL and a theme button). It was hidden whenever no sheet URL was
+  set, so it was already invisible. The popup's own theme toggle is unchanged.
+- **The loss-streak system lock.** After three straight losses it blocked qxbroker.com inside Chrome for 15
+  minutes, asked a local daemon on 127.0.0.1:7343 to hosts-block it too, and closed every Quotex tab. Removed
+  with its toggle, the streak that fired it, the settled-trade tracker that only fed the streak, and the
+  health-check row that reported on it. It was switched off on the reporting page.
+- **The marquee** and its speed setting. No message was set.
+- **Popup controls:** Journal Scale, Post-TP Trail Gap %, Disable System Lock, Candles per chart.
+- **About 34 KB of the page script** (212.7 KB → 178.1 KB built), including 65 stylesheet rules and 6
+  animations that only the removed parts used, and a TP progress line whose elements had already left the
+  panel in an earlier release while its code stayed behind.
+
+### Kept, with fixed values
+- **Post-TP trailing** stays and trails 5% below the day's peak — the default, and the value it was on.
+- **The SL setup screen and the payout overlay** are fixed at 20px, which is what Journal Scale was set to.
+- **A timeframe never scrolled** still starts at the stored candles-per-chart value; every timeframe that has
+  been scrolled keeps its own zoom, as before. On the reporting page all three already had their own.
+
+### Safety
+- **A lock active at the moment of updating is lifted.** The block rule lives inside Chrome, not in the
+  extension, so deleting the code alone would have left it in force with nothing to clear it. The service
+  worker now clears rule 9001, its alarm and its stored expiry on every start. `declarativeNetRequest` and
+  `alarms` stay in the manifest for that alone; the two `127.0.0.1` host permissions are gone.
+- **Removed settings are cleared from Chrome sync** when the popup opens, so a value cannot sit there and be
+  read by an older build on another device.
+- **No script in the extension makes a network request any more.** The one outbound request left is the popup
+  loading its fonts from Google Fonts.
+
 ## [1.64.1] - 2026-09-28
 
 ### Fixed

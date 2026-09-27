@@ -2,7 +2,7 @@
 
 A Chrome extension (Manifest V3) that adds a trading-discipline panel to the Quotex web platform
 (`qxbroker.com`). It shows your targets and risk while you trade, blocks trades that break your own
-rules, keeps a journal in Google Sheets, and repairs itself when Quotex changes their site.
+rules, and repairs itself when Quotex changes their site.
 
 It is **read-only towards Quotex**: it never sends anything to the broker, and it only places a trade
 if you press a shortcut you switched on yourself.
@@ -26,9 +26,8 @@ Quotex pages. Drag it by its left grip; the position is remembered.
 
 | Field | Meaning |
 |---|---|
-| **TP** | Your take-profit target for the day. Type it, or pull today's target from your journal sheet. Locked for the day once set |
+| **TP** | Your take-profit target for the day. Hover it, type, press Enter |
 | **SL** | Your stop-loss floor for the day. Set once per day, then trails upward as your balance grows |
-| **P/L** | Today's profit/loss %, from your journal sheet |
 | **PAYOUT** | Minimum payout % you are willing to trade. Trades are blocked below it |
 
 **← and → double and halve the trade amount** (v1.63.0), with nothing to configure — the factor is 2 by
@@ -39,7 +38,6 @@ Arrows are ignored while the caret is in any input, so typing is never intercept
 | **MULT** | Multi mode: allows several trades in quick succession (off = one trade per 1.5 s) |
 | **REQ** | How many winning trades are still needed to reach TP, at your current stake and payout |
 | **RISK** | Your stake as a % of balance — green under 2%, amber to 5%, red above |
-| **Goal** | Days and trades to target, from your journal sheet |
 | **Sparkline** | Your balance over the last 30 updates, behind the panel |
 | **Version** | The build this tab is running, at the right-hand end of the row. Reloading the extension does **not** update an open tab, so if this differs from the installed version, refresh the tab |
 
@@ -90,7 +88,7 @@ running. The diagnostics line carries what it decided — `1 of 2 at or above 90
   you typed yourself — your number is your number. A value at or above your balance is refused, because
   storing it would lock you out immediately; after TP is reached the post-TP floor still applies and a lower
   value is clamped to it, unless that floor is itself above your balance, in which case the edit is refused.
-- **After TP is reached**: the SL tightens to the "post-TP trail gap" (1–15%, default 5%) below the peak,
+- **After TP is reached**: the SL tightens to 5% below the peak,
   and never drops below TP.
 - **If the account has no funds**, the screen says so and offers **Close** instead of asking for a number.
 - **The trading day** resets at midnight in your Quotex account's timezone.
@@ -123,7 +121,6 @@ running. The diagnostics line carries what it decided — `1 of 2 at or above 90
   placed that trade.
 - **Tab title** — 🟢/🔴 for winning/losing trades plus the nearest expiry countdown, so you can watch
   from another tab.
-- **Marquee** — an optional scrolling reminder across the top of the page.
 - **Sounds** — short tones when open trades turn winning or losing.
 - **Mobile bar** — on narrow screens, quick controls for timeframe, expiry, stake and minimum payout.
 
@@ -185,7 +182,6 @@ Active on the trade page when you are not typing in a field.
 | **X** | Mark the current pair as monitored |
 | **V / Shift+V** | Cycle through monitored pairs |
 | **C** | Show or hide the multi-timeframe charts |
-| **Enter** | Log your balance to the journal sheet |
 | **Ctrl+↑ / ↓** (Cmd on macOS) | Step the TP up or down |
 | **Middle-click a pair tab** | Close that tab |
 | **Alt+Shift+R** | Developer: reload the extension and refresh Quotex tabs |
@@ -194,36 +190,17 @@ Tabs paying below your minimum are also closed automatically every 5 s, when Quo
 button on them — and if that would leave you with nothing tradeable, a pair above the floor is opened
 first. See [The payout floor works both ways](#the-payout-floor-works-both-ways).
 
-## Journal and balance log
-
-Point the popup at a Google Apps Script URL (your sheet's web app) and the panel gains:
-
-- **Log button / Enter** — appends today's balance to the sheet.
-- **Journal window** — your trading days in a table, with today highlighted. The WDL, Deposit and Notes
-  cells are editable in place and save back to the sheet.
-- **TP, today's P/L % and Goal** in the panel are read from that sheet.
-
-Amounts use your account's currency and number format.
-
 ## Popup settings
 
 | Section | Settings |
 |---|---|
-| **Display** | Panel scale, journal scale, chip position (cursor / centre / anchored), light–dark theme, show or hide the panel |
-| **Risk** | Daily SL setup on/off, post-TP trail gap %, disable system lock, max concurrent trades (1–4) |
+| **Display** | Panel scale, chip position (cursor / centre / anchored), light–dark theme, show or hide the panel |
+| **Risk** | Daily SL setup on/off, max concurrent trades (1–4) |
 | **Hotkeys** | ↑↓ places trades, ←→ changes the trade amount (both off by default), and Hotkey Focus Mode (your Enter does the pressing, so the click comes from the browser) |
-| **Sections** | Show or hide the panel's Targets, Protections and Projection groups (the Log group appears once a sheet URL is set) |
-| **Marquee** | Message text and scroll speed |
-| **Multi-timeframe charts** | Which timeframes (up to 4), how many candles each chart shows, whether a new pair is filled in automatically, and how long a pair must stay on screen first (default 15 s) |
-| **Activity log** | Your Google Apps Script URL |
+| **Sections** | Show or hide the panel's Targets, Protections and Projection groups |
+| **Multi-timeframe charts** | Which timeframes (up to 4), whether a new pair is filled in automatically, and how long a pair must stay on screen first (default 15 s) |
 | **Health** | "Check Quotex compatibility" — see below |
 | **Deposits** | "Scan Deposits" — see below |
-
-### Loss-streak lock (off by default)
-
-After 3 losing trades in a row, the extension can block `qxbroker.com` for 15 minutes and close your
-Quotex tabs. It is disabled by default; turn it on by unticking **Disable System Lock**. There is no
-unlock button: it expires on its own.
 
 ### Deposit scanner
 
@@ -283,7 +260,9 @@ into a single look.
   the relabel does nothing — the tab title still says "Demo trading". Nothing is painted over their page
   to compensate; if a later build puts the label back, the relabel resumes by itself.
 - **Your data stays on your machine.** Settings live in Chrome storage and in this site's own storage under
-  opaque names; the only outbound traffic is to your own Google Sheet, if you configure one.
+  opaque names. **Nothing the extension runs on Quotex, or in the background, makes a network request**
+  (since v1.65.0, when the Google Sheet journal was removed). The one outbound request left is the popup
+  loading its two fonts from Google Fonts when you open it.
 - **Footprint on Quotex's page is kept small**: no webfont request, no stylesheet naming their classes, and
   their buttons are never disabled by the panel (blocked trades are stopped before the click reaches them).
   The two cosmetic marks — "Show Live as Demo" and "Entry Balance Tags" — can be switched off in the popup.
@@ -305,7 +284,7 @@ into a single look.
 | `…/manifest.json` | Extension manifest. `version` is the source of truth for releases |
 | `…/content.js` | Main panel, **generated** by `npm run build` from `src/content.js` (committed so the folder loads without building) |
 | `…/chart_reader.js` | Read-only bridge to Quotex's chart and internal state |
-| `…/service_worker.js` | Background: dev reload, sheet fetch proxy, loss-streak lock |
+| `…/service_worker.js` | Background: dev reload, and clearing any block left by the loss-streak lock removed in v1.65.0 |
 | `…/popup.html`, `popup.js` | Toolbar popup: settings, health check, deposit scanner |
 | `CLAUDE.md` | Working notes: the rules a change is judged against, what cannot be verified from outside the browser, and how to pick the work up cold |
 | `docs/ANALYSIS.md` | Capability map, known bugs and the refactor plan |

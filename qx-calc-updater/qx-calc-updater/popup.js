@@ -4,31 +4,15 @@ const sunIcon = document.getElementById('sunIcon');
 const moonIcon = document.getElementById('moonIcon');
 const sizeSlider = document.getElementById('sizeSlider');
 const sizeVal = document.getElementById('sizeVal');
-const journalSizeSlider = document.getElementById('journalSizeSlider');
-const journalSizeVal = document.getElementById('journalSizeVal');
 const visCheckboxes = document.querySelectorAll('.toggles-container input[type="checkbox"][data-idx]');
 const saveVisibilityBtn = document.getElementById('saveVisibility');
-const sheetUrlInput = document.getElementById('sheetUrlInput');
-const sheetSave = document.getElementById('sheetSave');
-const sheetClear = document.getElementById('sheetClear');
-const sheetStatus = document.getElementById('sheetStatus');
-const logToggleRow = document.getElementById('logToggleRow');
 const slEnabledToggle = document.getElementById('slEnabledToggle');
-const postTpGapInput = document.getElementById('postTpGapInput');
-const sysLockDisableToggle = document.getElementById('sysLockDisableToggle');
 const hkUpDownToggle = document.getElementById('hkUpDownToggle');
 const hkLeftRightToggle = document.getElementById('hkLeftRightToggle');
 const hkFocusModeToggle = document.getElementById('hkFocusModeToggle');
-const marqueeInput = document.getElementById('marqueeInput');
-const marqueeSave = document.getElementById('marqueeSave');
-const marqueeClear = document.getElementById('marqueeClear');
-const marqueeSpeedSlider = document.getElementById('marqueeSpeedSlider');
-const marqueeSpeedVal = document.getElementById('marqueeSpeedVal');
 const mtfTfsInput = document.getElementById('mtfTfsInput');
 const mtfTfsSave = document.getElementById('mtfTfsSave');
 const mtfStatus = document.getElementById('mtfStatus');
-const mtfCountSlider = document.getElementById('mtfCountSlider');
-const mtfCountVal = document.getElementById('mtfCountVal');
 const mtfAutofillToggle = document.getElementById('mtfAutofillToggle');
 const mtfSettleInput = document.getElementById('mtfSettleInput');
 const mtfFlipToggle = document.getElementById('mtfFlipToggle');
@@ -39,44 +23,24 @@ const relabelDemoToggle = document.getElementById('relabelDemoToggle');
 const entryTagsToggle = document.getElementById('entryTagsToggle');
 
 let currentTheme = 'dark';
-let currentVisibility = [1, 1, 1, 1];
+let currentVisibility = [1, 1, 1];
 
-function marqueeStatusEl() { return document.getElementById('marqueeStatus'); }
-function updateMarqueeStatus(msg) {
-  const has = msg && msg.trim().length > 0;
-  if (!marqueeStatusEl()) return;
-  marqueeStatusEl().textContent = has ? 'On' : 'Off';
-  marqueeStatusEl().className = 'chip ' + (has ? 'set' : 'unset');
-}
-function updateSheetStatus(url) {
-  const has = url && url.trim().length > 0;
-  sheetStatus.textContent = has ? 'Set' : 'Not set';
-  sheetStatus.className = 'chip ' + (has ? 'set' : 'unset');
-  // The Log section's visibility follows the URL (no manual toggle) — keep idx 3 of the
-  // visibility array in sync so "Save Sections" never fights the URL-driven activation.
-  currentVisibility[3] = has ? 1 : 0;
-}
 
 async function init() {
-  // Load sheet URL and SL toggle from storage directly — doesn't need an active tab
-  const stored = await chrome.storage.sync.get(['sheetUrl', '__tradeCalc_sl_enabled', '__tradeCalc_sl_post_tp_gap', '__tradeCalc_sys_lock_disabled', '__tradeCalc_chip_pos', '__tradeCalc_max_trades', '__tradeCalc_max_two', 'sectionVisibility', '__tradeCalc_hk_updown', '__tradeCalc_hk_leftright', '__tradeCalc_marquee_msg', '__tradeCalc_marquee_speed', '__tradeCalc_mtf_tfs', '__tradeCalc_mtf_count', '__tradeCalc_mtf_autofill', '__tradeCalc_mtf_settle', '__tradeCalc_mtf_flip', '__tradeCalc_mtf_flip_bars', '__tradeCalc_relabel_demo', '__tradeCalc_entry_tags', '__tradeCalc_hk_focus_mode']);
-  const savedUrl = stored.sheetUrl || '';
-  sheetUrlInput.value = savedUrl;
-  updateSheetStatus(savedUrl);
+  // v1.65.0: settings for features that were removed. Cleared so they cannot linger in sync. Best effort
+  // and never fatal: it runs first, so a throw here would stop the rest of init() loading the popup.
+  try {
+    const r = chrome.storage.sync.remove(['sheetUrl', '__tradeCalc_sl_post_tp_gap', '__tradeCalc_sys_lock_disabled', '__tradeCalc_marquee_msg', '__tradeCalc_marquee_speed', '__tradeCalc_mtf_count']);
+    if (r && typeof r.catch === 'function') r.catch(() => {});
+  } catch (e) {}
+  // Load the settings from storage directly — doesn’t need an active tab
+  const stored = await chrome.storage.sync.get(['__tradeCalc_sl_enabled', '__tradeCalc_chip_pos', '__tradeCalc_max_trades', '__tradeCalc_max_two', 'sectionVisibility', '__tradeCalc_hk_updown', '__tradeCalc_hk_leftright', '__tradeCalc_mtf_tfs', '__tradeCalc_mtf_autofill', '__tradeCalc_mtf_settle', '__tradeCalc_mtf_flip', '__tradeCalc_mtf_flip_bars', '__tradeCalc_relabel_demo', '__tradeCalc_entry_tags', '__tradeCalc_hk_focus_mode']);
   if (slEnabledToggle) {
     slEnabledToggle.checked = stored['__tradeCalc_sl_enabled'] !== false;
   }
   // Page marks default ON, so nothing changes until they are switched off (v1.27.0).
   if (relabelDemoToggle) relabelDemoToggle.checked = stored['__tradeCalc_relabel_demo'] !== false;
   if (entryTagsToggle) entryTagsToggle.checked = stored['__tradeCalc_entry_tags'] !== false;
-  if (postTpGapInput) {
-    const pg = parseFloat(stored['__tradeCalc_sl_post_tp_gap']);
-    postTpGapInput.value = (!isNaN(pg) && pg > 0) ? Math.min(15, Math.max(1, pg)) : 5;
-  }
-  if (sysLockDisableToggle) {
-    // Sticky, default ON (system lock disabled) — unset storage must read as checked.
-    sysLockDisableToggle.checked = stored['__tradeCalc_sys_lock_disabled'] !== false;
-  }
   if (chipPosSelect) { const cp = stored['__tradeCalc_chip_pos']; chipPosSelect.value = (cp === 'center' || cp === 'anchored') ? cp : 'cursor'; }
   if (maxTradesSelect) {
     // Prefer the new int key; migrate the legacy boolean (max_two===false → 4, else 2); default 2.
@@ -88,17 +52,10 @@ async function init() {
   if (hkUpDownToggle) hkUpDownToggle.checked = stored['__tradeCalc_hk_updown'] === true;
   if (hkLeftRightToggle) hkLeftRightToggle.checked = stored['__tradeCalc_hk_leftright'] === true;
   if (hkFocusModeToggle) hkFocusModeToggle.checked = stored['__tradeCalc_hk_focus_mode'] === true;
-  if (marqueeInput) { const m = stored['__tradeCalc_marquee_msg'] || ''; marqueeInput.value = m; updateMarqueeStatus(m); }
-  if (marqueeSpeedSlider) { let s = parseInt(stored['__tradeCalc_marquee_speed'], 10); if (isNaN(s)) s = 5; marqueeSpeedSlider.value = s; if (marqueeSpeedVal) marqueeSpeedVal.textContent = s; }
   {
     const tfs = parseTfListPopup(stored['__tradeCalc_mtf_tfs']);
     if (mtfTfsInput) mtfTfsInput.value = tfs.join(', ');
     updateMtfStatus(tfs);
-    let c = parseInt(stored['__tradeCalc_mtf_count'], 10);
-    if (isNaN(c)) c = 40;
-    c = Math.min(120, Math.max(10, c));
-    if (mtfCountSlider) mtfCountSlider.value = c;
-    if (mtfCountVal) mtfCountVal.textContent = c;
     // On by default, so only an explicit false unticks it.
     if (mtfAutofillToggle) mtfAutofillToggle.checked = stored['__tradeCalc_mtf_autofill'] !== false;
     if (mtfSettleInput) mtfSettleInput.value = clampSettle(stored['__tradeCalc_mtf_settle']);
@@ -106,7 +63,7 @@ async function init() {
     if (mtfFlipBarsInput) mtfFlipBarsInput.value = clampFlipBars(stored['__tradeCalc_mtf_flip_bars']);
   }
   if (stored.sectionVisibility && Array.isArray(stored.sectionVisibility)) {
-    updateUI(undefined, undefined, stored.sectionVisibility, undefined);
+    updateUI(undefined, undefined, stored.sectionVisibility);
   }
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -115,20 +72,13 @@ async function init() {
   try {
     const state = await chrome.tabs.sendMessage(tab.id, { type: 'GET_STATE' });
     if (state) {
-      updateUI(state.theme, state.fontSize, state.visibility, state.journalFontSize);
-      if (state.sheetUrl !== undefined) {
-        sheetUrlInput.value = state.sheetUrl;
-        updateSheetStatus(state.sheetUrl);
-      }
+      updateUI(state.theme, state.fontSize, state.visibility);
       if (state.chipPos !== undefined && chipPosSelect) chipPosSelect.value = state.chipPos;
       if (state.maxTrades !== undefined && maxTradesSelect) maxTradesSelect.value = String(Math.max(1, Math.min(4, parseInt(state.maxTrades, 10) || 2)));
       if (state.hkUpDown !== undefined && hkUpDownToggle) hkUpDownToggle.checked = state.hkUpDown === true;
       if (state.hkLeftRight !== undefined && hkLeftRightToggle) hkLeftRightToggle.checked = state.hkLeftRight === true;
       if (state.hkFocusMode !== undefined && hkFocusModeToggle) hkFocusModeToggle.checked = state.hkFocusMode === true;
-      if (state.marquee !== undefined && marqueeInput) { marqueeInput.value = state.marquee; updateMarqueeStatus(state.marquee); }
-      if (state.marqueeSpeed !== undefined && marqueeSpeedSlider) { marqueeSpeedSlider.value = state.marqueeSpeed; if (marqueeSpeedVal) marqueeSpeedVal.textContent = state.marqueeSpeed; }
       if (state.mtfTfs !== undefined) { const t = parseTfListPopup(state.mtfTfs); if (mtfTfsInput) mtfTfsInput.value = t.join(', '); updateMtfStatus(t); }
-      if (state.mtfCount !== undefined) { if (mtfCountSlider) mtfCountSlider.value = state.mtfCount; if (mtfCountVal) mtfCountVal.textContent = state.mtfCount; }
       if (state.mtfAutofill !== undefined && mtfAutofillToggle) mtfAutofillToggle.checked = state.mtfAutofill === true;
       if (state.mtfSettle !== undefined && mtfSettleInput) mtfSettleInput.value = clampSettle(state.mtfSettle);
       if (state.mtfFlip !== undefined && mtfFlipToggle) mtfFlipToggle.checked = state.mtfFlip === true;
@@ -141,7 +91,7 @@ async function init() {
   }
 }
 
-function updateUI(theme, fontSize, visibility, journalFontSize) {
+function updateUI(theme, fontSize, visibility) {
   if (theme !== undefined) currentTheme = theme;
   if (theme !== undefined) {
     if (theme === 'light') {
@@ -156,11 +106,6 @@ function updateUI(theme, fontSize, visibility, journalFontSize) {
   if (fontSize) {
     sizeSlider.value = fontSize;
     sizeVal.textContent = fontSize + 'px';
-  }
-
-  if (journalFontSize) {
-    journalSizeSlider.value = journalFontSize;
-    journalSizeVal.textContent = journalFontSize + 'px';
   }
 
   if (visibility && Array.isArray(visibility)) {
@@ -188,13 +133,6 @@ if (panelToggleBtn) {
   panelToggleBtn.addEventListener('click', () => sendMessage({ type: 'TOGGLE_PANEL' }));
 }
 
-function saveSheetUrl(url) {
-  const trimmed = url.trim();
-  chrome.storage.sync.set({ sheetUrl: trimmed });
-  sendMessage({ type: 'SET_SHEET_URL', url: trimmed });
-  updateSheetStatus(trimmed);
-}
-
 themeToggle.addEventListener('click', () => {
   currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
   updateUI(currentTheme);
@@ -205,12 +143,6 @@ sizeSlider.addEventListener('input', (e) => {
   const val = e.target.value;
   sizeVal.textContent = val + 'px';
   sendMessage({ type: 'SET_SIZE', size: parseInt(val, 10) });
-});
-
-journalSizeSlider.addEventListener('input', (e) => {
-  const val = e.target.value;
-  journalSizeVal.textContent = val + 'px';
-  sendMessage({ type: 'SET_JOURNAL_SIZE', size: parseInt(val, 10) });
 });
 
 visCheckboxes.forEach(cb => {
@@ -282,23 +214,6 @@ if (hkLeftRightToggle) {
     broadcastMessage({ type: 'SET_HOTKEYS', leftRight: hkLeftRightToggle.checked });
   });
 }
-function saveMarqueeMsg(msg) {
-  const m = (msg || '').trim();
-  chrome.storage.sync.set({ '__tradeCalc_marquee_msg': m });
-  broadcastMessage({ type: 'SET_MARQUEE', message: m });
-  updateMarqueeStatus(m);
-}
-if (marqueeSave) marqueeSave.addEventListener('click', () => saveMarqueeMsg(marqueeInput.value));
-if (marqueeInput) marqueeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveMarqueeMsg(marqueeInput.value); });
-if (marqueeClear) marqueeClear.addEventListener('click', () => { marqueeInput.value = ''; saveMarqueeMsg(''); });
-if (marqueeSpeedSlider) {
-  marqueeSpeedSlider.addEventListener('input', (e) => {
-    const s = parseInt(e.target.value, 10);
-    if (marqueeSpeedVal) marqueeSpeedVal.textContent = s;
-    chrome.storage.sync.set({ '__tradeCalc_marquee_speed': s });
-    broadcastMessage({ type: 'SET_MARQUEE', speed: s });
-  });
-}
 
 // ── Multi-timeframe charts ────────────────────────────────────────────────────
 // Mirrors parseTfList in part 01 (the panel re-validates whatever arrives, so this clamp is for the
@@ -333,14 +248,6 @@ function saveMtfTfs(raw) {
 }
 if (mtfTfsSave) mtfTfsSave.addEventListener('click', () => saveMtfTfs(mtfTfsInput.value));
 if (mtfTfsInput) mtfTfsInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveMtfTfs(mtfTfsInput.value); });
-if (mtfCountSlider) {
-  mtfCountSlider.addEventListener('input', (e) => {
-    const n = Math.min(120, Math.max(10, parseInt(e.target.value, 10) || 40));
-    if (mtfCountVal) mtfCountVal.textContent = n;
-    chrome.storage.sync.set({ '__tradeCalc_mtf_count': n });
-    broadcastMessage({ type: 'SET_MTF', count: n });
-  });
-}
 function clampFlipBars(v) {
   const n = parseInt(v, 10);
   return isNaN(n) ? 3 : Math.min(10, Math.max(2, n));
@@ -382,26 +289,6 @@ if (mtfSettleInput) {
   mtfSettleInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSettle(); });
 }
 
-if (postTpGapInput) {
-  const savePostTpGap = () => {
-    let n = parseFloat(postTpGapInput.value);
-    if (isNaN(n)) n = 5;
-    n = Math.min(15, Math.max(1, n)); // hard cap — unbreakable, mirrors clampPostTpGapPct (part 01)
-    postTpGapInput.value = n;
-    chrome.storage.sync.set({ '__tradeCalc_sl_post_tp_gap': n });
-    broadcastMessage({ type: 'SET_POST_TP_GAP', value: n });
-  };
-  postTpGapInput.addEventListener('change', savePostTpGap);
-}
-
-if (sysLockDisableToggle) {
-  sysLockDisableToggle.addEventListener('change', () => {
-    const disabled = sysLockDisableToggle.checked;
-    chrome.storage.sync.set({ '__tradeCalc_sys_lock_disabled': disabled });
-    broadcastMessage({ type: 'SET_SYS_LOCK_DISABLED', disabled });
-  });
-}
-
 if (chipPosSelect) {
   chipPosSelect.addEventListener('change', () => {
     const mode = chipPosSelect.value;
@@ -420,12 +307,6 @@ if (maxTradesSelect) {
   });
 }
 
-sheetSave.addEventListener('click', () => saveSheetUrl(sheetUrlInput.value));
-sheetUrlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSheetUrl(sheetUrlInput.value); });
-sheetClear.addEventListener('click', () => {
-  sheetUrlInput.value = '';
-  saveSheetUrl('');
-});
 
 /* =========================================================================
  * Deposit scanner

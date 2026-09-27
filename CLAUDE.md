@@ -30,7 +30,10 @@ Every change is judged against three words, in this order:
 - **Read-only towards Quotex.** Never call their internals, never patch a prototype, never write to
   their store. `chart_reader.js` carries the full contract at the top of the file — read it before
   touching anything in the page's own world.
-- **No network** except the user's own Google Apps Script, if they configure one.
+- **No network from the page or the worker.** v1.65.0 removed the Google Sheet journal, which was the only
+  thing that made requests, along with the local lock daemon on 127.0.0.1. No script in the extension calls
+  `fetch` now; keep it that way. The one outbound request left is `popup.html` loading DM Sans / DM Mono from
+  Google Fonts when the popup opens - not the Quotex page, so the page cannot see it, but it is a request.
 - **Nothing trades by itself.** A trade happens because the user clicked, or pressed a hotkey they
   enabled.
 - **The panel's own elements are invisible to its finders** (`isOurElement`), or a semantic lookup
@@ -146,6 +149,19 @@ check will say so if only one happened.
   knowing before setting up any live test that depends on it: a typed number that was never entered is not
   the floor, and until v1.61.1 the pass that closes tabs read the box while the diagnostics line read
   storage, so the two could name different figures.
+- **Two permissions are kept for one purpose, and can go in a later release** (v1.65.0). The loss-streak
+  lock blocked qxbroker.com with a `declarativeNetRequest` dynamic rule and lifted it with an alarm. The rule
+  lives inside Chrome, not in the extension, so deleting the code would have left any lock active at the
+  moment of updating in place for ever. `service_worker.js` clears rule 9001, the alarm and the stored expiry
+  on every start. `declarativeNetRequest` and `alarms` stay in the manifest only so that clean-up can run;
+  once it has run everywhere, both - and the clean-up - can be removed.
+- **What v1.65.0 removed, so it is not rebuilt by accident:** the Google Sheet journal (journal window, log
+  button and Enter-to-log, TP fetch from the sheet, P/L and GOAL fields, the popup's Apps Script URL), the
+  TP save button (Enter in the field does the same), the panel's Actions section and its theme button (the
+  popup's theme toggle remains), the marquee, the loss-streak lock and the settled-trade tracker that only fed
+  it, and the popup's Journal Scale, Post-TP Trail Gap %, Disable System Lock and Candles-per-chart controls.
+  Post-TP trailing is fixed at 5%; the SL setup screen and payout overlay are fixed at 20px; a timeframe never
+  scrolled still starts at the stored `__tradeCalc_mtf_count`.
 - Offered and not started: a sound for the trend-flip mark (left visual on purpose — a tone mid-trade
   is intrusive and gives no clue which chart it came from), and per-asset rather than per-timeframe
   zoom memory.

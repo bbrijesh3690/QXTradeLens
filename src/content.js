@@ -52,7 +52,6 @@
       delete window.__tcPointerdownDispatch;
       delete window.__tcClickDelegator;
       delete window.__tcInputDelegator;
-      delete window.__tcJournalEsc;
       delete window.__tcKeyDelegator;
       delete window.__tcTradeBlocker;
       delete window.__tcAudioUnlock;
@@ -120,17 +119,9 @@
         delete window.__tcAudioCtx;
       }
       delete window.__tcAudioUnlock;
-      const t = byId("__tcMarquee");
-      if (t) {
-        t.remove();
-      }
       const e = byId("__tcDangerOverlay");
       if (e) {
         e.remove();
-      }
-      const n = byId("__tcJournalModal");
-      if (n) {
-        n.remove();
       }
       const o = byId("__tradeCalc");
       if (o) {
@@ -1181,7 +1172,6 @@
       KEY_MIN_PAYOUT = "__tradeCalc_minrp",
       KEY_THEME = "__tradeCalc_theme",
       KEY_VISIBILITY = "__tradeCalc_visibility",
-      KEY_SHEET_URL = "__tradeCalc_sheet_url",
       KEY_SL_VALUE = "__tradeCalc_sl_value",
       KEY_SL_DATE = "__tradeCalc_sl_date",
       getTheme = () => {
@@ -1273,17 +1263,15 @@
       },
       getMtfTfs = () => parseTfList(readJson(KEY_MTF_TFS, null)),
       setMtfTfs = (t) => writeJson(KEY_MTF_TFS, parseTfList(t)),
+      // v1.65.0: the popup's "Candles per chart" slider is gone. This is now only the starting zoom for a
+      // timeframe that has never been scrolled - every one that has keeps its own in KEY_MTF_ZOOM - and it
+      // still honours a value set before the slider went.
       getMtfCount = () => {
         try {
           return clampMtfCount(prefGet(KEY_MTF_COUNT));
         } catch (t) {
           return 40;
         }
-      },
-      setMtfCount = (t) => {
-        try {
-          prefSet(KEY_MTF_COUNT, String(clampMtfCount(t)));
-        } catch (t) {}
       },
       KEY_MTF_AUTOFILL = "__tradeCalc_mtf_autofill",
       KEY_MTF_SETTLE = "__tradeCalc_mtf_settle",
@@ -1380,14 +1368,6 @@
           return "16";
         }
       },
-      KEY_JOURNAL_FONT_SIZE = "__tradeCalc_journal_fz",
-      getJournalFontSizeStored = () => {
-        try {
-          return prefGet(KEY_JOURNAL_FONT_SIZE) || "20";
-        } catch (t) {
-          return "20";
-        }
-      },
       getMinPayoutStored = () => {
         try {
           return prefGet(KEY_MIN_PAYOUT) || "89";
@@ -1401,22 +1381,6 @@
         } catch (t) {}
       },
       KEY_SL_INIT_BAL = "__tradeCalc_sl_init_bal",
-      KEY_POST_TP_GAP = "__tradeCalc_sl_post_tp_gap",
-      clampPostTpGap = (t) => {
-        const e = parseFloat(t);
-        return isNaN(e) ? 5 : Math.min(15, Math.max(1, e));
-      },
-      setPostTpGapStored = (t) => {
-        try {
-          prefSet(KEY_POST_TP_GAP, String(clampPostTpGap(t)));
-        } catch (t) {}
-      },
-      KEY_SYS_LOCK_DISABLED = "__tradeCalc_sys_lock_disabled",
-      setSysLockDisabledStored = (t) => {
-        try {
-          prefSet(KEY_SYS_LOCK_DISABLED, t ? "1" : "0");
-        } catch (t) {}
-      },
       KEY_OTC_AUTO = "__tradeCalc_otc_auto",
       setOtcAutoStored = (t) => {
         try {
@@ -1500,36 +1464,6 @@
           return false;
         }
       })();
-    const KEY_MARQUEE_MSG = "__tradeCalc_marquee_msg",
-      setMarqueeMsgStored = (t) => {
-        try {
-          prefSet(KEY_MARQUEE_MSG, t || "");
-        } catch (t) {}
-      };
-    let marqueeMsg = (() => {
-      try {
-        return prefGet(KEY_MARQUEE_MSG) || "";
-      } catch (t) {
-        return "";
-      }
-    })();
-    const KEY_MARQUEE_SPEED = "__tradeCalc_marquee_speed",
-      clampMarqueeSpeed = (t) => {
-        const e = parseFloat(t);
-        return isNaN(e) ? 5 : Math.max(1, Math.min(10, Math.round(e)));
-      },
-      setMarqueeSpeedStored = (t) => {
-        try {
-          prefSet(KEY_MARQUEE_SPEED, String(clampMarqueeSpeed(t)));
-        } catch (t) {}
-      };
-    let marqueeSpeed = (() => {
-      try {
-        return clampMarqueeSpeed(prefGet(KEY_MARQUEE_SPEED));
-      } catch (t) {
-        return 5;
-      }
-    })();
     const KEY_MAX_TWO = "__tradeCalc_max_two",
       KEY_MAX_TRADES = "__tradeCalc_max_trades",
       clampMaxTrades = (t) => {
@@ -1585,29 +1519,6 @@
       saveVisibilityStored = (t) => {
         try {
           prefSet(KEY_VISIBILITY, JSON.stringify(t.slice(0, 4).map((t) => (t ? 1 : 0))));
-        } catch (t) {}
-      },
-      setSheetUrlStored = (t) => {
-        try {
-          if (t) {
-            prefSet(KEY_SHEET_URL, t);
-          } else {
-            prefRemove(KEY_SHEET_URL);
-          }
-        } catch (t) {}
-      },
-      KEY_LOSS_STREAK = "__tradeCalc_loss_streak",
-      KEY_SEEN_TRADES = "__tradeCalc_seen_trades",
-      KEY_STREAK_DATE = "__tradeCalc_streak_date",
-      KEY_LAST_LOSS_TS = "__tradeCalc_last_loss_ts",
-      setLossStreakStored = (t) => {
-        try {
-          prefSet(KEY_LOSS_STREAK, String(0 | t));
-        } catch (t) {}
-      },
-      setLastLossTsStored = (t) => {
-        try {
-          prefSet(KEY_LAST_LOSS_TS, String(Math.floor(t) || 0));
         } catch (t) {}
       };
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1743,8 +1654,10 @@
       }
       window.__tcViewportMeta.setAttribute("content", "width=device-width,initial-scale=1");
     })();
+    // v1.65.0: the SL setup screen and the payout overlay were sized by a "Journal Scale" slider that has
+    // gone with the journal. Fixed at 20px, which is what it was set to and what it defaulted to.
+    const MODAL_FONT_PX = 20;
     let panelFontSize = parseInt(getFontSizeStored(), 10) || 16,
-      journalFontSize = parseInt(getJournalFontSizeStored(), 10) || 20,
       isLightTheme = getTheme() === "light";
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Styles: design tokens + panel CSS (shadow root), font import + Quotex tweaks (page head)
@@ -1772,7 +1685,7 @@
       const t = document.createElement("style");
       t.id = "__tcStyles";
       t.innerHTML =
-        " #__tradeCalc { position: fixed; top: 5px; right: 375px; width: max-content; min-height: 3.5em; max-width: 90em; border-radius: 999px; z-index: 2147483647; font-size: 13px; font-family: 'DM Sans', system-ui, sans-serif; background: var(--tc-bg); box-shadow: var(--tc-panel-shadow); display: flex; align-items: center; padding: 0.3em 1.5em; gap: 0; cursor: default; user-select: none; overflow: visible; transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); } #__tradeCalc.dragging { transition: none; cursor: grabbing; } .tcGrip { display: flex; align-items: center; flex-shrink: 0; pointer-events: none; width: 0.7em; height: 1.1em; color: var(--m3-on-surface-var); opacity: 0.4; } .tcGrip svg { width: 100%; height: 100%; } .tcGripLeft { margin-right: 0.7em; } .tcVer { align-self: center; font-size: max(9px, 0.58em); font-weight: 800; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; color: var(--tc-text-mut); opacity: 0.65; cursor: default; } .tcGripRight { margin-left: 0.7em; } #__tcContent { display: flex; align-items: stretch; flex: 1; gap: 0.75em; scrollbar-width: none; } #__tcContent::-webkit-scrollbar { display: none; } .tcSec { display: flex; flex-direction: row; align-items: stretch; background: transparent; border: none; flex:1; padding: 0; gap: 0; position: relative; flex-shrink: 0; } #__tcSecTargets { cursor: grab; } #__tcSecProtections { margin-left: auto; margin-right: auto; } #__tcSecProjections { } #__tcSecLog { } .tcSec:has([data-tc-tip]:hover) { z-index: 100; } [data-tc-tip] { position: relative; } [data-tc-tip]::after { content: attr(data-tc-tip); position: absolute; top: calc(100% + 0.46em); left: 50%; white-space: nowrap; pointer-events: none; background: oklch(16% 0.02 257 / 0.98); color: oklch(96% 0.01 240); font-size: max(11px, 0.72em); font-weight: 600; letter-spacing: 0.04em; text-transform: none; padding: 0.4em 0.7em; border-radius: 0.42em; border: 1px solid oklch(100% 0 0 / 0.14); box-shadow: 0 4px 12px oklch(0% 0 0 / 0.45); opacity: 0; transition: opacity 0.18s, transform 0.18s; transform: translateX(-50%) translateY(-0.31em); z-index: 2147483647; } [data-tc-tip]::before { content: ''; position: absolute; top: calc(100% + 0.15em); left: 50%; transform: translateX(-50%); border: 0.31em solid transparent; border-bottom-color: oklch(16% 0.02 257 / 0.98); pointer-events: none; opacity: 0; transition: opacity 0.18s; z-index: 2147483647; } [data-tc-tip]:hover, [data-tc-tip]:focus-visible { z-index: 2147483646; } [data-tc-tip]:hover::after, [data-tc-tip]:focus-visible::after { opacity: 1; transform: translateX(-50%) translateY(0); } [data-tc-tip]:hover::before, [data-tc-tip]:focus-visible::before { opacity: 1; } #__tcSecTargets [data-tc-tip]::after { left: 0; transform: translateY(-0.31em); } #__tcSecTargets [data-tc-tip]:hover::after, #__tcSecTargets [data-tc-tip]:focus-visible::after { transform: translateY(0); } #__tcSecTargets [data-tc-tip]::before { left: 0.7em; transform: none; } .tcSecFields { display: flex; align-items: stretch; gap: 0.6em; flex: 1; position: relative; } .tcFld { display: flex; flex-direction: column; gap: 0.25em; position: relative; flex:1;} .tcFld > .tcLbl { min-height: 0; display: flex; align-items: center; padding-bottom: 0; font-weight: bold; flex: 0 0 auto; } .tcFld > *:not(.tcLbl) { margin-top: auto; margin-bottom: auto; } .tcLbl { font-size: var(--fz-label); text-transform: uppercase; color: var(--tc-text-mut); font-weight: 500; letter-spacing: 0.16em; line-height: 1; white-space: nowrap; display: flex; align-items: center; gap: 0.3em; } .tcLbl svg { opacity: 0.75; } .tcLbl .tcDot { display: none; } .tcVal { font-family: 'DM Mono', monospace; font-size: var(--fz-value); color: var(--tc-text-pri); font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; transition: color 0.3s, text-shadow 0.3s; letter-spacing: 0.031em; white-space: nowrap; } .tcValLg { font-family: 'DM Mono', monospace; font-size: var(--fz-value-lg); font-weight: 400; color: var(--tc-text-pri); letter-spacing: 0.015em; line-height: 1; font-variant-numeric: tabular-nums; transition: text-shadow 0.3s; } .tcValLg .tcDec { color: var(--tc-text-mut); font-weight: 400; font-size: var(--fz-decimal); letter-spacing: 0.015em; margin-left: 0.05em; } .tcValLg[style*=\"--tc-grn\"] { text-shadow: 0 0 18px oklch(76% 0.16 145 / 0.4); } .tcValLg[style*=\"--tc-red\"] { text-shadow: 0 0 18px oklch(64% 0.18 25 / 0.4); } .tcProjMarks { display: none; } .tcProjMark { width: 1.077em; height: 0.154em; border-radius: 0.231em; background: oklch(76% 0.16 145 / 0.18); } .tcProjMark.tcProjMarkFill { background: var(--tc-grn); box-shadow: 0 0 6px oklch(76% 0.16 145 / 0.5); } .tcControlGroup { display: inline-flex; align-items: center; gap: 0.18em; background: var(--m3-surface-3); box-shadow: none; border: 1px solid var(--m3-outline-var); border-radius: var(--m3-shape-full); padding: 0.25em 0.8em; min-height: 1.3em; box-sizing: border-box; transition: border-color 0.2s, border-width 0.1s; overflow: visible; } .tcControlGroup:hover:not(:focus-within) { border-color: var(--m3-outline); } .tcControlGroup:focus-within { border: 1px solid var(--tc-accent); padding: calc(0.25em - 1px) calc(0.6em - 1px); } #__tcSLInputWrap, #__tcSLInputWrap:hover, #__tcSLInputWrap:focus-within { border-color: var(--m3-outline-var); padding: 0.25em 0.8em; } #__tcSLInput { cursor: default; } .tcInput { font-family: 'DM Mono', monospace; font-size: 1em; color: var(--m3-on-surface); background: transparent; border: none; outline: none; padding: 0; font-weight: 400; font-variant-numeric: tabular-nums; min-width: 0; letter-spacing: 0.031em; -moz-appearance: textfield; } .tcInput::-webkit-outer-spin-button, .tcInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; } .tcInput::placeholder { color: var(--m3-on-surface-var); opacity: 0.7; } .tcInput:-webkit-autofill, .tcInput:-webkit-autofill:hover, .tcInput:-webkit-autofill:focus, .tcInput:-webkit-autofill:active { -webkit-box-shadow: 0 0 0 100px transparent inset !important; box-shadow: 0 0 0 100px transparent inset !important; -webkit-text-fill-color: var(--m3-on-surface) !important; background-color: transparent !important; transition: background-color 99999s ease-in-out 0s; } .tcInput.tcUnsaved { border-bottom-color: var(--tc-ylw) !important; color: var(--tc-ylw) !important; } .tcControlGroup:has(.tcUnsaved)::after { content: \"↵ Enter\"; position: absolute; bottom: -1.35em; left: 0; font-size: max(8px, 0.5em); font-weight: 700; letter-spacing: 0.08em; color: var(--tc-ylw); white-space: nowrap; pointer-events: none; opacity: 0.9; } .tcPill { width: 2.308em; height: 2.308em; border-radius: 50%; background: transparent; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; min-width: 0; color: var(--m3-on-surface-var); transition: background 0.14s, color 0.15s, border-color 0.2s, box-shadow 0.2s; } .tcPill svg { width: 1.15em; height: 1.15em; } .tcPill:hover { background: oklch(from var(--tc-accent) l c h / 0.08); color: var(--m3-on-surface); } .tcPill:active { background: oklch(from var(--tc-accent) l c h / 0.12); transform: scale(0.94); } .tcPill:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcPill.on, #__tcMultiStatus.on { color: var(--tc-grn); border-color: oklch(from var(--tc-grn) l c h / 0.4); box-shadow: 0 0 10px oklch(from var(--tc-grn) l c h / 0.35); } .tcPill.tcPillSnap { animation: __tcPillSnap 0.22s cubic-bezier(0.16, 1, 0.3, 1); } .tcPillCircle::after { content: none !important; } .tcPillCircle, .tcLogBtn { border-radius: 50%; background: transparent; box-shadow: none; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--m3-on-surface-var); transition: background 0.14s, color 0.15s; } .tcPillCircle:hover, .tcLogBtn:hover { transform: none; background: oklch(from var(--tc-accent) l c h / 0.08); color: var(--m3-on-surface); } .tcPillCircle:active, .tcLogBtn:active { background: oklch(from var(--tc-accent) l c h / 0.12); box-shadow: none; } .tcPillCircle:focus-visible, .tcLogBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcPillCircle { width: 1.733em; height: 1.733em; min-width: 0; padding: 0; align-self: center; font-weight: 500; font-size: var(--fz-value); line-height: 1; font-family: 'DM Sans', system-ui, sans-serif; } .tcLogBtn { width: 2.308em; height: 2.308em; padding: 0; font-size: 1em; } .tcLogBtn svg { width: 1.077em; height: 1.077em; } .tcTPBtn { width: 1.6em; height: 1.6em; } .tcTPBtn svg { width: 0.85em; height: 0.85em; } #__tcTPSaveBtn { color: var(--tc-grn); } #__tcTPSaveBtn.tcTPLocked { color: var(--tc-accent); } .tcLogBtn.tcRefreshSpin svg { animation: tcSpin 0.6s cubic-bezier(0.16, 1, 0.3, 1); } .tcLogBtn.tcRefreshSpin { color: var(--tc-accent); } .tcCloseBtn { position: absolute; right: -0.4em; top: 50%; transform: translateY(-50%); width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--m3-surface-3); border: 1px solid var(--m3-outline-var); color: var(--m3-on-surface-var); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; box-shadow: none; transition: color 0.2s, opacity 0.2s, background 0.2s; opacity: 0; } .tcCloseBtn::before { content: \"\"; position: absolute; inset: 50% 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); border-radius: 50%; } #__tradeCalc:hover .tcCloseBtn, .tcCloseBtn:focus-visible { opacity: 1; } .tcCloseBtn:hover { background: var(--tc-red); color: oklch(98% 0 0); border-color: transparent; box-shadow: 0 3px 10px oklch(64% 0.18 25 / 0.4); transform: translateY(-50%); } .tcCloseBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; opacity: 1; } .tcCloseBtn:focus-visible:hover { transform: translateY(-50%) rotate(90deg); transition: background 0.25s, color 0.25s, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1); } .tcSparklineBg { position: absolute; inset: 0; opacity: 0.22; pointer-events: none; border-radius: inherit; overflow: hidden; z-index: 0; mask-image: linear-gradient(to bottom, black 20%, transparent); -webkit-mask-image: linear-gradient(to bottom, black 20%, transparent); } @keyframes __tcDataFlash { 0% { color: var(--tc-accent); transform: translateY(-1px); } 100% { color: inherit; transform: translateY(0); } } .tcFlashData { animation: __tcDataFlash 0.55s cubic-bezier(0.16, 1, 0.3, 1); display: inline-block; } @keyframes tcSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes __tcEntrance { 0% { opacity: 0; transform: scale(0.92) translateY(16px); filter: blur(8px); } 100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); } } #__tradeCalc.tcLightMode { --tc-grn: #146c2e; --tc-red: oklch(44% 0.18 25); --tc-amb: oklch(44% 0.16 60); --tc-ylw: oklch(52% 0.17 70); --tc-pur: oklch(42% 0.16 285); --tc-cyn: oklch(40% 0.13 210); --tc-accent: #6750a4; --m3-surface: #fef7ff; --m3-surface-2: #f4eefa; --m3-surface-3: #ece6f0; --m3-on-surface: #1d1b20; --m3-on-surface-var: #49454f; --m3-outline: #79747e; --m3-outline-var: #cac4d0; --m3-primary: #6750a4; --m3-on-primary: #ffffff; --tc-text-pri: var(--m3-on-surface); --tc-text-dim: var(--m3-on-surface-var); --tc-text-mut: oklch(from var(--m3-on-surface-var) l c h / 0.78); --tc-input-bg: var(--m3-surface-3); --tc-input-border: var(--m3-outline-var); --tc-bg: var(--m3-surface-2); --tc-panel-shadow: var(--m3-elev-2); background: var(--tc-bg); } #__tradeCalc.tcLightMode .tcControlGroup { background: var(--m3-surface-3); border-color: var(--m3-outline-var); } #__tradeCalc.tcLightMode .tcPillCircle, #__tradeCalc.tcLightMode .tcLogBtn, #__tradeCalc.tcLightMode .tcPill { background: transparent; border-color: transparent; } #__tcDangerOverlay { position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; background: radial-gradient(circle at center, transparent 0%, oklch(0% 0 0 / 0.88) 100%); opacity: 0; transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1); } .tcLockContent { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; padding: var(--s-6); border-radius: 1.4em; background: var(--tc-bg); border: 1px solid var(--tc-sec-border); box-shadow: 0 48px 120px oklch(0% 0 0 / 0.8), inset 0 1px 1px oklch(100% 0 0 / 0.2); } .tcLockLabel { display: block; font-size: 0.78em; font-weight: 900; text-transform: uppercase; letter-spacing: 0.28em; color: var(--tc-text-mut); margin-bottom: var(--s-5); opacity: 1; } .tcLockTimer { display: block; font-family: 'DM Mono', monospace; font-size: 7.5em; font-weight: 800; color: var(--tc-text-pri); letter-spacing: -0.04em; line-height: 1; } .tcLockMeta { display: block; font-size: 0.85em; font-weight: 600; color: var(--tc-text-dim); margin-top: var(--s-5); letter-spacing: 0.05em; } #__tradeCalc.tcDangerMode { box-shadow: var(--tc-panel-shadow), 0 0 0 2px oklch(64% 0.18 25 / 0.55); } #__tradeCalc.tcDangerMode.tcActive { box-shadow: var(--tc-panel-shadow), 0 0 0 2px oklch(64% 0.18 25 / 0.5); } #__tcDangerOverlay.tcPercentVisible { opacity: 1; background: radial-gradient(circle at center, transparent 0%, oklch(64% 0.18 25 / 0.15) 100%); } #__tcDangerOverlay.tcPercentVisible .tcLockCard { display: block; } #__tcDangerOverlay.tcPercentVisible .tcLockContent { box-shadow: 0 0 0 1px oklch(64% 0.18 25 / 0.5), 0 32px 100px -16px oklch(0% 0 0 / 0.9); background: radial-gradient(circle at top, oklch(64% 0.18 25 / 0.15) 0%, transparent 100%), var(--tc-bg); } #__tcJournalModal { position: fixed; inset: 0; z-index: 2147483648; background: oklch(7% 0.018 257 / 0.78); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1); } #__tcJournalModal.tcJournalOpen { opacity: 1; pointer-events: auto; } #__tcJournalModal.tcJournalOpen .tcJournalInner { transform: scale(1); opacity: 1; filter: blur(0); } .tcJournalInner { background: oklch(15% 0.02 257 / 0.98); border-radius: 1.4em; border: 1px solid oklch(100% 0 0 / 0.15); box-shadow: 0 32px 80px -12px oklch(0% 0 0 / 0.9), 0 10px 28px -6px oklch(0% 0 0 / 0.6), inset 0 1px 0 oklch(100% 0 0 / 0.12); width: min(78.5em, 96vw); max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; transform: scale(0.97); opacity: 0; filter: blur(4px); transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1), filter 0.22s cubic-bezier(0.16, 1, 0.3, 1); } .tcJournalHeader { display: flex; align-items: center; gap: 0.5em; padding: 0.85em 1.1em 0.85em 1.25em; border-bottom: 1px solid oklch(100% 0 0 / 0.08); flex-shrink: 0; background: oklch(100% 0 0 / 0.02); } .tcJournalHeader h2 { margin: 0; font-family: 'DM Sans', system-ui, sans-serif; font-size: max(9px, 0.62em); font-weight: 800; text-transform: uppercase; letter-spacing: 0.18em; color: var(--tc-text-pri); flex: 1; opacity: 0.9; } .tcJournalLastFetched { font-family: 'DM Mono', monospace; font-size: 0.6em; color: var(--tc-text-mut); letter-spacing: 0.04em; opacity: 0.7; } .tcJournalIconBtn { background: none; border: none; cursor: pointer; color: var(--tc-text-mut); border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: color 0.15s cubic-bezier(0.16, 1, 0.3, 1), background 0.15s cubic-bezier(0.16, 1, 0.3, 1); position: relative; width: 1.4em; height: 1.4em; } .tcJournalIconBtn::before { content: ''; position: absolute; inset: -0.4em; border-radius: 50%; } .tcJournalIconBtn:hover { color: var(--tc-text-pri); background: oklch(from var(--tc-accent) l c h / 0.08); } .tcJournalIconBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcJournalIconBtn.tcJournalSpinning svg { animation: __tcJournalSpin 0.65s linear infinite; } .tcJournalIconBtn.tcJournalSpinning { color: var(--tc-accent); } @keyframes __tcJournalSpin { to { transform: rotate(360deg); } } #__tcJournalClose:hover { transform: rotate(90deg); color: var(--tc-text-pri); } .tcJournalTableWrap { overflow: auto; flex: 1; } #__tcJournalTable { width: 100%; border-collapse: collapse; font-family: 'DM Mono', monospace; font-size: 0.76em; font-variant-numeric: tabular-nums; } #__tcJournalTable thead th { position: sticky; top: 0; z-index: 2; background: oklch(11% 0.015 257); color: oklch(62% 0.014 257); font-family: 'DM Sans', system-ui, sans-serif; font-size: max(7px, 0.75em); font-weight: 800; text-transform: uppercase; letter-spacing: 0.14em; padding: 0.6em 0.8em; border-bottom: 1px solid oklch(100% 0 0 / 0.14); white-space: nowrap; text-align: right; } #__tcJournalTable thead th:nth-child(1), #__tcJournalTable thead th:nth-child(2) { text-align: left; } @keyframes __tcRowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } } #__tcJournalTable tbody tr.tcJournalRowIn { animation: __tcRowIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both; } #__tcJournalTable tbody tr { transition: background 0.1s; } #__tcJournalTable tbody td { padding: 0.48em 0.8em; border-bottom: 1px solid oklch(100% 0 0 / 0.055); color: var(--tc-text-dim); text-align: right; white-space: nowrap; } #__tcJournalTable tbody td:nth-child(1) { color: var(--tc-text-mut); font-size: 0.85em; } #__tcJournalTable tbody td:nth-child(2) { color: var(--tc-text-pri); font-family: 'DM Sans', system-ui, sans-serif; font-size: 0.82em; } #__tcJournalTable tbody td:nth-child(1), #__tcJournalTable tbody td:nth-child(2) { text-align: left; } #__tcJournalTable tbody tr:hover td { background: oklch(100% 0 0 / 0.04); } #__tcJournalTable tbody tr.tcJournalProfit td { background: oklch(42% 0.12 145 / 0.1); } #__tcJournalTable tbody tr.tcJournalProfit:hover td { background: oklch(42% 0.12 145 / 0.16); } #__tcJournalTable tbody tr.tcJournalLoss td { background: oklch(38% 0.1 25 / 0.14); } #__tcJournalTable tbody tr.tcJournalLoss:hover td { background: oklch(38% 0.1 25 / 0.22); } #__tcJournalTable tbody tr.tcJournalToday td { background: oklch(72% 0.16 80 / 0.13); border-bottom-color: oklch(72% 0.16 80 / 0.2); } #__tcJournalTable tbody tr.tcJournalToday:hover td { background: oklch(72% 0.16 80 / 0.2); } #__tcJournalTable tbody tr.tcJournalToday td:first-child { box-shadow: inset 3px 0 0 oklch(72% 0.16 80 / 0.7); } .tcJournalPlus { color: oklch(74% 0.17 145); font-weight: 700; } .tcJournalMinus { color: oklch(66% 0.18 25); font-weight: 700; } .tcJournalEditable { cursor: text; } .tcJournalEditable span { position: relative; } .tcJournalEditable span::after { content: ''; position: absolute; bottom: -2px; left: 0; width: 0; height: 1px; background: var(--tc-text-mut); border-radius: 1px; transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1); } .tcJournalEditable:hover span::after { width: 100%; } .tcJournalCellInput { background: oklch(0% 0 0 / 0.3); color: var(--tc-text-pri); border: 1px solid var(--tc-accent); border-radius: var(--m3-shape-lg); padding: 0.14em 0.35em; font-size: 1em; font-family: 'DM Mono', monospace; font-variant-numeric: tabular-nums; width: 100%; box-sizing: border-box; text-align: right; outline: none; box-shadow: 0 0 0 3px oklch(from var(--tc-accent) l c h / 0.15); } .tcJournalCellInput.tcJournalCellError { border-color: var(--tc-red); box-shadow: 0 0 0 3px oklch(from var(--tc-red) l c h / 0.15); } .tcJournalFooter { padding: 0.55em 1.25em; border-top: 1px solid oklch(100% 0 0 / 0.07); font-family: 'DM Sans', system-ui, sans-serif; font-size: max(7px, 0.6em); font-weight: 600; color: var(--tc-text-mut); flex-shrink: 0; letter-spacing: 0.06em; opacity: 0.6; } .tcJournalEmpty { padding: 3em 2em; text-align: center; color: var(--tc-text-mut); font-family: 'DM Sans', system-ui, sans-serif; font-size: 0.78em; letter-spacing: 0.08em; opacity: 0.6; } .tcJournalSkeleton { padding: 0.6em 0; } .tcJournalSkRow { display: flex; gap: 0.8em; padding: 0.52em 1.1em; border-bottom: 1px solid oklch(100% 0 0 / 0.04); align-items: center; } .tcJournalSkCell { height: 0.7em; border-radius: 3px; background: oklch(100% 0 0 / 0.06); position: relative; overflow: hidden; flex-shrink: 0; } @keyframes __tcSkShimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } } .tcJournalSkCell::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 0%, oklch(100% 0 0 / 0.09) 50%, transparent 100%); animation: __tcSkShimmer 1.4s ease-in-out infinite; } @keyframes __tcCellSaved { 0% { background: oklch(72% 0.16 145 / 0); } 30% { background: oklch(72% 0.16 145 / 0.22); } 100% { background: oklch(72% 0.16 145 / 0); } } .tcJournalCellSaved { animation: __tcCellSaved 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards; } @keyframes __tcTodayPulse { 0% { background: oklch(72% 0.16 80 / 0.13); } 45% { background: oklch(72% 0.16 80 / 0.32); } 100% { background: oklch(72% 0.16 80 / 0.13); } } #__tcJournalTable tbody tr.tcJournalTodayPulse td { animation: __tcTodayPulse 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards; } #__tcRestoreBtn { position: fixed; bottom: 24px; right: 24px; z-index: 2147483647; background: oklch(from var(--tc-bg) l c h / 0.85); color: var(--tc-text-pri); border: 1px solid oklch(from var(--tc-accent) l c h / 0.3); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: 0.6em 1.2em; border-radius: 99px; font-family: 'DM Sans', system-ui, sans-serif; font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 16px oklch(0% 0 0 / 0.28); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s, border-color 0.2s; display: flex; align-items: center; gap: 8px; transform-origin: center; } #__tcRestoreBtn svg { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); color: var(--tc-accent); width: 14px; height: 14px; } #__tcRestoreBtn:hover { transform: translateY(-3px) scale(1.02); background: oklch(from var(--tc-bg) l c h / 0.95); box-shadow: 0 8px 24px oklch(from var(--tc-accent) l c h / 0.2); border-color: var(--tc-accent); } #__tcRestoreBtn:hover svg { transform: rotate(90deg) scale(1.1); } #__tcRestoreBtn:active { transform: translateY(1px) scale(0.97); box-shadow: 0 2px 8px oklch(0% 0 0 / 0.2); transition: transform 0.1s; } #__tcRestoreBtn.tcLightMode { background: oklch(96% 0.02 88 / 0.92); box-shadow: 0 8px 24px -14px oklch(37% 0.06 78 / 0.45); } #__tcRestoreBtn.tcLightMode:hover { background: oklch(99% 0.016 88 / 0.98); box-shadow: 0 8px 24px oklch(48% 0.18 245 / 0.15); } #__tcImToggle.tcImToggleOff { opacity: 0.5; color: var(--m3-on-surface-var); } @keyframes __tcPillSnap { 0% { transform: scale(1); } 40% { transform: scale(0.88); } 100% { transform: scale(1); } } .tcPill.tcPillSnap { animation: __tcPillSnap 0.22s cubic-bezier(0.16, 1, 0.3, 1); } @keyframes __tcInputCommit { 0% { border-color: oklch(76% 0.16 145 / 0.9); box-shadow: 0 0 0 2px oklch(76% 0.16 145 / 0.18), inset 0 1px 2px oklch(0% 0 0 / 0.18); } 100% { border-color: var(--tc-input-border); box-shadow: inset 0 1px 2px oklch(0% 0 0 / 0.18); } } .tcControlGroup.tcCommit { animation: __tcInputCommit 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; } .tcReqWrap { display: flex; align-items: baseline; gap: 0.12em; } .tcReqFrom { font-size: 0.78em; font-weight: 600; color: var(--tc-text-dim); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; } .tcValLg.tcTradeCritical { color: var(--tc-ylw) !important; text-shadow: 0 0 24px oklch(90% 0.17 95 / 0.6), 0 0 48px oklch(90% 0.17 95 / 0.25); } .tcSecHdr .tcDot.tcDotLive { opacity: 1; box-shadow: 0 0 5px currentColor; } @keyframes __tcBtnReveal { 0% { transform: scale(0.96); box-shadow: 0 0 0 0 oklch(76% 0.16 145 / 0.5); } 55% { transform: scale(1.02); box-shadow: 0 0 0 8px oklch(76% 0.16 145 / 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 oklch(76% 0.16 145 / 0); } } .tcSLBtnReveal { animation: __tcBtnReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; } @keyframes __tcWarnIn { 0% { opacity: 0; transform: translateY(4px); } 100% { opacity: 1; transform: translateY(0); } } #__tcWarn.tcWarnVisible { animation: __tcWarnIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; } @keyframes __tcLiveResolve { 0% { opacity: 0.72; transform: scale(1); } 45% { opacity: 1; transform: scale(1.06); } 100% { opacity: 0; transform: scale(0.96) translateY(2px); } } .tcLiveResolving { animation: __tcLiveResolve 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; } @keyframes __tcValPop { 0% { transform: scale(1); } 45% { transform: scale(1.12) translateY(-1px); } 100% { transform: scale(1) translateY(0); } } .tcValLg.tcValPop { animation: __tcValPop 0.28s cubic-bezier(0.16, 1, 0.3, 1); } @media (prefers-reduced-motion: reduce) { #__tradeCalc, #__tradeCalc *, #__tcRestoreBtn, #__tcDangerOverlay { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } #__tradeCalc.tcDangerMode.tcActive { animation: none !important; } .tcFlashData { animation: none !important; } .tcCloseBtn:focus-visible:hover { transform: none; } .tcLogBtn:hover { transform: none; } #__tcRestoreBtn:hover { transform: none; } #__tcRestoreBtn:hover svg { transform: none; } .tcPill.tcPillSnap { animation: none !important; } .tcControlGroup.tcCommit { animation: none !important; } .tcSecHdr .tcDot.tcDotLive { animation: none !important; } .tcSLBtnReveal { animation: none !important; } #__tcWarn.tcWarnVisible { animation: none !important; } .tcLiveResolving { animation: none !important; opacity: 0 !important; } .tcValLg.tcValPop { animation: none !important; } #__tcJournalTable tbody tr.tcJournalRowIn { animation: none !important; opacity: 1 !important; transform: none !important; } .tcJournalCellSaved { animation: none !important; } #__tcJournalTable tbody tr.tcJournalTodayPulse td { animation: none !important; } .tcJournalSkCell::after { animation: none !important; } .tcJournalInner { filter: none !important; } #__tcJournalClose { transition: none !important; } .tcPill { transition: none !important; } } .tcControlGroup.tcTPGroup { gap:0.05em; background:transparent; border-color:transparent; box-shadow:none; align-items:baseline; } .tcControlGroup.tcTPGroup:hover, .tcControlGroup.tcTPGroup:focus-within { background: var(--m3-surface-3); border-color: var(--m3-outline-var); box-shadow: none; } .tcTPCur { font-size:var(--fz-currency); font-weight:700; color:var(--tc-text-dim); font-family:'DM Mono',monospace; letter-spacing:0.015em; } .tcTPInput { font-size:var(--fz-hero) !important; font-weight:700 !important; letter-spacing:0.02em !important; } @keyframes __tcTimerIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } } @keyframes __tcEdgeFlash { 0% { opacity:0; } 25% { opacity:1; } 100% { opacity:0; } } @media (prefers-reduced-motion: reduce) { #__tcEdgeFlash { animation: none !important; opacity: 0 !important; } } #__tcMarquee { position: fixed; top: 0; left: 0; width: 100%; z-index: 2147483640; pointer-events: none; overflow: hidden; white-space: nowrap; box-sizing: border-box; background: transparent; color: var(--tc-text-pri); font: 500 13px/1.8 'DM Sans', system-ui, sans-serif; letter-spacing: 0.06em; text-shadow: 0 1px 3px oklch(0% 0 0 / 0.6); } #__tcMarquee .tcMarqueeTrack { display: inline-block; padding-left: 100%; will-change: transform; animation: __tcMarqueeScroll linear infinite var(--tc-marquee-dur, 18s); } @keyframes __tcMarqueeScroll { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-100%, 0, 0); } } @media (prefers-reduced-motion: reduce) { #__tcMarquee .tcMarqueeTrack { animation: none; padding-left: 0.8em; } } #__tcInvestMult { position: fixed; top: 220px; right: 220px; z-index: 2147483000; display: flex; flex-direction: column; gap: 5px; width: 64px; padding: 6px; border-radius: var(--m3-shape-lg); background: var(--tc-bg); box-shadow: var(--m3-elev-2); border: 1px solid var(--m3-outline-var); font-family: 'DM Mono', monospace; user-select: none; } #__tcInvestMult .tcImBtn { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; height: 32px; border-radius: var(--m3-shape-sm); cursor: pointer; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--tc-text-pri); background: transparent; transition: background 0.12s; } #__tcInvestMult .tcImBtn:hover { background: oklch(from var(--tc-accent) l c h / 0.12); } #__tcInvestMult .tcImBtn:active { background: oklch(from var(--tc-accent) l c h / 0.18); } #__tcInvestMult .tcImUp { color: var(--tc-grn); } #__tcInvestMult .tcImDown { color: var(--tc-red); } #__tcInvestMult .tcImFactor { height: 26px; font-size: 12px; letter-spacing: 0.02em; color: var(--tc-text-dim); background: var(--m3-surface-3); border-radius: var(--m3-shape-sm); } #__tcInvestMult .tcImFactor:hover { background: oklch(from var(--tc-accent) l c h / 0.1); color: var(--tc-accent); } #__tcMTF { position: fixed; top: 96px; right: 220px; z-index: 2147483000; display: flex; flex-direction: column; gap: 10px; width: 268px; padding: 10px; box-sizing: border-box; border-radius: var(--m3-shape-lg); background: var(--tc-bg); box-shadow: var(--m3-elev-2); border: 1px solid var(--m3-outline-var); font-family: 'DM Mono', monospace; user-select: none; -webkit-user-select: none; touch-action: none; } #__tcMTF .tcMtfBar { display: flex; align-items: center; gap: 6px; cursor: grab; padding-bottom: 2px; } #__tcMTF .tcMtfBar:active { cursor: grabbing; } #__tcMTF .tcMtfPair { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: var(--tc-text-pri); } #__tcMTF .tcMtfSync { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: var(--m3-shape-full); cursor: pointer; color: var(--tc-text-dim); transition: background 0.12s, color 0.12s; } #__tcMTF .tcMtfSync:hover { background: oklch(from var(--tc-accent) l c h / 0.12); color: var(--tc-accent); } #__tcMTF .tcMtfSync:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 1px; } #__tcMTF .tcMtfGrip { width: 16px; height: 3px; border-radius: 2px; background: var(--m3-outline-var); } #__tcMTF .tcMtfCell { display: flex; flex-direction: column; gap: 1px; } #__tcMTF .tcMtfHd { display: flex; align-items: center; justify-content: space-between; } #__tcMTF .tcMtfViews { display: flex; gap: 3px; flex-shrink: 0; } #__tcMTF .tcMtfViewBtn { all: unset; box-sizing: border-box; font-family: inherit; font-size: 9px; font-weight: 800; letter-spacing: 0.04em; padding: 0 6px; line-height: 15px; border-radius: 4px; border: 1px solid var(--tc-sec-border); color: var(--tc-text-mut); cursor: pointer; } #__tcMTF .tcMtfViewBtn:hover { color: var(--tc-text-pri); } #__tcMTF .tcMtfViewBtn.tcOn { color: #0b1020; background: var(--tc-accent); border-color: transparent; } #__tcMTF .tcMtfScan { display: none; } #__tcMTF.tcMtfScanOn .tcMtfCell { display: none; } #__tcMTF.tcMtfScanOn .tcMtfScan { display: flex; flex-direction: column; gap: 3px; } #__tcMTF .tcMtfScanHdr { font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: var(--tc-text-mut); padding: 0 2px 2px; } #__tcMTF .tcMtfScanList { display: flex; flex-direction: column; gap: 1px; max-height: min(240px, 40vh); overflow-y: auto; scrollbar-width: thin; } #__tcMTF .tcScanAge { font-size: 8px; font-weight: 700; color: var(--tc-text-mut); opacity: 0.8; flex-shrink: 0; font-variant-numeric: tabular-nums; } #__tcMTF .tcMtfScanRow { display: flex; align-items: center; gap: 6px; font-size: 10px; line-height: 17px; padding: 0 4px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; } #__tcMTF .tcMtfScanRow:hover { background: oklch(100% 0 0 / 0.08); } #__tcMTF .tcMtfScanRow.tcScanHot { background: oklch(100% 0 0 / 0.06); border-color: var(--tc-sec-border); } #__tcMTF .tcMtfScanRow.tcScanOpen .tcScanPair { color: var(--tc-text-pri); } #__tcMTF .tcScanPair { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: var(--tc-text-dim); } #__tcMTF .tcScanPay { font-variant-numeric: tabular-nums; color: var(--tc-text-mut); flex-shrink: 0; } #__tcMTF .tcScanTr { display: flex; gap: 1px; flex-shrink: 0; font-size: 9px; } #__tcMTF .tcScanNear { font-variant-numeric: tabular-nums; font-weight: 800; flex-shrink: 0; min-width: 54px; text-align: right; } #__tcMTF .tcScanNear.tcScanNone { color: var(--tc-text-mut); font-weight: 600; } #__tcMTF .tcScanEmpty { font-size: 10px; color: var(--tc-text-mut); padding: 6px 4px; } #__tcMTF .tcMtfScanFoot { display: flex; align-items: center; gap: 6px; padding-top: 4px; border-top: 1px solid var(--tc-sec-border); } #__tcMTF.tcMtfSweeping .tcMtfSync { color: var(--tc-accent); animation: tcSpin 1.4s linear infinite; } #__tcMTF .tcScanFootMsg { font-size: 9px; color: var(--tc-text-mut); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } #__tcMTF .tcMtfTf { color: var(--tc-text-pri); font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; padding: 0 5px; border-radius: 4px; margin-right: 5px; border: 1px solid transparent; line-height: 15px; } .tcMtfTf:hover { filter: brightness(1.3); } #__tcMTF .tcMtfPct { font-size: 10px; font-variant-numeric: tabular-nums; color: var(--tc-text-dim); } .tcMtfSr { font-size: 9px; font-weight: 800; letter-spacing: 0.04em; cursor: pointer; padding: 0 5px; border-radius: 4px; margin-right: 5px; border: 1px solid transparent; line-height: 15px; } .tcMtfCd { font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--tc-text-mut); margin-left: auto; margin-right: 6px; } .tcMtfCd.tcMtfCdSoon { color: var(--tc-accent); } .tcMtfFlip { display: none; font-size: 9px; font-weight: 800; line-height: 15px; padding: 0 5px; border-radius: 4px; margin-right: 5px; border: 1px solid transparent; color: #0b1020; } .tcMtfFlip.tcFlipOn { display: inline-block; } #__tcMTF .tcMtfCv { display: block; width: 100%; height: var(--tc-mtf-cvh, 88px); cursor: grab; touch-action: none; border-radius: var(--m3-shape-xs); background: var(--m3-surface-3); } #__tcMTF .tcMtfRz { position: absolute; z-index: 2; background: transparent; touch-action: none; } #__tcMTF .tcMtfRz[data-rz=\"e\"] { top: 8px; bottom: 8px; right: -3px; width: 8px; cursor: ew-resize; } #__tcMTF .tcMtfRz[data-rz=\"w\"] { top: 8px; bottom: 8px; left: -3px; width: 8px; cursor: ew-resize; } #__tcMTF .tcMtfRz[data-rz=\"s\"] { left: 8px; right: 8px; bottom: -3px; height: 8px; cursor: ns-resize; } #__tcMTF .tcMtfRz[data-rz=\"n\"] { left: 8px; right: 8px; top: -3px; height: 8px; cursor: ns-resize; } #__tcMTF .tcMtfRz[data-rz=\"se\"] { right: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nwse-resize; } #__tcMTF .tcMtfRz[data-rz=\"sw\"] { left: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nesw-resize; } #__tcMTF .tcMtfRz[data-rz=\"ne\"] { right: -3px; top: -3px; width: 14px; height: 14px; cursor: nesw-resize; } #__tcMTF .tcMtfRz[data-rz=\"nw\"] { left: -3px; top: -3px; width: 14px; height: 14px; cursor: nwse-resize; } #__tcMTF .tcMtfRz[data-rz=\"se\"]::after { content: ''; position: absolute; right: 4px; bottom: 4px; width: 6px; height: 6px; border-right: 2px solid var(--m3-outline-var); border-bottom: 2px solid var(--m3-outline-var); } #__tcMTF.tcMtfResizing { user-select: none; } #__tcMTF .tcMtfCv:active { cursor: grabbing; } #__tcMTF .tcMtfPanned .tcMtfCv { box-shadow: inset 0 0 0 1px oklch(from var(--tc-accent) l c h / 0.55); } #__tcMTF .tcMtfPanned .tcMtfCap { color: var(--tc-accent); } #__tcMTF .tcMtfCap { font-size: 10px; letter-spacing: 0.03em; color: var(--tc-text-dim); text-align: right; } #__tcMTF .tcMtfStale .tcMtfCv { opacity: 0.45; } #__tcMTF .tcMtfStale .tcMtfCap { color: var(--tc-amb); } #__tcMTF .tcMtfEmpty .tcMtfCv { background: transparent; border: 1px dashed var(--m3-outline-var); } #__tcMTF .tcMtfEmpty .tcMtfCap { color: var(--tc-accent); } #__tcMTF.tcMtfBusy { opacity: 0.7; } #__tcMTF.tcMtfBusy .tcMtfSync { color: var(--tc-accent); } #__tcMobileBar { position: fixed; bottom: 210px; right: 3px; left: auto; top: auto; transform: none; z-index: 2147483600; display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 6px 5px; width: 92px; max-height: calc(100vh - 16px); background: color-mix(in oklab, var(--tc-bg) 94%, transparent); border: 1px solid var(--m3-outline-var); border-radius: 14px; box-shadow: var(--m3-elev-2); font-family: 'DM Sans', system-ui, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; animation: __tcMbIn 0.22s cubic-bezier(0.16, 1, 0.3, 1); } @keyframes __tcMbIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } } #__tcMobileBar .tcMbHandle { display: flex; flex-direction: row; justify-content: center; align-items: center; padding: 0 0 2px; cursor: grab; width: 100%; } #__tcMobileBar .tcMbHandle:active { cursor: grabbing; } #__tcMobileBar .tcMbGrip { display: block; width: 17px; height: 3px; border-radius: 999px; background: var(--m3-on-surface-var); opacity: 0.4; } #__tcMobileBar .tcMbRow { display: flex; flex-direction: column; gap: 3px; width: 100%; } #__tcMobileBar .tcMbLbl { font-size: 8px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: oklch(from var(--tc-text-pri) l c h / 0.85); text-align: center; white-space: nowrap; } #__tcMobileBar .tcMbCtl { display: flex; align-items: stretch; gap: 3px; width: 100%; } #__tcMobileBar .tcMbBtn, #__tcMobileBar .tcMbVal { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; height: 22px; cursor: pointer; color: #ffffff; background: var(--m3-surface-3); border-radius: 9px; transition: background 0.12s cubic-bezier(0.16, 1, 0.3, 1); } #__tcMobileBar .tcMbBtn { flex: 0 0 auto; min-width: 22px; padding: 0 3px; font-size: 11px; font-weight: 700; line-height: 1; } #__tcMobileBar .tcMbBtn svg { width: 10px; height: 10px; stroke: currentColor; fill: none; } #__tcMobileBar .tcMbVal { flex: 1; min-width: 0; padding: 0 4px; } #__tcMobileBar .tcMbVal b { font-size: 9px; font-weight: 800; color: #ffffff; font-variant-numeric: tabular-nums; white-space: nowrap; } #__tcMobileBar .tcMbValGrn b { color: var(--tc-grn); } #__tcMobileBar.tcMbRpLow .tcMbValGrn b { color: var(--tc-red); } #__tcMobileBar.tcMbRpLow .tcMbValGrn { background: oklch(from var(--tc-red) l c h / 0.16); } #__tcMobileBar.tcMbRpLow #__tcMbRpLbl { color: var(--tc-red); } #__tcMobileBar .tcMbQuick { display: flex; justify-content: space-between; gap: 3px; width: 100%; } #__tcMobileBar .tcMbQuickBtn { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex: 0 0 16px; cursor: pointer; background: var(--m3-surface-3); border-radius: 6px; font-size: 8px; font-weight: 800; line-height: 1; color: #ffffff; font-variant-numeric: tabular-nums; transition: background 0.12s cubic-bezier(0.16, 1, 0.3, 1); } #__tcMobileBar .tcMbQuickBtn.tcMbQuickOn { background: var(--tc-accent); color: var(--tc-bg); } #__tcMobileBar .tcMbQuickBtn:active { background: oklch(from var(--tc-accent) l c h / 0.35); } #__tcMobileBar .tcMbQuickBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } #__tcMobileBar .tcMbBtn:active, #__tcMobileBar .tcMbVal:active { background: oklch(from var(--tc-accent) l c h / 0.2); } #__tcMobileBar .tcMbBtn:focus-visible, #__tcMobileBar .tcMbVal:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } @media (hover: hover) { #__tcMobileBar .tcMbBtn:hover, #__tcMobileBar .tcMbVal:hover { background: oklch(from var(--tc-accent) l c h / 0.1); } } @media (prefers-reduced-motion: reduce) { #__tcMobileBar { animation: none; } #__tcMobileBar .tcMbBtn, #__tcMobileBar .tcMbVal { transition: none; } } @media (max-width: 900px) { #__tradeCalc input, #__tcJournalModal input { font-size: 16px !important; } } ";
+        " #__tradeCalc { position: fixed; top: 5px; right: 375px; width: max-content; min-height: 3.5em; max-width: 90em; border-radius: 999px; z-index: 2147483647; font-size: 13px; font-family: 'DM Sans', system-ui, sans-serif; background: var(--tc-bg); box-shadow: var(--tc-panel-shadow); display: flex; align-items: center; padding: 0.3em 1.5em; gap: 0; cursor: default; user-select: none; overflow: visible; transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); } #__tradeCalc.dragging { transition: none; cursor: grabbing; } .tcGrip { display: flex; align-items: center; flex-shrink: 0; pointer-events: none; width: 0.7em; height: 1.1em; color: var(--m3-on-surface-var); opacity: 0.4; } .tcGrip svg { width: 100%; height: 100%; } .tcGripLeft { margin-right: 0.7em; } .tcVer { align-self: center; font-size: max(9px, 0.58em); font-weight: 800; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; color: var(--tc-text-mut); opacity: 0.65; cursor: default; } .tcGripRight { margin-left: 0.7em; } #__tcContent { display: flex; align-items: stretch; flex: 1; gap: 0.75em; scrollbar-width: none; } #__tcContent::-webkit-scrollbar { display: none; } .tcSec { display: flex; flex-direction: row; align-items: stretch; background: transparent; border: none; flex:1; padding: 0; gap: 0; position: relative; flex-shrink: 0; } #__tcSecTargets { cursor: grab; } #__tcSecProtections { margin-left: auto; margin-right: auto; } #__tcSecProjections { } .tcSec:has([data-tc-tip]:hover) { z-index: 100; } [data-tc-tip] { position: relative; } [data-tc-tip]::after { content: attr(data-tc-tip); position: absolute; top: calc(100% + 0.46em); left: 50%; white-space: nowrap; pointer-events: none; background: oklch(16% 0.02 257 / 0.98); color: oklch(96% 0.01 240); font-size: max(11px, 0.72em); font-weight: 600; letter-spacing: 0.04em; text-transform: none; padding: 0.4em 0.7em; border-radius: 0.42em; border: 1px solid oklch(100% 0 0 / 0.14); box-shadow: 0 4px 12px oklch(0% 0 0 / 0.45); opacity: 0; transition: opacity 0.18s, transform 0.18s; transform: translateX(-50%) translateY(-0.31em); z-index: 2147483647; } [data-tc-tip]::before { content: ''; position: absolute; top: calc(100% + 0.15em); left: 50%; transform: translateX(-50%); border: 0.31em solid transparent; border-bottom-color: oklch(16% 0.02 257 / 0.98); pointer-events: none; opacity: 0; transition: opacity 0.18s; z-index: 2147483647; } [data-tc-tip]:hover, [data-tc-tip]:focus-visible { z-index: 2147483646; } [data-tc-tip]:hover::after, [data-tc-tip]:focus-visible::after { opacity: 1; transform: translateX(-50%) translateY(0); } [data-tc-tip]:hover::before, [data-tc-tip]:focus-visible::before { opacity: 1; } #__tcSecTargets [data-tc-tip]::after { left: 0; transform: translateY(-0.31em); } #__tcSecTargets [data-tc-tip]:hover::after, #__tcSecTargets [data-tc-tip]:focus-visible::after { transform: translateY(0); } #__tcSecTargets [data-tc-tip]::before { left: 0.7em; transform: none; } .tcSecFields { display: flex; align-items: stretch; gap: 0.6em; flex: 1; position: relative; } .tcFld { display: flex; flex-direction: column; gap: 0.25em; position: relative; flex:1;} .tcFld > .tcLbl { min-height: 0; display: flex; align-items: center; padding-bottom: 0; font-weight: bold; flex: 0 0 auto; } .tcFld > *:not(.tcLbl) { margin-top: auto; margin-bottom: auto; } .tcLbl { font-size: var(--fz-label); text-transform: uppercase; color: var(--tc-text-mut); font-weight: 500; letter-spacing: 0.16em; line-height: 1; white-space: nowrap; display: flex; align-items: center; gap: 0.3em; } .tcLbl svg { opacity: 0.75; } .tcLbl .tcDot { display: none; } .tcVal { font-family: 'DM Mono', monospace; font-size: var(--fz-value); color: var(--tc-text-pri); font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; transition: color 0.3s, text-shadow 0.3s; letter-spacing: 0.031em; white-space: nowrap; } .tcValLg { font-family: 'DM Mono', monospace; font-size: var(--fz-value-lg); font-weight: 400; color: var(--tc-text-pri); letter-spacing: 0.015em; line-height: 1; font-variant-numeric: tabular-nums; transition: text-shadow 0.3s; } .tcValLg .tcDec { color: var(--tc-text-mut); font-weight: 400; font-size: var(--fz-decimal); letter-spacing: 0.015em; margin-left: 0.05em; } .tcValLg[style*=\"--tc-grn\"] { text-shadow: 0 0 18px oklch(76% 0.16 145 / 0.4); } .tcValLg[style*=\"--tc-red\"] { text-shadow: 0 0 18px oklch(64% 0.18 25 / 0.4); } .tcProjMarks { display: none; } .tcProjMark { width: 1.077em; height: 0.154em; border-radius: 0.231em; background: oklch(76% 0.16 145 / 0.18); } .tcProjMark.tcProjMarkFill { background: var(--tc-grn); box-shadow: 0 0 6px oklch(76% 0.16 145 / 0.5); } .tcControlGroup { display: inline-flex; align-items: center; gap: 0.18em; background: var(--m3-surface-3); box-shadow: none; border: 1px solid var(--m3-outline-var); border-radius: var(--m3-shape-full); padding: 0.25em 0.8em; min-height: 1.3em; box-sizing: border-box; transition: border-color 0.2s, border-width 0.1s; overflow: visible; } .tcControlGroup:hover:not(:focus-within) { border-color: var(--m3-outline); } .tcControlGroup:focus-within { border: 1px solid var(--tc-accent); padding: calc(0.25em - 1px) calc(0.6em - 1px); } #__tcSLInputWrap, #__tcSLInputWrap:hover, #__tcSLInputWrap:focus-within { border-color: var(--m3-outline-var); padding: 0.25em 0.8em; } #__tcSLInput { cursor: default; } .tcInput { font-family: 'DM Mono', monospace; font-size: 1em; color: var(--m3-on-surface); background: transparent; border: none; outline: none; padding: 0; font-weight: 400; font-variant-numeric: tabular-nums; min-width: 0; letter-spacing: 0.031em; -moz-appearance: textfield; } .tcInput::-webkit-outer-spin-button, .tcInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; } .tcInput::placeholder { color: var(--m3-on-surface-var); opacity: 0.7; } .tcInput:-webkit-autofill, .tcInput:-webkit-autofill:hover, .tcInput:-webkit-autofill:focus, .tcInput:-webkit-autofill:active { -webkit-box-shadow: 0 0 0 100px transparent inset !important; box-shadow: 0 0 0 100px transparent inset !important; -webkit-text-fill-color: var(--m3-on-surface) !important; background-color: transparent !important; transition: background-color 99999s ease-in-out 0s; } .tcInput.tcUnsaved { border-bottom-color: var(--tc-ylw) !important; color: var(--tc-ylw) !important; } .tcControlGroup:has(.tcUnsaved)::after { content: \"↵ Enter\"; position: absolute; bottom: -1.35em; left: 0; font-size: max(8px, 0.5em); font-weight: 700; letter-spacing: 0.08em; color: var(--tc-ylw); white-space: nowrap; pointer-events: none; opacity: 0.9; } .tcPill { width: 2.308em; height: 2.308em; border-radius: 50%; background: transparent; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; min-width: 0; color: var(--m3-on-surface-var); transition: background 0.14s, color 0.15s, border-color 0.2s, box-shadow 0.2s; } .tcPill svg { width: 1.15em; height: 1.15em; } .tcPill:hover { background: oklch(from var(--tc-accent) l c h / 0.08); color: var(--m3-on-surface); } .tcPill:active { background: oklch(from var(--tc-accent) l c h / 0.12); transform: scale(0.94); } .tcPill:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcPill.on, #__tcMultiStatus.on { color: var(--tc-grn); border-color: oklch(from var(--tc-grn) l c h / 0.4); box-shadow: 0 0 10px oklch(from var(--tc-grn) l c h / 0.35); } .tcPill.tcPillSnap { animation: __tcPillSnap 0.22s cubic-bezier(0.16, 1, 0.3, 1); } .tcPillCircle::after { content: none !important; } .tcPillCircle, .tcLogBtn { border-radius: 50%; background: transparent; box-shadow: none; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--m3-on-surface-var); transition: background 0.14s, color 0.15s; } .tcPillCircle:hover, .tcLogBtn:hover { transform: none; background: oklch(from var(--tc-accent) l c h / 0.08); color: var(--m3-on-surface); } .tcPillCircle:active, .tcLogBtn:active { background: oklch(from var(--tc-accent) l c h / 0.12); box-shadow: none; } .tcPillCircle:focus-visible, .tcLogBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcPillCircle { width: 1.733em; height: 1.733em; min-width: 0; padding: 0; align-self: center; font-weight: 500; font-size: var(--fz-value); line-height: 1; font-family: 'DM Sans', system-ui, sans-serif; } .tcLogBtn { width: 2.308em; height: 2.308em; padding: 0; font-size: 1em; } .tcLogBtn svg { width: 1.077em; height: 1.077em; } .tcCloseBtn { position: absolute; right: -0.4em; top: 50%; transform: translateY(-50%); width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--m3-surface-3); border: 1px solid var(--m3-outline-var); color: var(--m3-on-surface-var); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; box-shadow: none; transition: color 0.2s, opacity 0.2s, background 0.2s; opacity: 0; } .tcCloseBtn::before { content: \"\"; position: absolute; inset: 50% 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); border-radius: 50%; } #__tradeCalc:hover .tcCloseBtn, .tcCloseBtn:focus-visible { opacity: 1; } .tcCloseBtn:hover { background: var(--tc-red); color: oklch(98% 0 0); border-color: transparent; box-shadow: 0 3px 10px oklch(64% 0.18 25 / 0.4); transform: translateY(-50%); } .tcCloseBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; opacity: 1; } .tcCloseBtn:focus-visible:hover { transform: translateY(-50%) rotate(90deg); transition: background 0.25s, color 0.25s, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1); } .tcSparklineBg { position: absolute; inset: 0; opacity: 0.22; pointer-events: none; border-radius: inherit; overflow: hidden; z-index: 0; mask-image: linear-gradient(to bottom, black 20%, transparent); -webkit-mask-image: linear-gradient(to bottom, black 20%, transparent); } @keyframes __tcDataFlash { 0% { color: var(--tc-accent); transform: translateY(-1px); } 100% { color: inherit; transform: translateY(0); } } .tcFlashData { animation: __tcDataFlash 0.55s cubic-bezier(0.16, 1, 0.3, 1); display: inline-block; } @keyframes tcSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes __tcEntrance { 0% { opacity: 0; transform: scale(0.92) translateY(16px); filter: blur(8px); } 100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); } } #__tradeCalc.tcLightMode { --tc-grn: #146c2e; --tc-red: oklch(44% 0.18 25); --tc-amb: oklch(44% 0.16 60); --tc-ylw: oklch(52% 0.17 70); --tc-pur: oklch(42% 0.16 285); --tc-cyn: oklch(40% 0.13 210); --tc-accent: #6750a4; --m3-surface: #fef7ff; --m3-surface-2: #f4eefa; --m3-surface-3: #ece6f0; --m3-on-surface: #1d1b20; --m3-on-surface-var: #49454f; --m3-outline: #79747e; --m3-outline-var: #cac4d0; --m3-primary: #6750a4; --m3-on-primary: #ffffff; --tc-text-pri: var(--m3-on-surface); --tc-text-dim: var(--m3-on-surface-var); --tc-text-mut: oklch(from var(--m3-on-surface-var) l c h / 0.78); --tc-input-bg: var(--m3-surface-3); --tc-input-border: var(--m3-outline-var); --tc-bg: var(--m3-surface-2); --tc-panel-shadow: var(--m3-elev-2); background: var(--tc-bg); } #__tradeCalc.tcLightMode .tcControlGroup { background: var(--m3-surface-3); border-color: var(--m3-outline-var); } #__tradeCalc.tcLightMode .tcPillCircle, #__tradeCalc.tcLightMode .tcLogBtn, #__tradeCalc.tcLightMode .tcPill { background: transparent; border-color: transparent; } #__tcDangerOverlay { position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; background: radial-gradient(circle at center, transparent 0%, oklch(0% 0 0 / 0.88) 100%); opacity: 0; transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1); } .tcLockContent { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; padding: var(--s-6); border-radius: 1.4em; background: var(--tc-bg); border: 1px solid var(--tc-sec-border); box-shadow: 0 48px 120px oklch(0% 0 0 / 0.8), inset 0 1px 1px oklch(100% 0 0 / 0.2); } .tcLockLabel { display: block; font-size: 0.78em; font-weight: 900; text-transform: uppercase; letter-spacing: 0.28em; color: var(--tc-text-mut); margin-bottom: var(--s-5); opacity: 1; } .tcLockTimer { display: block; font-family: 'DM Mono', monospace; font-size: 7.5em; font-weight: 800; color: var(--tc-text-pri); letter-spacing: -0.04em; line-height: 1; } .tcLockMeta { display: block; font-size: 0.85em; font-weight: 600; color: var(--tc-text-dim); margin-top: var(--s-5); letter-spacing: 0.05em; } #__tradeCalc.tcDangerMode { box-shadow: var(--tc-panel-shadow), 0 0 0 2px oklch(64% 0.18 25 / 0.55); } #__tradeCalc.tcDangerMode.tcActive { box-shadow: var(--tc-panel-shadow), 0 0 0 2px oklch(64% 0.18 25 / 0.5); } #__tcDangerOverlay.tcPercentVisible { opacity: 1; background: radial-gradient(circle at center, transparent 0%, oklch(64% 0.18 25 / 0.15) 100%); } #__tcDangerOverlay.tcPercentVisible .tcLockCard { display: block; } #__tcDangerOverlay.tcPercentVisible .tcLockContent { box-shadow: 0 0 0 1px oklch(64% 0.18 25 / 0.5), 0 32px 100px -16px oklch(0% 0 0 / 0.9); background: radial-gradient(circle at top, oklch(64% 0.18 25 / 0.15) 0%, transparent 100%), var(--tc-bg); }      #__tcRestoreBtn { position: fixed; bottom: 24px; right: 24px; z-index: 2147483647; background: oklch(from var(--tc-bg) l c h / 0.85); color: var(--tc-text-pri); border: 1px solid oklch(from var(--tc-accent) l c h / 0.3); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: 0.6em 1.2em; border-radius: 99px; font-family: 'DM Sans', system-ui, sans-serif; font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 16px oklch(0% 0 0 / 0.28); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s, border-color 0.2s; display: flex; align-items: center; gap: 8px; transform-origin: center; } #__tcRestoreBtn svg { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); color: var(--tc-accent); width: 14px; height: 14px; } #__tcRestoreBtn:hover { transform: translateY(-3px) scale(1.02); background: oklch(from var(--tc-bg) l c h / 0.95); box-shadow: 0 8px 24px oklch(from var(--tc-accent) l c h / 0.2); border-color: var(--tc-accent); } #__tcRestoreBtn:hover svg { transform: rotate(90deg) scale(1.1); } #__tcRestoreBtn:active { transform: translateY(1px) scale(0.97); box-shadow: 0 2px 8px oklch(0% 0 0 / 0.2); transition: transform 0.1s; } #__tcRestoreBtn.tcLightMode { background: oklch(96% 0.02 88 / 0.92); box-shadow: 0 8px 24px -14px oklch(37% 0.06 78 / 0.45); } #__tcRestoreBtn.tcLightMode:hover { background: oklch(99% 0.016 88 / 0.98); box-shadow: 0 8px 24px oklch(48% 0.18 245 / 0.15); } #__tcImToggle.tcImToggleOff { opacity: 0.5; color: var(--m3-on-surface-var); } @keyframes __tcPillSnap { 0% { transform: scale(1); } 40% { transform: scale(0.88); } 100% { transform: scale(1); } } .tcPill.tcPillSnap { animation: __tcPillSnap 0.22s cubic-bezier(0.16, 1, 0.3, 1); } @keyframes __tcInputCommit { 0% { border-color: oklch(76% 0.16 145 / 0.9); box-shadow: 0 0 0 2px oklch(76% 0.16 145 / 0.18), inset 0 1px 2px oklch(0% 0 0 / 0.18); } 100% { border-color: var(--tc-input-border); box-shadow: inset 0 1px 2px oklch(0% 0 0 / 0.18); } } .tcControlGroup.tcCommit { animation: __tcInputCommit 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; } .tcReqWrap { display: flex; align-items: baseline; gap: 0.12em; } .tcReqFrom { font-size: 0.78em; font-weight: 600; color: var(--tc-text-dim); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; } .tcValLg.tcTradeCritical { color: var(--tc-ylw) !important; text-shadow: 0 0 24px oklch(90% 0.17 95 / 0.6), 0 0 48px oklch(90% 0.17 95 / 0.25); } .tcSecHdr .tcDot.tcDotLive { opacity: 1; box-shadow: 0 0 5px currentColor; } @keyframes __tcBtnReveal { 0% { transform: scale(0.96); box-shadow: 0 0 0 0 oklch(76% 0.16 145 / 0.5); } 55% { transform: scale(1.02); box-shadow: 0 0 0 8px oklch(76% 0.16 145 / 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 oklch(76% 0.16 145 / 0); } } .tcSLBtnReveal { animation: __tcBtnReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; } @keyframes __tcWarnIn { 0% { opacity: 0; transform: translateY(4px); } 100% { opacity: 1; transform: translateY(0); } } #__tcWarn.tcWarnVisible { animation: __tcWarnIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; } @keyframes __tcLiveResolve { 0% { opacity: 0.72; transform: scale(1); } 45% { opacity: 1; transform: scale(1.06); } 100% { opacity: 0; transform: scale(0.96) translateY(2px); } } .tcLiveResolving { animation: __tcLiveResolve 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; } @keyframes __tcValPop { 0% { transform: scale(1); } 45% { transform: scale(1.12) translateY(-1px); } 100% { transform: scale(1) translateY(0); } } .tcValLg.tcValPop { animation: __tcValPop 0.28s cubic-bezier(0.16, 1, 0.3, 1); } @media (prefers-reduced-motion: reduce) { #__tradeCalc, #__tradeCalc *, #__tcRestoreBtn, #__tcDangerOverlay { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } #__tradeCalc.tcDangerMode.tcActive { animation: none !important; } .tcFlashData { animation: none !important; } .tcCloseBtn:focus-visible:hover { transform: none; } .tcLogBtn:hover { transform: none; } #__tcRestoreBtn:hover { transform: none; } #__tcRestoreBtn:hover svg { transform: none; } .tcPill.tcPillSnap { animation: none !important; } .tcControlGroup.tcCommit { animation: none !important; } .tcSecHdr .tcDot.tcDotLive { animation: none !important; } .tcSLBtnReveal { animation: none !important; } #__tcWarn.tcWarnVisible { animation: none !important; } .tcLiveResolving { animation: none !important; opacity: 0 !important; } .tcValLg.tcValPop { animation: none !important; } .tcPill { transition: none !important; } } .tcControlGroup.tcTPGroup { gap:0.05em; background:transparent; border-color:transparent; box-shadow:none; align-items:baseline; } .tcControlGroup.tcTPGroup:hover, .tcControlGroup.tcTPGroup:focus-within { background: var(--m3-surface-3); border-color: var(--m3-outline-var); box-shadow: none; } .tcTPCur { font-size:var(--fz-currency); font-weight:700; color:var(--tc-text-dim); font-family:'DM Mono',monospace; letter-spacing:0.015em; } .tcTPInput { font-size:var(--fz-hero) !important; font-weight:700 !important; letter-spacing:0.02em !important; } @keyframes __tcTimerIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } } @keyframes __tcEdgeFlash { 0% { opacity:0; } 25% { opacity:1; } 100% { opacity:0; } } @media (prefers-reduced-motion: reduce) { #__tcEdgeFlash { animation: none !important; opacity: 0 !important; } }  #__tcInvestMult { position: fixed; top: 220px; right: 220px; z-index: 2147483000; display: flex; flex-direction: column; gap: 5px; width: 64px; padding: 6px; border-radius: var(--m3-shape-lg); background: var(--tc-bg); box-shadow: var(--m3-elev-2); border: 1px solid var(--m3-outline-var); font-family: 'DM Mono', monospace; user-select: none; } #__tcInvestMult .tcImBtn { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; height: 32px; border-radius: var(--m3-shape-sm); cursor: pointer; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--tc-text-pri); background: transparent; transition: background 0.12s; } #__tcInvestMult .tcImBtn:hover { background: oklch(from var(--tc-accent) l c h / 0.12); } #__tcInvestMult .tcImBtn:active { background: oklch(from var(--tc-accent) l c h / 0.18); } #__tcInvestMult .tcImUp { color: var(--tc-grn); } #__tcInvestMult .tcImDown { color: var(--tc-red); } #__tcInvestMult .tcImFactor { height: 26px; font-size: 12px; letter-spacing: 0.02em; color: var(--tc-text-dim); background: var(--m3-surface-3); border-radius: var(--m3-shape-sm); } #__tcInvestMult .tcImFactor:hover { background: oklch(from var(--tc-accent) l c h / 0.1); color: var(--tc-accent); } #__tcMTF { position: fixed; top: 96px; right: 220px; z-index: 2147483000; display: flex; flex-direction: column; gap: 10px; width: 268px; padding: 10px; box-sizing: border-box; border-radius: var(--m3-shape-lg); background: var(--tc-bg); box-shadow: var(--m3-elev-2); border: 1px solid var(--m3-outline-var); font-family: 'DM Mono', monospace; user-select: none; -webkit-user-select: none; touch-action: none; } #__tcMTF .tcMtfBar { display: flex; align-items: center; gap: 6px; cursor: grab; padding-bottom: 2px; } #__tcMTF .tcMtfBar:active { cursor: grabbing; } #__tcMTF .tcMtfPair { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: var(--tc-text-pri); } #__tcMTF .tcMtfSync { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: var(--m3-shape-full); cursor: pointer; color: var(--tc-text-dim); transition: background 0.12s, color 0.12s; } #__tcMTF .tcMtfSync:hover { background: oklch(from var(--tc-accent) l c h / 0.12); color: var(--tc-accent); } #__tcMTF .tcMtfSync:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 1px; } #__tcMTF .tcMtfGrip { width: 16px; height: 3px; border-radius: 2px; background: var(--m3-outline-var); } #__tcMTF .tcMtfCell { display: flex; flex-direction: column; gap: 1px; } #__tcMTF .tcMtfHd { display: flex; align-items: center; justify-content: space-between; } #__tcMTF .tcMtfViews { display: flex; gap: 3px; flex-shrink: 0; } #__tcMTF .tcMtfViewBtn { all: unset; box-sizing: border-box; font-family: inherit; font-size: 9px; font-weight: 800; letter-spacing: 0.04em; padding: 0 6px; line-height: 15px; border-radius: 4px; border: 1px solid var(--tc-sec-border); color: var(--tc-text-mut); cursor: pointer; } #__tcMTF .tcMtfViewBtn:hover { color: var(--tc-text-pri); } #__tcMTF .tcMtfViewBtn.tcOn { color: #0b1020; background: var(--tc-accent); border-color: transparent; } #__tcMTF .tcMtfScan { display: none; } #__tcMTF.tcMtfScanOn .tcMtfCell { display: none; } #__tcMTF.tcMtfScanOn .tcMtfScan { display: flex; flex-direction: column; gap: 3px; } #__tcMTF .tcMtfScanHdr { font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: var(--tc-text-mut); padding: 0 2px 2px; } #__tcMTF .tcMtfScanList { display: flex; flex-direction: column; gap: 1px; max-height: min(240px, 40vh); overflow-y: auto; scrollbar-width: thin; } #__tcMTF .tcScanAge { font-size: 8px; font-weight: 700; color: var(--tc-text-mut); opacity: 0.8; flex-shrink: 0; font-variant-numeric: tabular-nums; } #__tcMTF .tcMtfScanRow { display: flex; align-items: center; gap: 6px; font-size: 10px; line-height: 17px; padding: 0 4px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; } #__tcMTF .tcMtfScanRow:hover { background: oklch(100% 0 0 / 0.08); } #__tcMTF .tcMtfScanRow.tcScanHot { background: oklch(100% 0 0 / 0.06); border-color: var(--tc-sec-border); } #__tcMTF .tcMtfScanRow.tcScanOpen .tcScanPair { color: var(--tc-text-pri); } #__tcMTF .tcScanPair { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: var(--tc-text-dim); } #__tcMTF .tcScanPay { font-variant-numeric: tabular-nums; color: var(--tc-text-mut); flex-shrink: 0; } #__tcMTF .tcScanTr { display: flex; gap: 1px; flex-shrink: 0; font-size: 9px; } #__tcMTF .tcScanNear { font-variant-numeric: tabular-nums; font-weight: 800; flex-shrink: 0; min-width: 54px; text-align: right; } #__tcMTF .tcScanNear.tcScanNone { color: var(--tc-text-mut); font-weight: 600; } #__tcMTF .tcScanEmpty { font-size: 10px; color: var(--tc-text-mut); padding: 6px 4px; } #__tcMTF .tcMtfScanFoot { display: flex; align-items: center; gap: 6px; padding-top: 4px; border-top: 1px solid var(--tc-sec-border); } #__tcMTF.tcMtfSweeping .tcMtfSync { color: var(--tc-accent); animation: tcSpin 1.4s linear infinite; } #__tcMTF .tcScanFootMsg { font-size: 9px; color: var(--tc-text-mut); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } #__tcMTF .tcMtfTf { color: var(--tc-text-pri); font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; padding: 0 5px; border-radius: 4px; margin-right: 5px; border: 1px solid transparent; line-height: 15px; } .tcMtfTf:hover { filter: brightness(1.3); } #__tcMTF .tcMtfPct { font-size: 10px; font-variant-numeric: tabular-nums; color: var(--tc-text-dim); } .tcMtfSr { font-size: 9px; font-weight: 800; letter-spacing: 0.04em; cursor: pointer; padding: 0 5px; border-radius: 4px; margin-right: 5px; border: 1px solid transparent; line-height: 15px; } .tcMtfCd { font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--tc-text-mut); margin-left: auto; margin-right: 6px; } .tcMtfCd.tcMtfCdSoon { color: var(--tc-accent); } .tcMtfFlip { display: none; font-size: 9px; font-weight: 800; line-height: 15px; padding: 0 5px; border-radius: 4px; margin-right: 5px; border: 1px solid transparent; color: #0b1020; } .tcMtfFlip.tcFlipOn { display: inline-block; } #__tcMTF .tcMtfCv { display: block; width: 100%; height: var(--tc-mtf-cvh, 88px); cursor: grab; touch-action: none; border-radius: var(--m3-shape-xs); background: var(--m3-surface-3); } #__tcMTF .tcMtfRz { position: absolute; z-index: 2; background: transparent; touch-action: none; } #__tcMTF .tcMtfRz[data-rz=\"e\"] { top: 8px; bottom: 8px; right: -3px; width: 8px; cursor: ew-resize; } #__tcMTF .tcMtfRz[data-rz=\"w\"] { top: 8px; bottom: 8px; left: -3px; width: 8px; cursor: ew-resize; } #__tcMTF .tcMtfRz[data-rz=\"s\"] { left: 8px; right: 8px; bottom: -3px; height: 8px; cursor: ns-resize; } #__tcMTF .tcMtfRz[data-rz=\"n\"] { left: 8px; right: 8px; top: -3px; height: 8px; cursor: ns-resize; } #__tcMTF .tcMtfRz[data-rz=\"se\"] { right: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nwse-resize; } #__tcMTF .tcMtfRz[data-rz=\"sw\"] { left: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nesw-resize; } #__tcMTF .tcMtfRz[data-rz=\"ne\"] { right: -3px; top: -3px; width: 14px; height: 14px; cursor: nesw-resize; } #__tcMTF .tcMtfRz[data-rz=\"nw\"] { left: -3px; top: -3px; width: 14px; height: 14px; cursor: nwse-resize; } #__tcMTF .tcMtfRz[data-rz=\"se\"]::after { content: ''; position: absolute; right: 4px; bottom: 4px; width: 6px; height: 6px; border-right: 2px solid var(--m3-outline-var); border-bottom: 2px solid var(--m3-outline-var); } #__tcMTF.tcMtfResizing { user-select: none; } #__tcMTF .tcMtfCv:active { cursor: grabbing; } #__tcMTF .tcMtfPanned .tcMtfCv { box-shadow: inset 0 0 0 1px oklch(from var(--tc-accent) l c h / 0.55); } #__tcMTF .tcMtfPanned .tcMtfCap { color: var(--tc-accent); } #__tcMTF .tcMtfCap { font-size: 10px; letter-spacing: 0.03em; color: var(--tc-text-dim); text-align: right; } #__tcMTF .tcMtfStale .tcMtfCv { opacity: 0.45; } #__tcMTF .tcMtfStale .tcMtfCap { color: var(--tc-amb); } #__tcMTF .tcMtfEmpty .tcMtfCv { background: transparent; border: 1px dashed var(--m3-outline-var); } #__tcMTF .tcMtfEmpty .tcMtfCap { color: var(--tc-accent); } #__tcMTF.tcMtfBusy { opacity: 0.7; } #__tcMTF.tcMtfBusy .tcMtfSync { color: var(--tc-accent); } #__tcMobileBar { position: fixed; bottom: 210px; right: 3px; left: auto; top: auto; transform: none; z-index: 2147483600; display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 6px 5px; width: 92px; max-height: calc(100vh - 16px); background: color-mix(in oklab, var(--tc-bg) 94%, transparent); border: 1px solid var(--m3-outline-var); border-radius: 14px; box-shadow: var(--m3-elev-2); font-family: 'DM Sans', system-ui, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; animation: __tcMbIn 0.22s cubic-bezier(0.16, 1, 0.3, 1); } @keyframes __tcMbIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } } #__tcMobileBar .tcMbHandle { display: flex; flex-direction: row; justify-content: center; align-items: center; padding: 0 0 2px; cursor: grab; width: 100%; } #__tcMobileBar .tcMbHandle:active { cursor: grabbing; } #__tcMobileBar .tcMbGrip { display: block; width: 17px; height: 3px; border-radius: 999px; background: var(--m3-on-surface-var); opacity: 0.4; } #__tcMobileBar .tcMbRow { display: flex; flex-direction: column; gap: 3px; width: 100%; } #__tcMobileBar .tcMbLbl { font-size: 8px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: oklch(from var(--tc-text-pri) l c h / 0.85); text-align: center; white-space: nowrap; } #__tcMobileBar .tcMbCtl { display: flex; align-items: stretch; gap: 3px; width: 100%; } #__tcMobileBar .tcMbBtn, #__tcMobileBar .tcMbVal { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; height: 22px; cursor: pointer; color: #ffffff; background: var(--m3-surface-3); border-radius: 9px; transition: background 0.12s cubic-bezier(0.16, 1, 0.3, 1); } #__tcMobileBar .tcMbBtn { flex: 0 0 auto; min-width: 22px; padding: 0 3px; font-size: 11px; font-weight: 700; line-height: 1; } #__tcMobileBar .tcMbBtn svg { width: 10px; height: 10px; stroke: currentColor; fill: none; } #__tcMobileBar .tcMbVal { flex: 1; min-width: 0; padding: 0 4px; } #__tcMobileBar .tcMbVal b { font-size: 9px; font-weight: 800; color: #ffffff; font-variant-numeric: tabular-nums; white-space: nowrap; } #__tcMobileBar .tcMbValGrn b { color: var(--tc-grn); } #__tcMobileBar.tcMbRpLow .tcMbValGrn b { color: var(--tc-red); } #__tcMobileBar.tcMbRpLow .tcMbValGrn { background: oklch(from var(--tc-red) l c h / 0.16); } #__tcMobileBar.tcMbRpLow #__tcMbRpLbl { color: var(--tc-red); } #__tcMobileBar .tcMbQuick { display: flex; justify-content: space-between; gap: 3px; width: 100%; } #__tcMobileBar .tcMbQuickBtn { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex: 0 0 16px; cursor: pointer; background: var(--m3-surface-3); border-radius: 6px; font-size: 8px; font-weight: 800; line-height: 1; color: #ffffff; font-variant-numeric: tabular-nums; transition: background 0.12s cubic-bezier(0.16, 1, 0.3, 1); } #__tcMobileBar .tcMbQuickBtn.tcMbQuickOn { background: var(--tc-accent); color: var(--tc-bg); } #__tcMobileBar .tcMbQuickBtn:active { background: oklch(from var(--tc-accent) l c h / 0.35); } #__tcMobileBar .tcMbQuickBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } #__tcMobileBar .tcMbBtn:active, #__tcMobileBar .tcMbVal:active { background: oklch(from var(--tc-accent) l c h / 0.2); } #__tcMobileBar .tcMbBtn:focus-visible, #__tcMobileBar .tcMbVal:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } @media (hover: hover) { #__tcMobileBar .tcMbBtn:hover, #__tcMobileBar .tcMbVal:hover { background: oklch(from var(--tc-accent) l c h / 0.1); } } @media (prefers-reduced-motion: reduce) { #__tcMobileBar { animation: none; } #__tcMobileBar .tcMbBtn, #__tcMobileBar .tcMbVal { transition: none; } } @media (max-width: 900px) { #__tradeCalc input { font-size: 16px !important; } } ";
       shadow.appendChild(t);
     }
     // v1.27.0: the old <style> here listed Quotex's own hashed classes (".UI2Kh, .bvdd_ { … }"), which only
@@ -1891,7 +1804,7 @@
     const panel = document.createElement("div");
     panel.id = "__tradeCalc";
     panel.innerHTML =
-      ' <span class="tcGrip tcGripLeft" aria-hidden="true"><svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2" r="1.3"/><circle cx="7.5" cy="2" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="14" r="1.3"/><circle cx="7.5" cy="14" r="1.3"/></svg></span> <div id="__tcLoader" role="status" aria-live="polite" style="color:var(--tc-text-mut); font-size:0.72em; display:flex; align-items:center; justify-content:center; gap:var(--s-3); padding:var(--s-5) var(--s-6); width:22em; min-height:4.46em; font-weight:800; letter-spacing:0.14em;"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--tc-accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:tcSpin 1s linear infinite; opacity:0.8;" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg> <span id="__tcLoaderText"></span> </div> <div id="__tcContent" style="display:none;"> \x3c!-- Section 1: TARGETS (drag zone) --\x3e <div id="__tcSecTargets" class="tcSec"> <div class="tcSecFields" style="cursor:default; gap:0.615em;"> \x3c!-- TP --\x3e <div class="tcFld tcTPFld"> <span class="tcLbl" data-tc-tip="Day\'s take-profit target (sheet column D) — hover the value to edit"><span class="tcDot"></span>TP</span> <div class="tcControlGroup tcTPGroup"> <span class="tcTPCur">₹</span> <input id="__tcTBInput" class="tcInput tcTPInput" type="text" placeholder="0" aria-label="Take profit balance target" autocomplete="off" readonly /> <button id="__tcTPFetchBtn" class="tcLogBtn tcTPBtn" aria-label="Fetch TP from sheet" data-tc-tip="Fetch TP from Google Sheet (overrides a saved manual TP)"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg> </button> <button id="__tcTPSaveBtn" class="tcLogBtn tcTPBtn" aria-label="Save and lock manual TP" data-tc-tip="Lock this TP — survives reload/relogin until you Fetch or the next trading day"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> </button> </div> </div> \x3c!-- SL (shown when active) --\x3e <div class="tcFld" id="__tcSLFld" style="display:none;"> <span class="tcLbl" data-tc-tip="Lock out at this balance floor — type a new one and press Enter">SL</span> <div class="tcControlGroup" id="__tcSLInputWrap"> <input id="__tcSLInput" class="tcInput" type="text" placeholder="—" aria-label="Stop loss balance floor" autocomplete="off" style="display:none;" /> </div> <span id="__tcSLDisplay" class="tcVal" style="font-weight:700; color:var(--tc-red); display:none;">—</span> </div> \x3c!-- P/L --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Today\'s % P/L from your trading journal sheet">P/L</span> <span class="tcVal" id="__tcTodayPL" style="font-weight:400; font-size:var(--fz-pl);">—</span> </div> \x3c!-- GOAL — days remaining + trades needed to hit the first target (sheet M6/O7). Hidden until a sheet fetch returns valid numbers; motivational readout only, no gating logic. --\x3e <div class="tcFld" id="__tcGoalFld" style="display:none;"> <span class="tcLbl" data-tc-tip="Days left + trades needed to hit your first target (sheet M6/O7)">GOAL</span> <span class="tcVal" id="__tcGoalVal" style="font-weight:400; font-size:var(--fz-pl);">—</span> </div> </div> </div> \x3c!-- Section 2: LIMITS — centred via margin:auto in CSS --\x3e <div id="__tcSecProtections" class="tcSec"> <div class="tcSecHdr"><span class="tcDot"></span></div> <div class="tcSecFields" style="gap:0.75em;"> \x3c!-- LOCK + TIME removed 2026-07-06: browser locking is GONE (user runs a system-level lock). Do NOT re-add #__tcArmLimits / #__tcBlockMinInput. --\x3e \x3c!-- FLOOR % --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Block trades and close tabs below this payout %">PAYOUT</span> <div class="tcControlGroup"> <input id="__tcMinRpInput" class="tcInput" type="text" aria-label="Minimum payout floor %" autocomplete="off" style="width:calc(3ch + 0.55em);" /> </div> </div> \x3c!-- STEP× moved OUT of the panel 2026-07-07 (user request): the investment multiplier now lives in the floating #__tcInvestMult panel (× N / N / ÷ N) beside the native trade controls. The factor still persists in __tradeCalc_step_mult and still drives ←/→ arrows. Do NOT re-add #__tcStepMultInput / #__tcStepMinus / #__tcStepPlus here. --\x3e \x3c!-- MULT --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Scale each trade by STEP× across consecutive trades">MULT</span> <button id="__tcMultiStatus" class="tcPill" aria-pressed="false" aria-label="Toggle multiplier mode" data-tc-tip="Scale each trade by STEP× across consecutive trades"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg> </button> </div> </div> </div> \x3c!-- Section 3: PROJECTION --\x3e <div id="__tcSecProjections" class="tcSec"> <div class="tcSecFields" style="gap:0.75em; flex-wrap:nowrap; align-items:stretch;"> <div class="tcFld"> <span class="tcLbl" data-tc-tip="Trades needed to reach your TP from current balance"><span class="tcDot"></span>REQ</span> <div style="display:flex; flex-direction:column; align-items:flex-start; gap:0.231em; margin-top:auto; margin-bottom:auto;"> <span class="tcReqWrap"><span id="__tcResultFrom" class="tcReqFrom"></span><span id="__tcResult" class="tcValLg">—</span></span> <div class="tcProjMarks" aria-hidden="true"> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark"></span> <span class="tcProjMark"></span> </div> </div> </div> <div class="tcFld"> <span class="tcLbl" data-tc-tip="Amount at risk per trade">RISK</span> <span id="__tcRisk" class="tcVal" style="font-weight:400; font-size:var(--fz-value-lg);">—</span> </div> <button id="__tcImToggle" class="tcLogBtn" style="align-self:center;" aria-label="Toggle investment multiplier panel" data-tc-tip="Show/hide the Invest ×÷ panel"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg> </button> <button id="__tcMtfToggle" class="tcLogBtn tcImToggleOff" style="align-self:center;" aria-label="Toggle multi-timeframe chart panel" data-tc-tip="Show/hide the multi-timeframe charts (C)"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="4" x2="6" y2="20"/><rect x="3.5" y="8" width="5" height="7" rx="1"/><line x1="18" y1="4" x2="18" y2="20"/><rect x="15.5" y="6" width="5" height="9" rx="1"/></svg> </button> </div> </div> \x3c!-- Section 4: ACTIONS (LOG + JOURNAL; hidden when no sheet URL) --\x3e <div id="__tcSecLog" class="tcSec"> <div class="tcSecFields" style="flex-wrap:nowrap; align-items:stretch;"> \x3c!-- role=group + aria-label carries the "Actions" name to screen readers; the tcLbl span below is aria-hidden and opacity:0 (NOT the old position:absolute clip-technique) — it must stay IN FLOW so its row reserves the exact same height as every other section\'s visible label, or this column\'s buttons sit a label-row too high and break the shared label/value baseline the 2026-08-11 alignment pass establishes. --\x3e <div class="tcFld" role="group" aria-label="Actions"> <span class="tcLbl" aria-hidden="true" style="opacity:0;">ACTIONS</span> <div style="display:flex; align-items:center; gap:0.615em;"> <button id="__tcLogBtn" class="tcLogBtn" aria-label="Open activity log" data-tc-tip="Open activity log"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> </button> <button id="__tcJournalBtn" class="tcLogBtn" aria-label="Open trading journal" data-tc-tip="Open trading journal"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> </button> <button id="__tcThemeBtn" class="tcLogBtn" aria-label="Toggle panel theme" data-tc-tip="Toggle light/dark panel theme"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg> </button> </div> </div> </div> </div> <span id="__tcVer" class="tcVer">—</span> </div> <span class="tcGrip tcGripRight" aria-hidden="true"><svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2" r="1.3"/><circle cx="7.5" cy="2" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="14" r="1.3"/><circle cx="7.5" cy="14" r="1.3"/></svg></span> <button id="__tcClose" class="tcCloseBtn" aria-label="Close panel"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" style="width:0.62em; height:0.62em;" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> </button> <span id="__tcWarn" role="alert" aria-live="assertive" style="display:none; position:absolute; bottom:-2.3em; left:0; width:100%; text-align:center; font-size:0.92em; font-weight:900; color:var(--tc-red); text-transform:uppercase; letter-spacing:0.14em; filter:drop-shadow(0 2px 6px oklch(64% 0.18 25 / 0.4));"></span>';
+      ' <span class="tcGrip tcGripLeft" aria-hidden="true"><svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2" r="1.3"/><circle cx="7.5" cy="2" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="14" r="1.3"/><circle cx="7.5" cy="14" r="1.3"/></svg></span> <div id="__tcLoader" role="status" aria-live="polite" style="color:var(--tc-text-mut); font-size:0.72em; display:flex; align-items:center; justify-content:center; gap:var(--s-3); padding:var(--s-5) var(--s-6); width:22em; min-height:4.46em; font-weight:800; letter-spacing:0.14em;"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--tc-accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:tcSpin 1s linear infinite; opacity:0.8;" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg> <span id="__tcLoaderText"></span> </div> <div id="__tcContent" style="display:none;"> \x3c!-- Section 1: TARGETS (drag zone) --\x3e <div id="__tcSecTargets" class="tcSec"> <div class="tcSecFields" style="cursor:default; gap:0.615em;"> \x3c!-- TP --\x3e <div class="tcFld tcTPFld"> <span class="tcLbl" data-tc-tip="Day\'s take-profit target — hover the value to edit, Enter to save"><span class="tcDot"></span>TP</span> <div class="tcControlGroup tcTPGroup"> <span class="tcTPCur">₹</span> <input id="__tcTBInput" class="tcInput tcTPInput" type="text" placeholder="0" aria-label="Take profit balance target" autocomplete="off" readonly /> </div> </div> \x3c!-- SL (shown when active) --\x3e <div class="tcFld" id="__tcSLFld" style="display:none;"> <span class="tcLbl" data-tc-tip="Lock out at this balance floor — type a new one and press Enter">SL</span> <div class="tcControlGroup" id="__tcSLInputWrap"> <input id="__tcSLInput" class="tcInput" type="text" placeholder="—" aria-label="Stop loss balance floor" autocomplete="off" style="display:none;" /> </div> <span id="__tcSLDisplay" class="tcVal" style="font-weight:700; color:var(--tc-red); display:none;">—</span> </div> </div> </div> \x3c!-- Section 2: LIMITS — centred via margin:auto in CSS --\x3e <div id="__tcSecProtections" class="tcSec"> <div class="tcSecHdr"><span class="tcDot"></span></div> <div class="tcSecFields" style="gap:0.75em;"> \x3c!-- LOCK + TIME removed 2026-07-06: browser locking is GONE (user runs a system-level lock). Do NOT re-add #__tcArmLimits / #__tcBlockMinInput. --\x3e \x3c!-- FLOOR % --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Block trades and close tabs below this payout %">PAYOUT</span> <div class="tcControlGroup"> <input id="__tcMinRpInput" class="tcInput" type="text" aria-label="Minimum payout floor %" autocomplete="off" style="width:calc(3ch + 0.55em);" /> </div> </div> \x3c!-- STEP× moved OUT of the panel 2026-07-07 (user request): the investment multiplier now lives in the floating #__tcInvestMult panel (× N / N / ÷ N) beside the native trade controls. The factor still persists in __tradeCalc_step_mult and still drives ←/→ arrows. Do NOT re-add #__tcStepMultInput / #__tcStepMinus / #__tcStepPlus here. --\x3e \x3c!-- MULT --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Scale each trade by STEP× across consecutive trades">MULT</span> <button id="__tcMultiStatus" class="tcPill" aria-pressed="false" aria-label="Toggle multiplier mode" data-tc-tip="Scale each trade by STEP× across consecutive trades"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg> </button> </div> </div> </div> \x3c!-- Section 3: PROJECTION --\x3e <div id="__tcSecProjections" class="tcSec"> <div class="tcSecFields" style="gap:0.75em; flex-wrap:nowrap; align-items:stretch;"> <div class="tcFld"> <span class="tcLbl" data-tc-tip="Trades needed to reach your TP from current balance"><span class="tcDot"></span>REQ</span> <div style="display:flex; flex-direction:column; align-items:flex-start; gap:0.231em; margin-top:auto; margin-bottom:auto;"> <span class="tcReqWrap"><span id="__tcResultFrom" class="tcReqFrom"></span><span id="__tcResult" class="tcValLg">—</span></span> <div class="tcProjMarks" aria-hidden="true"> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark"></span> <span class="tcProjMark"></span> </div> </div> </div> <div class="tcFld"> <span class="tcLbl" data-tc-tip="Amount at risk per trade">RISK</span> <span id="__tcRisk" class="tcVal" style="font-weight:400; font-size:var(--fz-value-lg);">—</span> </div> <button id="__tcImToggle" class="tcLogBtn" style="align-self:center;" aria-label="Toggle investment multiplier panel" data-tc-tip="Show/hide the Invest ×÷ panel"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg> </button> <button id="__tcMtfToggle" class="tcLogBtn tcImToggleOff" style="align-self:center;" aria-label="Toggle multi-timeframe chart panel" data-tc-tip="Show/hide the multi-timeframe charts (C)"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="4" x2="6" y2="20"/><rect x="3.5" y="8" width="5" height="7" rx="1"/><line x1="18" y1="4" x2="18" y2="20"/><rect x="15.5" y="6" width="5" height="9" rx="1"/></svg> </button> </div> </div> <span id="__tcVer" class="tcVer">—</span> </div> <span class="tcGrip tcGripRight" aria-hidden="true"><svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2" r="1.3"/><circle cx="7.5" cy="2" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="14" r="1.3"/><circle cx="7.5" cy="14" r="1.3"/></svg></span> <button id="__tcClose" class="tcCloseBtn" aria-label="Close panel"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" style="width:0.62em; height:0.62em;" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> </button> <span id="__tcWarn" role="alert" aria-live="assertive" style="display:none; position:absolute; bottom:-2.3em; left:0; width:100%; text-align:center; font-size:0.92em; font-weight:900; color:var(--tc-red); text-transform:uppercase; letter-spacing:0.14em; filter:drop-shadow(0 2px 6px oklch(64% 0.18 25 / 0.4));"></span>';
     if (!isMobileWidth()) {
       panel.style.fontSize = panelFontSize + "px";
     }
@@ -1992,384 +1905,7 @@
       ' <div class="tcLockCard"> <div class="tcLockContent" role="alertdialog" aria-labelledby="__tcLockLabel" aria-describedby="__tcLockMeta"> <span id="__tcLockLabel" class="tcLockLabel">Payout Too Low</span> <span id="__tcLockTimerText" class="tcLockTimer">—%</span> <span id="__tcLockMeta" class="tcLockMeta">Trading blocked until payout recovers</span> </div> </div>';
     shadow.appendChild(dangerOverlay);
     if (!isMobileWidth()) {
-      dangerOverlay.style.fontSize = journalFontSize + "px";
-    }
-    // ────────────────────────────────────────────────────────────────────────────────────────────────
-    // Trading journal modal (Google Sheet via Apps Script)
-    // ────────────────────────────────────────────────────────────────────────────────────────────────
-    const journalModal = document.createElement("div");
-    journalModal.id = "__tcJournalModal";
-    journalModal.innerHTML =
-      ' <div class="tcJournalInner" role="dialog" aria-modal="true" aria-labelledby="__tcJournalTitle"> <div class="tcJournalHeader"> <h2 id="__tcJournalTitle">Trading Journal</h2> <span class="tcJournalLastFetched" id="__tcJournalLastFetched"></span> <button class="tcJournalIconBtn" id="__tcJournalRefresh" title="Refresh" aria-label="Refresh journal"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> </button> <button class="tcJournalIconBtn" id="__tcJournalClose" title="Close" aria-label="Close journal"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:14px;height:14px;" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> </button> </div> <div class="tcJournalTableWrap" id="__tcJournalTableWrap"> <div class="tcJournalEmpty" id="__tcJournalPlaceholder">Loading…</div> </div> <div class="tcJournalFooter" id="__tcJournalFooter"></div> </div>';
-    shadow.appendChild(journalModal);
-    if (!isMobileWidth()) {
-      journalModal.style.fontSize = journalFontSize + "px";
-    }
-    const KEY_JOURNAL_CACHE = "__tradeCalc_journal_cache",
-      KEY_JOURNAL_GOAL_CACHE = "__tradeCalc_journal_goal_cache",
-      journal = {
-        rows: readJson(KEY_JOURNAL_CACHE, []),
-        loading: false,
-        lastFetched: null,
-        goal: readJson(KEY_JOURNAL_GOAL_CACHE, null),
-      },
-      isSheetErrorValue = (t) => typeof t == "string" && t.startsWith("#");
-    // Journal day label, e.g. "15 Sep, Tue". It rolls over when the UTC date changes (5:30 AM for an
-    // IST account), as before; the wall-clock offset now follows the account timezone.
-    const getDayLabel = () => {
-        const t = Date.now(),
-          e = new Date(t + accountTzOffsetMs()),
-          n = Date.UTC(e.getUTCFullYear(), e.getUTCMonth(), e.getUTCDate()),
-          o = t >= n ? e : new Date(n - 1);
-        return `${String(o.getUTCDate()).padStart(2, "0")} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][o.getUTCMonth()]}, ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][o.getUTCDay()]}`;
-      };
-    function renderJournalCell(t, e, n, o) {
-      const r = n === "WDL" || n === "Deposit" || n === "Notes",
-        a = n === "Notes",
-        i = e[n];
-      let c;
-      c =
-        n === "% PL"
-          ? ((t) => {
-              const e = parseFloat(t);
-              return isNaN(e) || isSheetErrorValue(t) ? "—" : (100 * e).toFixed(2) + "%";
-            })(i)
-          : a || n === "Day" || n === "Date"
-            ? i === "" || i == null
-              ? "—"
-              : String(i)
-            : ((t) => {
-                const e = parseFloat(t);
-                // v1.24.0: account currency and matching number format (was always ₹ / en-IN).
-                return isNaN(e) || isSheetErrorValue(t) ? "—" : detectCurrency() + fmtMoney(e);
-              })(i);
-      const s = n === "PL" || n === "% PL",
-        l = parseFloat(i);
-      let d = "";
-      if (s && !isNaN(l)) {
-        d = l > 0 ? ' class="tcJournalPlus"' : l < 0 ? ' class="tcJournalMinus"' : "";
-      }
-      if (r) {
-        t.classList.add("tcJournalEditable");
-        t.innerHTML = `<span${d}>${c}</span>`;
-        t.onclick = () => {
-          if (t.querySelector("input")) {
-            return;
-          }
-          const r = e[n],
-            i = document.createElement("input");
-          i.className = "tcJournalCellInput";
-          i.type = a ? "text" : "number";
-          i.value = a ? r || "" : parseFloat(r) || "";
-          if (!a) {
-            i.step = "any";
-          }
-          t.innerHTML = "";
-          t.appendChild(i);
-          i.focus();
-          i.select();
-          let c = false;
-          const s = () => {
-              if (c) {
-                return;
-              }
-              const s = a ? i.value.trim() : parseFloat(i.value);
-              if ((a || !isNaN(s)) && String(s) !== String(r)) {
-                c = true;
-                i.disabled = true;
-                i.classList.remove("tcJournalCellError");
-                fetch(o, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "text/plain",
-                  },
-                  body: JSON.stringify({
-                    action: "update_row",
-                    rowIndex: e.rowIndex,
-                    field: n,
-                    value: s,
-                  }),
-                })
-                  .then((t) => t.json())
-                  .then((r) => {
-                    if (r.status === "success") {
-                      e[n] = s;
-                      renderJournalCell(t, e, n, o);
-                      t.classList.add("tcJournalCellSaved");
-                      setTimeout(() => t.classList.remove("tcJournalCellSaved"), 700);
-                      fetchJournal();
-                    } else {
-                      i.disabled = false;
-                      i.classList.add("tcJournalCellError");
-                      i.title = "Save failed, try again";
-                      c = false;
-                    }
-                  })
-                  .catch(() => {
-                    i.disabled = false;
-                    i.classList.add("tcJournalCellError");
-                    i.title = "Save failed — try again";
-                    c = false;
-                  });
-              } else {
-                l();
-              }
-            },
-            l = () => {
-              c = true;
-              renderJournalCell(t, e, n, o);
-            };
-          i.addEventListener("keydown", (t) => {
-            if (t.key === "Enter") {
-              t.preventDefault();
-              s();
-            } else if (t.key === "Escape") {
-              t.preventDefault();
-              l();
-            }
-          });
-          i.addEventListener("blur", s);
-        };
-      } else {
-        t.innerHTML = `<span${d}>${c}</span>`;
-      }
-    }
-    function renderJournalTable(t) {
-      const e = byId("__tcJournalTableWrap"),
-        n = byId("__tcJournalFooter"),
-        o = getSheetUrl();
-      if (!e) {
-        return;
-      }
-      if (!t || t.length === 0) {
-        e.innerHTML = '<div class="tcJournalEmpty">No data yet.</div>';
-        if (n) {
-          n.textContent = "";
-        }
-        return;
-      }
-      const r = t.length + "|" + (t[t.length - 1] ? JSON.stringify(t[t.length - 1]) : "");
-      if (journal._fingerprint === r && e.querySelector("#__tcJournalTable")) {
-        return;
-      }
-      journal._fingerprint = r;
-      const a = [
-          "Day",
-          "Date",
-          "Balance",
-          (t[0] && Object.keys(t[0]).find((t) => /^TP\s/i.test(t))) || "TP 15.2%",
-          "PL",
-          "Balance after Trading",
-          "% PL",
-          "WDL",
-          "Deposit",
-          "Notes",
-        ],
-        i = getDayLabel(),
-        c = document.createElement("table");
-      c.id = "__tcJournalTable";
-      const s = document.createElement("thead"),
-        l = document.createElement("tr");
-      a.forEach((t) => {
-        const e = document.createElement("th");
-        e.textContent = t;
-        l.appendChild(e);
-      });
-      s.appendChild(l);
-      c.appendChild(s);
-      const d = document.createElement("tbody");
-      let u = null;
-      t.forEach((t, e) => {
-        const n = document.createElement("tr");
-        n.classList.add("tcJournalRowIn");
-        n.style.animationDelay = `${Math.min(22 * e, 300)}ms`;
-        const r = parseFloat(t.PL);
-        if (String(t.Date || "").includes(i.split(",")[0])) {
-          n.classList.add("tcJournalToday");
-          u = n;
-        } else if (!isNaN(r) && r > 0) {
-          n.classList.add("tcJournalProfit");
-        } else if (!isNaN(r) && r < 0) {
-          n.classList.add("tcJournalLoss");
-        }
-        a.forEach((e) => {
-          const r = document.createElement("td");
-          renderJournalCell(r, t, e, o);
-          n.appendChild(r);
-        });
-        d.appendChild(n);
-      });
-      c.appendChild(d);
-      e.innerHTML = "";
-      e.appendChild(c);
-      if (n) {
-        n.textContent = `${t.length} trading day${t.length !== 1 ? "s" : ""}`;
-      }
-      if (u) {
-        setTimeout(
-          () =>
-            u.scrollIntoView({
-              block: "center",
-              behavior: "smooth",
-            }),
-          100,
-        );
-        u.classList.add("tcJournalTodayPulse");
-        setTimeout(() => u.classList.remove("tcJournalTodayPulse"), 900);
-      }
-    }
-    function fetchJournal() {
-      if (journal.loading) {
-        return;
-      }
-      const t = getSheetUrl();
-      if (!t) {
-        return;
-      }
-      journal.loading = true;
-      const e = byId("__tcJournalRefresh"),
-        n = byId("__tcJournalLastFetched");
-      if (e) {
-        e.classList.add("tcJournalSpinning");
-      }
-      fetch(t, {
-        cache: "no-store",
-      })
-        .then((t) => t.json())
-        .then((t) => {
-          journal.rows = t.rows || [];
-          journal._tpToday = void 0;
-          journal.lastFetched = new Date();
-          journal.loading = false;
-          journal.goal = {
-            days: t.daysToTarget,
-            trades: t.tradesToTarget,
-          };
-          writeJson(KEY_JOURNAL_CACHE, journal.rows.slice(-400));
-          writeJson(KEY_JOURNAL_GOAL_CACHE, journal.goal);
-          if (e) {
-            e.classList.remove("tcJournalSpinning");
-          }
-          if (n) {
-            const t = journal.lastFetched;
-            n.textContent = `Updated ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}:${String(t.getSeconds()).padStart(2, "0")}`;
-          }
-          renderJournalTable(journal.rows);
-          applySheetTp();
-          renderTodayPl();
-          renderGoal();
-          scheduleRecalc();
-        })
-        .catch(() => {
-          journal.loading = false;
-          if (e) {
-            e.classList.remove("tcJournalSpinning");
-          }
-          const t = byId("__tcJournalTableWrap");
-          if (t) {
-            t.innerHTML = '<div class="tcJournalEmpty">Could not load journal. Check your sheet URL.</div>';
-          }
-        });
-    }
-    function getTodayTpFromSheet() {
-      if (void 0 !== journal._tpToday) {
-        return journal._tpToday;
-      }
-      const t = getDayLabel().split(",")[0],
-        e = journal.rows.find((e) => String(e.Date || "").includes(t));
-      let n = null;
-      if (e) {
-        const t = Object.keys(e).find((t) => /^TP\s/i.test(t)),
-          o = t ? parseFloat(e[t]) : NaN;
-        if (isFinite(o) && o > 0) {
-          const t = parseFloat(e.Balance);
-          n = {
-            start: isFinite(t) ? t : NaN,
-            target: o,
-          };
-        }
-      }
-      journal._tpToday = n;
-      return n;
-    }
-    function applySheetTp() {
-      if (getTpManualDate() === getDayKey()) {
-        return;
-      }
-      const t = getTodayTpFromSheet();
-      if (!t || !tpInput) {
-        return;
-      }
-      const e = Math.round(t.target);
-      if (parsePlainNumber(tpInput.value) === e) {
-        return;
-      }
-      const n = String(e);
-      tpInput.value = fmtInputMoney(n);
-      setTpStored(n);
-      autosizeInput(tpInput);
-      scheduleRecalc();
-    }
-    function renderTodayPl() {
-      if (!todayPlEl) {
-        return;
-      }
-      const t = getDayLabel().split(",")[0],
-        e = journal.rows.find((e) => String(e.Date || "").includes(t)),
-        n = e ? e["% PL"] : null,
-        o = parseFloat(n);
-      if (n == null || n === "" || isNaN(o) || isSheetErrorValue(n)) {
-        todayPlEl.textContent = "—";
-        todayPlEl.style.color = "";
-        return;
-      }
-      const r = 100 * o;
-      todayPlEl.textContent = (r >= 0 ? "+" : "") + r.toFixed(2) + "%";
-      todayPlEl.style.color = r >= 0 ? "var(--tc-grn)" : "var(--tc-red)";
-    }
-    function renderGoal() {
-      if (!goalField || !goalValEl) {
-        return;
-      }
-      const t = journal.goal,
-        e = t ? parseFloat(t.days) : NaN,
-        n = t ? parseFloat(t.trades) : NaN;
-      if (!t || isNaN(e) || isNaN(n)) {
-        goalField.style.display = "none";
-      } else {
-        goalValEl.textContent = `${Math.round(e)}d · ${Math.round(n)}tr`;
-        goalField.style.display = "";
-      }
-    }
-    let journalReturnFocus = null;
-    function trapJournalFocus(t) {
-      if (t.key !== "Tab") {
-        return;
-      }
-      const e = journalModal.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      if (!e.length) {
-        return;
-      }
-      const n = e[0],
-        o = e[e.length - 1],
-        r = activeEl();
-      if (t.shiftKey ? r === n : r === o) {
-        t.preventDefault();
-        (t.shiftKey ? o : n).focus();
-      } else if (![].includes.call(e, r)) {
-        t.preventDefault();
-        n.focus();
-      }
-    }
-    function closeJournal() {
-      journalModal.classList.remove("tcJournalOpen");
-      journalModal.removeEventListener("keydown", trapJournalFocus);
-      if (journalReturnFocus && typeof journalReturnFocus.focus == "function") {
-        journalReturnFocus.focus();
-      }
-      journalReturnFocus = null;
+      dangerOverlay.style.fontSize = MODAL_FONT_PX + "px";
     }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Panel element references, section visibility, take-profit input
@@ -2378,11 +1914,6 @@
       reqEl = byId("__tcResult"),
       reqFromEl = byId("__tcResultFrom"),
       riskEl = byId("__tcRisk"),
-      tpProgressEl = byId("__tcTPProgress"),
-      tpRemainEl = byId("__tcTPRemain"),
-      tpBarEl = byId("__tcTPBar"),
-      tpBarTrackEl = byId("__tcTPBarTrack"),
-      tpLineEl = byId("__tcTPLine"),
       warnEl = byId("__tcWarn"),
       panelCloseBtn = byId("__tcClose"),
       slInput = byId("__tcSLInput"),
@@ -2391,16 +1922,11 @@
       lockMetaEl = byId("__tcLockMeta"),
       minPayoutInput = byId("__tcMinRpInput"),
       multiBtn = byId("__tcMultiStatus"),
-      logBtn = byId("__tcLogBtn"),
-      journalBtn = byId("__tcJournalBtn"),
       contentEl = byId("__tcContent"),
       loaderEl = byId("__tcLoader"),
       loaderTextEl = byId("__tcLoaderText"),
       projectionsDot = qs("#__tcSecProjections .tcDot"),
       targetsDot = qs("#__tcSecTargets .tcDot"),
-      todayPlEl = byId("__tcTodayPL"),
-      goalField = byId("__tcGoalFld"),
-      goalValEl = byId("__tcGoalVal"),
       tpCurrencyEl = panel.querySelector(".tcTPCur");
     // v1.54.0: which build this tab is running, in the panel itself. It was only in the popup's health
     // check, which is the wrong place for the question it answers - reloading the extension does not
@@ -2504,9 +2030,7 @@
       reformatMoneyInput = (t) => {
         t.value = fmtInputMoney(parsePlainNumber(t.value));
         autosizeInput(t);
-      },
-      tpFetchBtn = byId("__tcTPFetchBtn"),
-      tpSaveBtn = byId("__tcTPSaveBtn");
+      };
     function saveTp() {
       if (!tpInput) {
         return;
@@ -2522,42 +2046,7 @@
           [KEY_TP_MANUAL_DATE]: e,
         });
       }
-      if (tpSaveBtn) {
-        tpSaveBtn.classList.add("tcTPLocked");
-        setTimeout(() => tpSaveBtn.classList.remove("tcTPLocked"), 900);
-      }
       scheduleRecalc();
-    }
-    if (tpFetchBtn) {
-      tpFetchBtn.addEventListener("click", function () {
-        setTpManualDate("");
-        if (typeof chrome != "undefined" && chrome.storage && chrome.storage.sync) {
-          chrome.storage.sync.set({
-            [KEY_TP_MANUAL_DATE]: "",
-          });
-        }
-        journal._tpToday = void 0;
-        if (tpFetchBtn) {
-          tpFetchBtn.classList.add("tcRefreshSpin");
-        }
-        fetchJournal();
-        setTimeout(() => {
-          if (tpFetchBtn) {
-            tpFetchBtn.classList.remove("tcRefreshSpin");
-          }
-        }, 700);
-      });
-    }
-    if (tpSaveBtn) {
-      tpSaveBtn.addEventListener("click", () => {
-        if (tpInput) {
-          tpInput.focus();
-        }
-        saveTp();
-        if (tpInput) {
-          tpInput.blur();
-        }
-      });
     }
     if (tpInput) {
       tpInput.value = fmtInputMoney(getTpStored());
@@ -2777,7 +2266,7 @@
       t.id = "__tcSLSetup";
       t.style.cssText =
         'position:fixed;inset:0;z-index:2147483647;background:oklch(0% 0 0/0.82);backdrop-filter:blur(24px);display:flex;align-items:center;justify-content:center;font-family:"DM Sans",system-ui,sans-serif;font-size:' +
-        journalFontSize +
+        MODAL_FONT_PX +
         "px;";
       const presetBtn = (pct) =>
         `<button type="button" data-sl-pct="${pct}" style="flex:1;background:oklch(100% 0 0/0.06);color:oklch(90% 0.01 257);border:1px solid oklch(100% 0 0/0.12);border-radius:10px;padding:0.45em 0;font-size:0.8em;font-weight:700;cursor:pointer;">${pct}%</button>`;
@@ -2991,25 +2480,9 @@
     }
     let slPeak = NaN,
       slTpLock = NaN,
-      slArmed = false,
-      postTpGapPct = (() => {
-        try {
-          return clampPostTpGap(prefGet(KEY_POST_TP_GAP));
-        } catch (t) {
-          return 5;
-        }
-      })(),
-      sysLockDisabled = (() => {
-        try {
-          const t = prefGet(KEY_SYS_LOCK_DISABLED);
-          return t == null || t === "1";
-        } catch (t) {
-          return true;
-        }
-      })();
-    function isSysLockDisabled() {
-      return sysLockDisabled;
-    }
+      slArmed = false;
+    // v1.65.0: after TP the SL trails 5% below the day's peak. It was a popup setting; it was never changed.
+    const postTpGapPct = 5;
     const SL_PRE_TP_TRAIL = 0.2,
       SL_POST_TP_GAP_DEFAULT = 0.05,
       SL_POST_TP_GAP_MAX = 0.15;
@@ -3078,11 +2551,6 @@
         applySl(n.newSL);
       }
     }
-    function setPostTpGap(t) {
-      const e = clampPostTpGap(t);
-      postTpGapPct = e;
-      setPostTpGapStored(e);
-    }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // SL bootstrap from storage, font sizes, min payout, sheet URL, logging, theme
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -3112,17 +2580,9 @@
       };
     }
     function applySlSettings(stored, forceEnabled) {
-      if (stored[KEY_SYS_LOCK_DISABLED] != null) {
-        sysLockDisabled = stored[KEY_SYS_LOCK_DISABLED] !== false;
-        setSysLockDisabledStored(sysLockDisabled);
-      }
       if (!forceEnabled && stored[KEY_SL_ENABLED] === false) {
         disableSl();
         return;
-      }
-      if (stored[KEY_POST_TP_GAP] != null) {
-        postTpGapPct = clampPostTpGap(stored[KEY_POST_TP_GAP]);
-        setPostTpGapStored(postTpGapPct);
       }
       const sl = pickTodaysSl(stored);
       if (!sl) {
@@ -3169,8 +2629,6 @@
           KEY_SL_TP_LOCK,
           KEY_SL_TP_LOCK_DATE,
           KEY_SL_TRAIL,
-          KEY_POST_TP_GAP,
-          KEY_SYS_LOCK_DISABLED,
         ],
         (stored) => {
           clearTimeout(timer);
@@ -3232,23 +2690,6 @@
         if (a) {
           a.style.fontSize = panelFontSize + "px";
         }
-      },
-      setJournalFontSize = (t) => {
-        if (isMobileWidth()) {
-          return;
-        }
-        journalFontSize = Math.min(Math.max(t, 8), 48);
-        journalModal.style.fontSize = journalFontSize + "px";
-        dangerOverlay.style.fontSize = journalFontSize + "px";
-        const e = byId("__tcSLSetup");
-        if (e) {
-          e.style.fontSize = journalFontSize + "px";
-        }
-        ((t) => {
-          try {
-            prefSet(KEY_JOURNAL_FONT_SIZE, t);
-          } catch (t) {}
-        })(journalFontSize);
       },
       fmtPercentInput = (t) => t + "%";
     if (minPayoutInput) {
@@ -3320,194 +2761,6 @@
         });
       });
     }
-    const LOG_BTN_ICONS = {
-        idle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
-        loading:
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="animation:tcSpin 1s linear infinite;" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>',
-        success:
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>',
-        error:
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>',
-      },
-      logSection = sections.find((t) => t.id === "__tcSecLog") || byId("__tcSecLog");
-    function applySheetUrlVisibility(t) {
-      if (!logSection) {
-        return;
-      }
-      const e = t && t.trim().length > 0;
-      if (journalBtn) {
-        journalBtn.style.display = e ? "" : "none";
-      }
-      const n = sections.indexOf(logSection);
-      if (n >= 0) {
-        const t = e ? 1 : 0;
-        if (sectionVisibility[n] !== t) {
-          sectionVisibility[n] = t;
-          saveVisibilityStored(sectionVisibility);
-          applyVisibility(sectionVisibility);
-        }
-      }
-    }
-    let sheetUrl = (() => {
-      try {
-        return prefGet(KEY_SHEET_URL) || "";
-      } catch (t) {
-        return "";
-      }
-    })();
-    function getSheetUrl() {
-      return sheetUrl;
-    }
-    if (journal.rows.length > 0) {
-      applySheetTp();
-      renderTodayPl();
-      scheduleRecalc();
-    }
-    renderGoal();
-    if (typeof chrome != "undefined" && chrome.storage && chrome.storage.sync) {
-      chrome.storage.sync.get("sheetUrl", (t) => {
-        const e = t.sheetUrl || "";
-        sheetUrl = e;
-        setSheetUrlStored(e);
-        applySheetUrlVisibility(e);
-        if (e) {
-          fetchJournal();
-        }
-      });
-    } else {
-      applySheetUrlVisibility(sheetUrl);
-      if (sheetUrl) {
-        fetchJournal();
-      }
-    }
-    if (logBtn) {
-      logBtn.addEventListener("click", () => {
-        const t = readBalance();
-        if (isNaN(t)) {
-          alert("Balance not found!");
-          return;
-        }
-        const e = getSheetUrl();
-        if (!e) {
-          alert("Sheet URL not configured. Add it in the extension popup.");
-          return;
-        }
-        const n = () => {
-          logBtn.innerHTML = LOG_BTN_ICONS.idle;
-          logBtn.setAttribute("aria-label", "Open activity log");
-          logBtn.setAttribute("data-tc-tip", "Open activity log");
-          logBtn.style.background = "";
-          logBtn.style.color = "";
-          logBtn.disabled = false;
-        };
-        logBtn.disabled = true;
-        logBtn.setAttribute("aria-label", "Logging…");
-        logBtn.innerHTML = LOG_BTN_ICONS.loading;
-        fetch(e, {
-          method: "POST",
-          mode: "no-cors",
-          headers: {
-            "Content-Type": "text/plain",
-          },
-          body: JSON.stringify({
-            action: "log_balance",
-            balance: t,
-            timestamp: new Date().toISOString(),
-            sessionDate: getDayKey(),
-            sessionDay: getDayLabel(),
-          }),
-        })
-          .then(() => {
-            ((t) => {
-              try {
-                prefSet(KEY_BAL_LOGGED_DATE, t);
-              } catch (t) {}
-            })(getDayKey());
-            logBtn.innerHTML = LOG_BTN_ICONS.success;
-            logBtn.setAttribute("aria-label", "Logged");
-            logBtn.style.background = "var(--tc-grn)";
-            logBtn.style.color = "white";
-            setTimeout(n, 2000);
-            setTimeout(fetchJournal, 800);
-          })
-          .catch((t) => {
-            console.error("Sheet Log Error", t);
-            logBtn.innerHTML = LOG_BTN_ICONS.error;
-            logBtn.setAttribute("aria-label", "Log failed — could not reach the sheet");
-            logBtn.setAttribute(
-              "data-tc-tip",
-              "Couldn't reach the sheet. Check your connection, then try again.",
-            );
-            logBtn.style.background = "var(--tc-red)";
-            logBtn.style.color = "white";
-            setTimeout(n, 7000);
-          });
-      });
-    }
-    if (journalBtn) {
-      journalBtn.addEventListener("click", function () {
-        journalReturnFocus = activeEl();
-        journalModal.classList.add("tcJournalOpen");
-        journalModal.addEventListener("keydown", trapJournalFocus);
-        const t = byId("__tcJournalClose");
-        if (t) {
-          t.focus();
-        }
-        if (journal.rows.length > 0) {
-          renderJournalTable(journal.rows);
-          fetchJournal();
-        } else {
-          const t = byId("__tcJournalTableWrap");
-          if (t) {
-            t.innerHTML =
-              '<div class="tcJournalSkeleton">' +
-              [
-                [2, 8, 7, 7, 6, 7, 5, 5, 5, 10],
-                [2, 9, 7, 7, 5, 7, 5, 5, 5, 9],
-                [2, 7, 8, 7, 7, 8, 5, 4, 4, 8],
-              ]
-                .map(
-                  (t) =>
-                    '<div class="tcJournalSkRow">' +
-                    t.map((t) => `<div class="tcJournalSkCell" style="width:${t}em;"></div>`).join("") +
-                    "</div>",
-                )
-                .join("") +
-              "</div>";
-          }
-          fetchJournal();
-        }
-      });
-    }
-    const themeBtn = byId("__tcThemeBtn");
-    if (themeBtn) {
-      themeBtn.addEventListener("click", () => {
-        isLightTheme = !isLightTheme;
-        setThemeStored(isLightTheme ? "light" : "dark");
-        panel.classList.toggle("tcLightMode", isLightTheme);
-        if (restoreBtn) {
-          restoreBtn.classList.toggle("tcLightMode", isLightTheme);
-        }
-      });
-    }
-    const journalCloseBtn = byId("__tcJournalClose");
-    if (journalCloseBtn) {
-      journalCloseBtn.addEventListener("click", closeJournal);
-    }
-    const journalRefreshBtn = byId("__tcJournalRefresh");
-    if (journalRefreshBtn) {
-      journalRefreshBtn.addEventListener("click", fetchJournal);
-    }
-    journalModal.addEventListener("click", (t) => {
-      if (t.target === journalModal) {
-        closeJournal();
-      }
-    });
-    window.__tcJournalEsc = (t) => {
-      if (t.key === "Escape" && journalModal.classList.contains("tcJournalOpen")) {
-        closeJournal();
-      }
-    };
     window.__tcInputDelegator = (t) => {
       if (t.target.closest && t.target.closest(".deal-amount-input")) {
         scheduleRecalc();
@@ -3971,104 +3224,8 @@
       }
     }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
-    // Loss streak tracking, edge flash, native "Set limit" lock
+    // Edge flash
     // ────────────────────────────────────────────────────────────────────────────────────────────────
-    let lossStreak = (() => {
-        try {
-          const t = parseInt(prefGet(KEY_LOSS_STREAK), 10);
-          return isNaN(t) ? 0 : t;
-        } catch (t) {
-          return 0;
-        }
-      })(),
-      lastLossTs = (() => {
-        try {
-          const t = parseInt(prefGet(KEY_LAST_LOSS_TS), 10);
-          return isNaN(t) ? 0 : t;
-        } catch (t) {
-          return 0;
-        }
-      })(),
-      seenTrades = (() => {
-        try {
-          return new Set(JSON.parse(prefGet(KEY_SEEN_TRADES) || "[]"));
-        } catch (t) {
-          return new Set();
-        }
-      })();
-    function expireLossStreak() {
-      if (lossStreak > 0 && lastLossTs && Date.now() - lastLossTs > 900000) {
-        lossStreak = 0;
-        setLossStreakStored(0);
-      }
-    }
-    !(function () {
-      const t = getDayKey();
-      if (
-        (() => {
-          try {
-            return prefGet(KEY_STREAK_DATE) || "";
-          } catch (t) {
-            return "";
-          }
-        })() !== t
-      ) {
-        lossStreak = 0;
-        lastLossTs = 0;
-        seenTrades = new Set();
-        setLossStreakStored(0);
-        setLastLossTsStored(0);
-        ((t) => {
-          try {
-            prefSet(KEY_SEEN_TRADES, JSON.stringify(Array.from(t).slice(-50)));
-          } catch (t) {}
-        })(seenTrades);
-        ((t) => {
-          try {
-            prefSet(KEY_STREAK_DATE, t || "");
-          } catch (t) {}
-        })(t);
-      }
-    })();
-    expireLossStreak();
-    window.__tcRegisterOutcome = function (t) {
-      expireLossStreak();
-      if (t) {
-        lossStreak += 1;
-        lastLossTs = Date.now();
-        setLastLossTsStored(lastLossTs);
-      } else {
-        lossStreak = 0;
-      }
-      setLossStreakStored(lossStreak);
-      try {
-        document.dispatchEvent(
-          new CustomEvent("__tcLossStreak", {
-            detail: {
-              streak: lossStreak,
-              isLoss: t,
-            },
-          }),
-        );
-      } catch (t) {}
-      if (lossStreak >= 3) {
-        if (
-          typeof chrome != "undefined" &&
-          chrome.runtime &&
-          chrome.runtime.sendMessage &&
-          !isSysLockDisabled()
-        ) {
-          try {
-            chrome.runtime.sendMessage({
-              type: "SYS_LOCK",
-              mode: "streak",
-            });
-          } catch (t) {}
-        }
-        lossStreak = 0;
-        setLossStreakStored(0);
-      }
-    };
     let edgeFlashEl = null;
     function triggerEdgeFlash(t) {
       if (!edgeFlashEl) {
@@ -4573,75 +3730,6 @@
         };
         renderReq(false, t, computeReqWithOpenTrades(lastReqInputs), isAlert);
       }
-      if (tpLineEl) {
-        const t = getTodayTpFromSheet();
-        if (t && hasBalance) {
-          const {
-            remaining: e,
-            overshoot: n,
-            pctDisplay: o,
-            barPct: r,
-          } = (function (t, e) {
-            const n = t.target,
-              o = e,
-              r = n - o;
-            let a;
-            a =
-              !isNaN(t.start) && n > t.start
-                ? 100 * Math.max(0, (o - t.start) / (n - t.start))
-                : 100 * Math.max(0, o / n);
-            const i = a >= 100;
-            return {
-              remaining: r,
-              overshoot: i,
-              pctDisplay: i ? a.toFixed(2) : Math.round(a).toString(),
-              barPct: Math.min(100, Math.round(a)),
-            };
-          })(t, balanceNow);
-          setText(tpProgressEl, (n ? "✓ " : "") + o + "%");
-          if (tpProgressEl) {
-            tpProgressEl.style.color = n ? "var(--tc-grn)" : "";
-          }
-          setText(
-            tpRemainEl,
-            e > 0
-              ? detectCurrency() +
-                  (function (t) {
-                    if (!isFinite(t)) {
-                      return "—";
-                    }
-                    const e = Math.abs(t),
-                      n = t < 0 ? "-" : "";
-                    return isInr()
-                      ? e >= 10000000
-                        ? n + (e / 10000000).toFixed(e >= 100000000 ? 0 : 1).replace(/\.0$/, "") + "Cr"
-                        : e >= 100000
-                          ? n + (e / 100000).toFixed(1).replace(/\.0$/, "") + "L"
-                          : e >= 1000
-                            ? n + (e / 1000).toFixed(e >= 10000 ? 0 : 1).replace(/\.0$/, "") + "k"
-                            : n + Math.round(e)
-                      : e >= 1000000000
-                        ? n + (e / 1000000000).toFixed(e >= 10000000000 ? 0 : 1).replace(/\.0$/, "") + "B"
-                        : e >= 1000000
-                          ? n + (e / 1000000).toFixed(e >= 10000000 ? 0 : 1).replace(/\.0$/, "") + "M"
-                          : e >= 1000
-                            ? n + (e / 1000).toFixed(e >= 10000 ? 0 : 1).replace(/\.0$/, "") + "k"
-                            : n + Math.round(e);
-                  })(e) +
-                  " left"
-              : "reached",
-          );
-          if (tpBarEl) {
-            tpBarEl.style.width = r + "%";
-          }
-          if (tpBarTrackEl) {
-            setDisplay(tpBarTrackEl, r > 0 ? "block" : "none");
-          }
-          setDisplay(tpLineEl, "flex");
-        } else {
-          setDisplay(tpLineEl, "none");
-        }
-      }
       if (projectionsDot) {
         projectionsDot.classList.toggle("tcDotLive", !blockMessage && !isAlert);
       }
@@ -4969,14 +4057,6 @@
         if (focused && focused.closest && focused.closest("#trade-button, .bSenO, .hkjXJ, .deal-amount-input")) {
           return;
         }
-      }
-      if (t.key === "Enter") {
-        const e = byId("__tcLogBtn");
-        if (e && !e.disabled) {
-          t.preventDefault();
-          e.click();
-        }
-        return;
       }
       const n = t.key ? t.key.toLowerCase() : "",
         o = t.code || "",
@@ -5399,7 +4479,6 @@
       }
     };
     window.__tcKeydownDispatch = (t) => {
-      window.__tcJournalEsc(t);
       window.__tcAudioUnlock(t);
       window.__tcKeyDelegator(t);
     };
@@ -6029,10 +5108,7 @@
           KEY_TIMER_Y,
           KEY_HK_UPDOWN,
           KEY_HK_LEFTRIGHT,
-          KEY_MARQUEE_MSG,
-          KEY_MARQUEE_SPEED,
           KEY_MTF_TFS,
-          KEY_MTF_COUNT,
           KEY_MTF_AUTOFILL,
           KEY_MTF_SETTLE,
           KEY_MTF_FLIP,
@@ -6073,21 +5149,9 @@
             hkLeftRight = t[KEY_HK_LEFTRIGHT] === true;
             setHkLeftRightStored(hkLeftRight);
           }
-          if (KEY_MARQUEE_SPEED in t) {
-            marqueeSpeed = clampMarqueeSpeed(t[KEY_MARQUEE_SPEED]);
-            setMarqueeSpeedStored(marqueeSpeed);
-          }
-          if (KEY_MARQUEE_MSG in t) {
-            marqueeMsg = t[KEY_MARQUEE_MSG] || "";
-            setMarqueeMsgStored(marqueeMsg);
-          }
-          renderMarquee();
           const e = getMtfTfs().join(",") + "|" + getMtfCount();
           if (KEY_MTF_TFS in t && t[KEY_MTF_TFS]) {
             setMtfTfs(t[KEY_MTF_TFS]);
-          }
-          if (KEY_MTF_COUNT in t && t[KEY_MTF_COUNT] != null) {
-            setMtfCount(t[KEY_MTF_COUNT]);
           }
           if (KEY_MTF_AUTOFILL in t && typeof t[KEY_MTF_AUTOFILL] == "boolean") {
             setMtfAutofill(t[KEY_MTF_AUTOFILL]);
@@ -6126,69 +5190,6 @@
         r = (t.querySelector(".DBihS") || {}).textContent || "";
       return r && o ? (t._tcUuid = r.trim() + "|" + o) : "";
     }
-    const settleTracker = new Map();
-    // v1.22.0: settled trades come from the store's closed deals when the bridge is available. The page
-    // rows below (`.A7vDd` / `.Os2ep`) no longer exist on the current Quotex build, so the loss streak
-    // could never trigger (B7). Deals already closed when the panel starts are the baseline, not outcomes.
-    let storeClosedSeen = null;
-    let outcomesVia = "page";
-    function trackStoreOutcomes() {
-      const state = readQuotexState();
-      if (!state || !Array.isArray(state.closedDeals)) {
-        return false;
-      }
-      const deals = dealsForThisAccount(state.closedDeals);
-      if (storeClosedSeen === null) {
-        storeClosedSeen = new Set(deals.map((d) => d.id));
-        return true;
-      }
-      // Oldest first, so the streak counts in the order the trades closed.
-      for (const d of deals.slice().reverse()) {
-        if (!d.id || storeClosedSeen.has(d.id)) {
-          continue;
-        }
-        storeClosedSeen.add(d.id);
-        if (typeof window.__tcRegisterOutcome == "function") {
-          window.__tcRegisterOutcome(!(d.profit > 0));
-        }
-      }
-      return true;
-    }
-    every(500, function () {
-      if (trackStoreOutcomes()) {
-        outcomesVia = "store";
-        settleTracker.clear();
-        return;
-      }
-      outcomesVia = "page";
-      const t = document.getElementsByClassName("A7vDd"),
-        e = new Set();
-      for (let n = 0; n < t.length; n++) {
-        const o = t[n],
-          r = getDealKey(o);
-        if (!r) {
-          continue;
-        }
-        e.add(r);
-        const a = o.querySelector(".Os2ep"),
-          i = a ? parseMoney(a.textContent) : NaN;
-        if (isNaN(i)) {
-          if (!settleTracker.has(r)) {
-            settleTracker.set(r, 0);
-          }
-        } else {
-          settleTracker.set(r, i);
-        }
-      }
-      for (const [t, n] of Array.from(settleTracker.entries())) {
-        if (!e.has(t)) {
-          settleTracker.delete(t);
-          if (typeof window.__tcRegisterOutcome == "function") {
-            window.__tcRegisterOutcome(!(n > 0));
-          }
-        }
-      }
-    });
     const TIMERS_ENABLED = true;
     function parseClock(t) {
       const e = t.split(":").map(Number);
@@ -6666,37 +5667,6 @@
       if (timerRaf) {
         clearTimeout(timerRaf);
         timerRaf = 0;
-      }
-    }
-    // ────────────────────────────────────────────────────────────────────────────────────────────────
-    // Marquee message
-    // ────────────────────────────────────────────────────────────────────────────────────────────────
-    function renderMarquee() {
-      let t = byId("__tcMarquee");
-      const e = (marqueeMsg || "").trim();
-      if (!e) {
-        if (t) {
-          t.remove();
-        }
-        return;
-      }
-      if (!t) {
-        t = document.createElement("div");
-        t.id = "__tcMarquee";
-        t.innerHTML = '<span class="tcMarqueeTrack"></span>';
-        shadow.appendChild(t);
-      }
-      const n = t.firstChild;
-      if (n._tcMsg !== e) {
-        n._tcMsg = e;
-        n.textContent = e;
-      }
-      const o = Math.max(12, Math.min(60, Math.round(0.18 * e.length))),
-        r = clampMarqueeSpeed(marqueeSpeed),
-        a = Math.max(4, Math.min(120, Math.round((5 * o) / r)));
-      if (n._tcDur !== a) {
-        n._tcDur = a;
-        t.style.setProperty("--tc-marquee-dur", a + "s");
       }
     }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -9731,7 +8701,6 @@
     }
     window.__tcMobileResize = () => applyLayoutMode();
     window.addEventListener("resize", window.__tcMobileResize);
-    renderMarquee();
     (function () {
       let t = byId("__tcInvestMult");
       if (!t) {
@@ -9872,7 +8841,6 @@
       const domOpen = getOpenTradePnlEls().length;
       const storeOpen = storeOpenTradeCount();
       add("Open trades", isNaN(storeOpen) && !domOpen ? "fallback" : "ok", isNaN(storeOpen) ? "page" : "store + page", domOpen + " page · " + (isNaN(storeOpen) ? "—" : storeOpen) + " store");
-      add("Settled trades (loss streak)", outcomesVia === "store" ? "ok" : "fallback", outcomesVia, "streak " + lossStreak);
       // Lists (v1.25.0). A menu that isn't open right now can't be checked; that's "not open", not broken.
       const openRows = getOpenTradeRows();
       const storeTrades = storeOpenTrades();
@@ -9925,9 +8893,7 @@
           n({
             theme: getTheme(),
             fontSize: parseInt(getFontSizeStored(), 10),
-            journalFontSize: parseInt(getJournalFontSizeStored(), 10),
             visibility: sectionVisibility.slice(),
-            sheetUrl: getSheetUrl(),
             otcAuto: otcAuto,
             chipPos: chipPos,
             maxTrades: maxTrades,
@@ -9935,10 +8901,7 @@
             timerY: timerY,
             hkUpDown: hkUpDown,
             hkLeftRight: hkLeftRight,
-            marquee: marqueeMsg,
-            marqueeSpeed: marqueeSpeed,
             mtfTfs: getMtfTfs(),
-            mtfCount: getMtfCount(),
             mtfAutofill,
             mtfSettle: getMtfSettle(),
             mtfFlip: mtfFlipOn,
@@ -9963,17 +8926,10 @@
           }
         } else if (t.type === "SET_SIZE") {
           setPanelFontSize(t.size);
-        } else if (t.type === "SET_JOURNAL_SIZE") {
-          setJournalFontSize(t.size);
         } else if (t.type === "SET_VISIBILITY") {
           const e = Array.isArray(t.visibility) ? t.visibility : sectionVisibility;
           saveVisibilityStored(e);
           applyVisibility(e);
-        } else if (t.type === "SET_SHEET_URL") {
-          o = t.url || "";
-          sheetUrl = o || "";
-          setSheetUrlStored(sheetUrl);
-          applySheetUrlVisibility(sheetUrl);
         } else if (t.type === "SET_MAX_TRADES") {
           maxTrades = clampMaxTrades(t.value);
           setMaxTradesStored(maxTrades);
@@ -10004,21 +8960,6 @@
           if ("leftRight" in t) {
             hkLeftRight = !!t.leftRight;
             setHkLeftRightStored(hkLeftRight);
-          }
-        } else if (t.type === "SET_MARQUEE") {
-          if ("message" in t) {
-            marqueeMsg = t.message || "";
-            setMarqueeMsgStored(marqueeMsg);
-          }
-          if (typeof t.speed == "number") {
-            marqueeSpeed = clampMarqueeSpeed(t.speed);
-            setMarqueeSpeedStored(marqueeSpeed);
-          }
-          renderMarquee();
-        } else if (t.type === "SET_SYS_LOCK_DISABLED") {
-          if (void 0 !== sysLockDisabled) {
-            sysLockDisabled = !!t.disabled;
-            setSysLockDisabledStored(sysLockDisabled);
           }
         } else if (t.type === "GET_HEALTH") {
           let report;
@@ -10056,15 +8997,9 @@
           } else {
             disableSl();
           }
-        } else if (t.type === "SET_POST_TP_GAP") {
-          setPostTpGap(t.value);
-          scheduleRecalc();
         } else if (t.type === "SET_MTF") {
           if ("tfs" in t) {
             setMtfTfs(t.tfs);
-          }
-          if ("count" in t) {
-            setMtfCount(t.count);
           }
           if ("autofill" in t) {
             setMtfAutofill(t.autofill);

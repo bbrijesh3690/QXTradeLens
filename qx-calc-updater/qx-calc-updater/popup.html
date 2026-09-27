@@ -477,13 +477,6 @@
         <input type="range" id="sizeSlider" min="10" max="32" step="1" value="16">
       </div>
 
-      <div class="slider-block">
-        <div class="slider-header">
-          <span class="ctrl-label">Journal Scale</span>
-          <span id="journalSizeVal" class="ctrl-val">20px</span>
-        </div>
-        <input type="range" id="journalSizeSlider" min="10" max="32" step="1" value="20">
-      </div>
 
       <div class="ctrl-row">
         <span class="ctrl-label" title="Show every 'Live Account' label as 'Demo Account' (cover for screen sharing). Turning this off leaves Quotex's own page untouched.">Show Live as Demo</span>
@@ -523,18 +516,7 @@
         </label>
       </div>
 
-      <div class="ctrl-row">
-        <span class="ctrl-label" title="After TP is hit, SL trails this % below the day's peak balance — but never below TP itself. Capped at 15%.">Post-TP Trail Gap %</span>
-        <input type="number" id="postTpGapInput" min="1" max="15" step="1" value="5">
-      </div>
 
-      <div class="ctrl-row">
-        <span class="ctrl-label" title="Applies to the 3-loss streak only (a stop-loss breach never locks). When on, the streak won&apos;t close tabs or block the domain. Stays until you switch it back — no daily reset.">Disable System Lock</span>
-        <label class="switch">
-          <input type="checkbox" id="sysLockDisableToggle" checked>
-          <span class="sw-track"></span>
-        </label>
-      </div>
 
       <div class="ctrl-row" style="padding-bottom: 6px;">
         <span class="ctrl-label" title="Max concurrent open trades. 1 = single-trade mode — no new trade until active one settles.">Max Concurrent Trades</span>
@@ -606,26 +588,6 @@
       </div>
     </div>
 
-    <!-- ── MARQUEE ── -->
-    <div class="section">
-      <div class="section-hdr">
-        Marquee
-        <span id="marqueeStatus" class="chip unset">Off</span>
-      </div>
-      <div class="input-row">
-        <input type="text" id="marqueeInput" class="text-input" placeholder="Scrolling banner text" autocomplete="off" spellcheck="false">
-        <button id="marqueeSave" class="btn-save">Save</button>
-        <button id="marqueeClear" class="btn-clear" title="Clear message">✕</button>
-      </div>
-      <div class="slider-block" style="border-top:none; padding-top: 0;">
-        <div class="slider-header">
-          <span class="ctrl-label">Speed</span>
-          <span id="marqueeSpeedVal" class="ctrl-val">5</span>
-        </div>
-        <input type="range" id="marqueeSpeedSlider" min="1" max="10" step="1" value="5">
-      </div>
-    </div>
-
     <!-- ── MULTI-TIMEFRAME CHARTS ── -->
     <div class="section">
       <div class="section-hdr">
@@ -635,13 +597,6 @@
       <div class="input-row" title="Up to 4, comma separated, from: 5s 10s 15s 30s 1m 2m 3m 5m 10m 15m 30m 1h 4h. Press C on the chart to show or hide the panel. Click a chart's timeframe label to put the platform chart on it.">
         <input type="text" id="mtfTfsInput" class="text-input" placeholder="1m, 5m, 15m" autocomplete="off" spellcheck="false">
         <button id="mtfTfsSave" class="btn-save">Save</button>
-      </div>
-      <div class="slider-block" style="border-top:none; padding-top: 0;">
-        <div class="slider-header">
-          <span class="ctrl-label" title="How many candles each mini chart shows.">Candles per chart</span>
-          <span id="mtfCountVal" class="ctrl-val">40</span>
-        </div>
-        <input type="range" id="mtfCountSlider" min="10" max="120" step="5" value="40">
       </div>
       <div class="ctrl-row">
         <span class="ctrl-label" title="Opening a pair runs the refresh walk for you: the chart visits each of your timeframes once, collects the candles and comes back. Only with the tab in front, no trade open, and after the pair has stayed on screen for the wait below. Off: press the refresh button yourself.">Fill Charts On Opening A Pair</span>
@@ -664,19 +619,6 @@
       <div class="ctrl-row">
         <span class="ctrl-label" title="How long a pair has to stay on screen before its charts are filled. 0 fills the moment you open it. Raise it if you would rather it held off while you look through pairs. 0 to 120 seconds.">Wait Before Filling</span>
         <span><input type="number" id="mtfSettleInput" class="text-input" style="width:52px;text-align:right;" min="0" max="120" step="1" value="0"> s</span>
-      </div>
-    </div>
-
-    <!-- ── ACTIVITY LOG ── -->
-    <div class="section">
-      <div class="section-hdr">
-        Activity Log
-        <span id="sheetStatus" class="chip unset">Not set</span>
-      </div>
-      <div class="input-row">
-        <input type="text" id="sheetUrlInput" class="text-input" placeholder="Apps Script URL" autocomplete="off" spellcheck="false">
-        <button id="sheetSave" class="btn-save">Save</button>
-        <button id="sheetClear" class="btn-clear" title="Remove URL">✕</button>
       </div>
     </div>
 

@@ -91,24 +91,27 @@ test("store: open trades on the other account don't count", async () => {
   }
 });
 
-test("store: the loss streak counts newly closed deals, not history", async () => {
-  const store = quotexStore({ closed: [deal("old1"), deal("old2"), deal("old3")] });
-  const qx = await boot({ store });
+test("system lock: three losses in a row lock nothing and count nothing (v1.65.0)", async () => {
+  // Until v1.64.1 a third straight loss sent SYS_LOCK, and the service worker blocked qxbroker.com in Chrome
+  // for 15 minutes and closed every Quotex tab. The lock, the streak that fired it and the tracker that fed
+  // the streak were all removed in v1.65.0. This keeps them removed.
+  const store = quotexStore({ closed: [deal("old1")] });
+  // With the lock explicitly ARMED, as it was for anyone who had switched "Disable System Lock" off. The
+  // setting may still be sitting in someone's storage; it must not be able to bring the lock back.
+  const qx = await boot({ store, storage: { ...slStorage(10000), __tradeCalc_sys_lock_disabled: "0" } });
   try {
     await sleep(600);
-    assert.equal(pref(qx, "__tradeCalc_loss_streak"), "0", "history isn't counted");
     const add = (d) => {
       store.deals.closedById[d.id] = d;
       store.deals.closedIds.push(d.id);
     };
     add(deal("l1", { close: 1789465000 }));
     add(deal("l2", { close: 1789465060 }));
-    await sleep(900);
-    assert.equal(pref(qx, "__tradeCalc_loss_streak"), "2");
-    add(deal("w1", { profit: 1700, close: 1789465120 }));
-    await sleep(900);
-    assert.equal(pref(qx, "__tradeCalc_loss_streak"), "0", "a win resets the streak");
-    assert.equal(healthRow(qx, "Settled trades (loss streak)").via, "store");
+    add(deal("l3", { close: 1789465120 }));
+    await sleep(1500);
+    assert.deepEqual(qx.sentMessages.filter((m) => m && m.type === "SYS_LOCK"), [], "no lock was asked for");
+    assert.equal(pref(qx, "__tradeCalc_loss_streak"), null, "and no streak is being kept");
+    assert.equal(healthRow(qx, "Settled trades (loss streak)"), undefined, "nor reported on");
   } finally {
     qx.close();
   }
@@ -201,16 +204,18 @@ test("perf: turning the panel off stops its observer and scheduler", async () =>
   }
 });
 
-test("perf: the scheduler still runs periodic work (loss streak tracking at 500 ms)", async () => {
-  const store = quotexStore();
-  const qx = await boot({ store });
+test("perf: the scheduler still runs periodic work (v1.65.0: the diagnostics line as the canary)", async () => {
+  // This used the 500 ms loss-streak tracker as its canary; that tracker went with the system lock in v1.65.0.
+  // The diagnostics line is written on its own 2 s timer through the same scheduler, and every write stamps
+  // `at`, so two reads a little over one period apart must see it move.
+  const qx = await boot({ store: quotexStore() });
   try {
-    await sleep(600);
-    const l = deal("late-loss", { close: 1789466000 });
-    store.deals.closedById[l.id] = l;
-    store.deals.closedIds.push(l.id);
-    await sleep(800);
-    assert.equal(pref(qx, "__tradeCalc_loss_streak"), "1");
+    await sleep(2300);
+    const first = JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").at;
+    assert.ok(first > 0, "the line has been written: " + first);
+    await sleep(2300);
+    const second = JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").at;
+    assert.ok(second > first, "and written again on schedule: " + first + " -> " + second);
   } finally {
     qx.close();
   }
