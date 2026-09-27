@@ -2969,7 +2969,7 @@
       }
       const tpRaw = tpInput.value,
         tpValue = parsePlainNumber(tpRaw);
-      const minPayout = parseInt(minPayoutInput.value, 10) || 89;
+      const minPayout = parseInt(getMinPayoutStored(), 10) || 89;
       if (!isNaN(minPayout)) {
         autoCloseLowPayoutTabs(minPayout);
         maybeAutoOpenPair(minPayout);
@@ -3454,7 +3454,7 @@
           return;
         }
         const n = readPayoutPct(),
-          o = parseInt(minPayoutInput.value, 10) || 89;
+          o = parseInt(getMinPayoutStored(), 10) || 89;
         if (!isNaN(n) && n < o) {
           t.stopPropagation();
           t.preventDefault();
@@ -3608,7 +3608,7 @@
           return;
         }
         const n = readPayoutPct(),
-          o = parseInt(minPayoutInput.value, 10) || 89;
+          o = parseInt(getMinPayoutStored(), 10) || 89;
         if (!isNaN(n) && n < o) {
           return;
         }
@@ -3683,7 +3683,7 @@
           return;
         }
         !(function () {
-          const t = parseInt(minPayoutInput.value, 10) || 89;
+          const t = parseInt(getMinPayoutStored(), 10) || 89;
           !(function (t, e) {
             if (otcRebuildBusy) {
               return true;
@@ -3760,7 +3760,7 @@
                         return;
                       }
                       window.__tcMinRpCap = e;
-                      const n = parseInt(minPayoutInput.value, 10);
+                      const n = parseInt(getMinPayoutStored(), 10);
                       if (isNaN(n) || n > e) {
                         setMinPayoutStored(String(e));
                         minPayoutInput.value = e + "%";
@@ -3866,7 +3866,7 @@
           return;
         }
         t.preventDefault();
-        autoCloseLowPayoutTabs(parseInt(minPayoutInput.value, 10) || 89, true);
+        autoCloseLowPayoutTabs(parseInt(getMinPayoutStored(), 10) || 89, true);
       } else if (o === "KeyT") {
         t.preventDefault();
         toggleExpiryMode();
@@ -7785,7 +7785,7 @@
       if (!minPayoutInput) {
         return;
       }
-      const e = parseInt(minPayoutInput.value, 10);
+      const e = parseInt(getMinPayoutStored(), 10);
       setMinPayout((isNaN(e) ? 89 : e) + t);
     }
     function createMobileBar() {
@@ -8007,7 +8007,7 @@
       const r = byId("__tcMbRpNow"),
         a = byId("__tcMbRpLbl"),
         i = readPayoutPct(),
-        c = (minPayoutInput && parseInt(minPayoutInput.value, 10)) || 89;
+        c = parseInt(getMinPayoutStored(), 10) || 89;
       if (a) {
         a.textContent = "Payout (min " + c + "%)";
       }

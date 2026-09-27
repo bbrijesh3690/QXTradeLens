@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.67.1] - 2026-09-28
+
+### Fixed
+- **Every decision about the payout floor now reads the saved floor.** v1.61.1 fixed this for the five-second
+  pass only, and I reported afterwards that the remaining reads could not disagree because leaving the box
+  saves it. That was wrong for the recalculation, which runs on page changes rather than when the box is left:
+  it called auto-close and auto-open with whatever was typed, so a slip like `99` could close every tab below
+  99 before it was corrected. The two trade-blocking paths, the OTC rebuild, the Q hotkey, the payout cap and
+  the mobile bar's ± and label read the box too. All eight now use the saved floor; the box's own save
+  routine is the only thing that reads what is typed. Two specs exercise it through a trade click and Q, and
+  both fail on 1.67.0; a third fails if any other read of the box is added to the source.
+
 ## [1.67.0] - 2026-09-28
 
 ### Changed

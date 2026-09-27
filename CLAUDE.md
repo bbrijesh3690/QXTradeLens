@@ -145,10 +145,11 @@ check will say so if only one happened.
   "top up, do not grow" guard holds. Not observed: the timing. The read caught `opened one 1s ago`, which
   proves the open happened but not that it followed the close immediately rather than a tick and a settle
   window later; that path is covered by specs only.
-- **The floor is committed on Enter or blur, and nothing acts on the box's contents** (v1.61.1). Worth
-  knowing before setting up any live test that depends on it: a typed number that was never entered is not
-  the floor, and until v1.61.1 the pass that closes tabs read the box while the diagnostics line read
-  storage, so the two could name different figures.
+- **The floor is committed on Enter or blur, and nothing acts on the box's contents** (v1.61.1, completed
+  in v1.67.1). v1.61.1 fixed only the five-second pass; the recalculation - which runs on page changes, not
+  when the box is left - plus both trade-blocking paths, the OTC rebuild, the Q hotkey, the payout cap and the
+  mobile bar still read the box until v1.67.1. The only read of the box left is its own save routine, and a
+  spec in platform.test.mjs fails if another appears. Read the floor with `getMinPayoutStored()`.
 - **Two permissions are kept for one purpose, and can go in a later release** (v1.65.0). The loss-streak
   lock blocked qxbroker.com with a `declarativeNetRequest` dynamic rule and lifted it with an alarm. The rule
   lives inside Chrome, not in the extension, so deleting the code would have left any lock active at the

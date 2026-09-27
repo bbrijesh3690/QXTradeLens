@@ -1,8 +1,9 @@
-// Reading Quotex: the store bridge, self-repairing lookups, the health report, resource use, the SL
-// setup screen, timezone, other languages, and leaving the page alone.
+// Reading Quotex: the store bridge, self-repairing lookups, the health report, resource use, the payout
+// floor, timezone, other languages, and leaving the page alone.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   CONTENT_JS,
   FIXTURE,
@@ -700,4 +701,49 @@ test("payout floor: the floor in force is the committed one, not what is in the 
   } finally {
     qx.close();
   }
+});
+
+// ── v1.67.1: every decision about the floor reads the saved floor, not the box ──────────────────────
+// v1.61.1 fixed this for the five-second pass only. The recalculation - which runs on every relevant page
+// change, not when the box is left - still called auto-close and auto-open with whatever was typed, and so
+// did both trade-blocking paths, the OTC rebuild, the Q hotkey, the payout cap and the mobile bar. A slip
+// like "99" could close every tab below 99 before it was corrected.
+
+test("payout floor: a trade is judged against the saved floor, not a number still being typed (v1.67.1)", async () => {
+  const qx = await boot();
+  try {
+    await sleep(400);
+    // Typed, never entered: the box says 95, the saved floor is the default 89, the pair pays 91.
+    qx.panelRoot().querySelector("#__tcMinRpInput").value = "95%";
+    assert.equal(tradeReachesPlatform(qx), true, "a 91% pair is tradeable against the floor in force");
+  } finally {
+    qx.close();
+  }
+});
+
+test("payout floor: Q closes against the saved floor, not a number still being typed (v1.67.1)", async () => {
+  const lowTab =
+    '<div class="dJ15T vXMlv" data-symbol="EURJPY_otc"><div class="WRocw">EUR/JPY (OTC)</div><div class="ElyTP">91 %</div>' +
+    '<button id="closeLow" aria-label="Close"><svg class="icon-close-tiny"><use href="#icon-close-tiny"></use></svg></button></div>';
+  const html = FIXTURE.replace('<div class="ElyTP">91 %</div>\n          </div>', '<div class="ElyTP">91 %</div>\n          </div>' + lowTab);
+  const setup = (w) => w.document.getElementById("closeLow").addEventListener("click", (e) => e.currentTarget.closest("[data-symbol]").remove());
+  const qx = await boot({ html, setup });
+  try {
+    await sleep(400);
+    qx.panelRoot().querySelector("#__tcMinRpInput").value = "95%";
+    qx.window.document.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key: "q", code: "KeyQ", bubbles: true, cancelable: true }));
+    await sleep(900);
+    assert.ok(qx.window.document.querySelector('[data-symbol="EURJPY_otc"]'), "the 91% pair is still open");
+  } finally {
+    qx.close();
+  }
+});
+
+test("payout floor: in the source, only the box's own save routine reads what is typed (v1.67.1)", () => {
+  // The built file renames variables, so this reads the source. The one read that must stay is the commit
+  // itself, which parses the box to save it.
+  const src = fs.readFileSync(new URL("../src/content.js", import.meta.url), "utf8");
+  const reads = src.split("\n").filter((l) => /minPayoutInput\.value(?!\s*=)/.test(l));
+  assert.equal(reads.length, 1, "reads of the box: " + reads.map((l) => l.trim()).join(" | "));
+  assert.match(reads[0], /minPayoutInput\.value\.replace\(/, "and it is the save routine parsing the box");
 });
