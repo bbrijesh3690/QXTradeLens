@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.65.2] - 2026-09-28
+
+### Removed
+- **The popup's Google Fonts.** It loaded two typefaces from `fonts.googleapis.com` / `fonts.gstatic.com`
+  every time it opened - the last network request the extension made. It now uses the system's fonts through
+  two variables, `--font-sans` (system-ui: Segoe UI on Windows) and `--font-mono` (Cascadia Mono or Consolas
+  on Windows). All 12 font declarations in the popup and the 5 inline ones in the deposit scanner's results
+  use them. **The extension now makes no network requests at all**, and a spec fails if the popup's markup or
+  stylesheet ever references another origin again. The popup looks slightly different: system fonts in place
+  of DM Sans and DM Mono.
+
 ## [1.65.1] - 2026-09-28
 
 ### Removed

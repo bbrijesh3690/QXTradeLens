@@ -30,10 +30,10 @@ Every change is judged against three words, in this order:
 - **Read-only towards Quotex.** Never call their internals, never patch a prototype, never write to
   their store. `chart_reader.js` carries the full contract at the top of the file — read it before
   touching anything in the page's own world.
-- **No network from the page or the worker.** v1.65.0 removed the Google Sheet journal, which was the only
-  thing that made requests, along with the local lock daemon on 127.0.0.1. No script in the extension calls
-  `fetch` now; keep it that way. The one outbound request left is `popup.html` loading DM Sans / DM Mono from
-  Google Fonts when the popup opens - not the Quotex page, so the page cannot see it, but it is a request.
+- **No network at all.** v1.65.0 removed the Google Sheet journal and the local lock daemon on 127.0.0.1;
+  v1.65.2 removed the popup's Google Fonts. No shipped file makes a request or names an external URL, and
+  `tests/popup.test.mjs` fails if the popup's markup or stylesheet ever does again. Fonts are the system's,
+  through `--font-sans` / `--font-mono` in popup.html - use those rather than naming a typeface.
 - **Nothing trades by itself.** A trade happens because the user clicked, or pressed a hotkey they
   enabled.
 - **The panel's own elements are invisible to its finders** (`isOurElement`), or a semantic lookup

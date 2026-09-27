@@ -568,19 +568,19 @@ function qxRenderResults(matched, pagesScanned, cancelled, sources) {
   const breakdownHtml = qxBreakdownByMethod(matched).map((g) =>
     `<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;">
        <span>${esc(g.method)} <span style="opacity:0.55;">× ${g.count}</span></span>
-       <span style="font-family:'DM Mono',monospace;font-weight:600;">${esc(qxFormatMoney(g.total, g.symbol))}</span>
+       <span style="font-family:var(--font-mono);font-weight:600;">${esc(qxFormatMoney(g.total, g.symbol))}</span>
      </div>`).join('');
 
   const SHOW = 12;
   const listHtml = matched.slice(0, SHOW).map((tx) =>
     `<div style="display:flex;justify-content:space-between;gap:8px;">
-       <span style="font-family:'DM Mono',monospace;color:oklch(62% 0.016 257);font-size:10px;">${esc(tx.id)} <span style="opacity:0.8;">${esc(String(tx.payment || '').trim())}</span></span>
-       <span style="font-family:'DM Mono',monospace;font-size:11px;">${esc(qxFormatMoney(qxParseAmount(tx.amountRaw), qxDetectSymbol(tx.amountRaw)))}</span>
+       <span style="font-family:var(--font-mono);color:oklch(62% 0.016 257);font-size:10px;">${esc(tx.id)} <span style="opacity:0.8;">${esc(String(tx.payment || '').trim())}</span></span>
+       <span style="font-family:var(--font-mono);font-size:11px;">${esc(qxFormatMoney(qxParseAmount(tx.amountRaw), qxDetectSymbol(tx.amountRaw)))}</span>
      </div>`).join('');
   const more = matched.length > SHOW ? `<div style="opacity:0.5;margin-top:2px;font-size:10px;">…and ${matched.length - SHOW} more</div>` : '';
 
   depositResultEl.innerHTML =
-    `<div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:oklch(76% 0.16 145);margin:4px 0 3px;line-height:1.3;">${totalsHtml}</div>
+    `<div style="font-family:var(--font-mono);font-size:15px;font-weight:700;color:oklch(76% 0.16 145);margin:4px 0 3px;line-height:1.3;">${totalsHtml}</div>
      <div style="font-size:11px;color:oklch(62% 0.016 257);margin-bottom:4px;">${matched.length} successful deposit${matched.length === 1 ? '' : 's'} · ${pagesScanned} page${pagesScanned === 1 ? '' : 's'} scanned${via}</div>
      ${matched.length
        ? `<div style="display:flex;flex-direction:column;gap:2px;padding:4px 0 6px;border-bottom:1px solid oklch(100% 0 0 / 0.08);margin-bottom:5px;">${breakdownHtml}</div>
@@ -699,7 +699,7 @@ async function runHealthCheck() {
       `<div style="display:grid;grid-template-columns:18px 1fr auto;gap:6px;align-items:baseline;font-size:11px;">
          <span>${icon[r.status] || '•'}</span>
          <span title="${healthEscape(r.via)}">${healthEscape(r.name)} <span style="opacity:0.55;font-size:10px;">${healthEscape(r.via)}</span></span>
-         <span style="font-family:'DM Mono',monospace;opacity:0.8;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${healthEscape(r.value)}</span>
+         <span style="font-family:var(--font-mono);opacity:0.8;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${healthEscape(r.value)}</span>
        </div>`).join('') +
     (report.build && report.build !== report.version
       ? `<div style="color:#ffb454;font-size:10px;margin-top:6px;">This tab is running v${healthEscape(report.build)} while v${healthEscape(report.version)} is installed — refresh the Quotex tab.</div>`

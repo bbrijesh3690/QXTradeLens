@@ -260,9 +260,9 @@ into a single look.
   the relabel does nothing — the tab title still says "Demo trading". Nothing is painted over their page
   to compensate; if a later build puts the label back, the relabel resumes by itself.
 - **Your data stays on your machine.** Settings live in Chrome storage and in this site's own storage under
-  opaque names. **Nothing the extension runs on Quotex, or in the background, makes a network request**
-  (since v1.65.0, when the Google Sheet journal was removed). The one outbound request left is the popup
-  loading its two fonts from Google Fonts when you open it.
+  opaque names. **The extension makes no network requests at all** — not on Quotex, not in the background,
+  not in the popup. The Google Sheet journal went in v1.65.0 and the popup's Google Fonts in v1.65.2; the
+  popup now uses your system's own fonts.
 - **Footprint on Quotex's page is kept small**: no webfont request, no stylesheet naming their classes, and
   their buttons are never disabled by the panel (blocked trades are stopped before the click reaches them).
   The two cosmetic marks — "Show Live as Demo" and "Entry Balance Tags" — can be switched off in the popup.

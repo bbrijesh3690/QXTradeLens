@@ -178,3 +178,36 @@ test("deposit scanner: page scraper reads transactions from Quotex's store for t
     w.close();
   }
 });
+
+// ── v1.65.2: the popup loads nothing from the network ──────────────────────────────────────────
+// It fetched two typefaces from Google Fonts every time it opened, which was the last outbound request the
+// extension made. Checked against the markup and the stylesheet rather than a running browser, because a
+// request that is never written into the file cannot be made.
+function externalRefs(html) {
+  const refs = [];
+  for (const m of html.matchAll(/<(link|script|img|iframe|source)\b[^>]*\b(?:href|src)\s*=\s*["']([^"']+)["']/gi)) {
+    if (/^(https?:)?\/\//i.test(m[2])) refs.push(m[1] + " " + m[2]);
+  }
+  for (const m of html.matchAll(/@import\s+(?:url\()?["']?([^"')\s;]+)/gi)) {
+    if (/^(https?:)?\/\//i.test(m[1])) refs.push("@import " + m[1]);
+  }
+  for (const m of html.matchAll(/url\(\s*["']?((?:https?:)?\/\/[^"')\s]+)/gi)) refs.push("url() " + m[1]);
+  return refs;
+}
+
+test("popup: nothing in its markup or stylesheet is loaded from another origin (v1.65.2)", () => {
+  const html = fs.readFileSync(new URL("popup.html", EXT), "utf8");
+  assert.deepEqual(externalRefs(html), [], "external references in popup.html");
+  assert.doesNotMatch(html, /fonts\.googleapis|fonts\.gstatic/, "no Google Fonts");
+});
+
+test("popup: the fonts come from the system, through two variables (v1.65.2)", () => {
+  const html = fs.readFileSync(new URL("popup.html", EXT), "utf8");
+  assert.match(html, /--font-sans:\s*system-ui/, "a system sans stack is defined");
+  assert.match(html, /--font-mono:\s*ui-monospace/, "a system mono stack is defined");
+  // Every font-family points at one of the two, so no hardcoded webfont name can come back one rule at a time.
+  const families = [...html.matchAll(/font-family:\s*([^;"]+)[;"]/g)].map((m) => m[1].trim());
+  const stray = families.filter((f) => !/^var\(--font-(sans|mono)\)$/.test(f));
+  assert.deepEqual(stray, [], "font-family declarations that do not use the variables");
+  assert.doesNotMatch(POPUP_JS, /DM Sans|DM Mono/, "and popup.js names neither of the old typefaces");
+});
