@@ -199,3 +199,22 @@ test("demo cover: not drawn when the live balance cannot be read (v1.74.0)", asy
     qx.close();
   }
 });
+
+test("demo cover: the DEMO ACCOUNT label is Roboto Black (900), the balance bold (700) (v1.74.2)", async () => {
+  // Measured on the live page: their label carries 15% more ink than a 700 label at the same width, which
+  // only Roboto 900 does; their balance matches 700 stroke for stroke.
+  const qx = await boot({ path: "/en/trade", store: quotexStore({ liveBalance: 0, activeAccount: "live" }), setup: accountHost() });
+  try {
+    await sleep(1500);
+    // jsdom does not cascade styles inside the closed root, so the rules are read from the panel stylesheet.
+    const css = Array.from(qx.panelRoot().querySelectorAll("style")).map((st) => st.textContent).join(" ");
+    const rule = (sel) => {
+      const at = css.indexOf(sel + " {");
+      return at < 0 ? "" : css.slice(at, css.indexOf("}", at));
+    };
+    assert.match(rule("#__tcDemoCover .dcLbl"), /font-weight: 900/);
+    assert.match(rule("#__tcDemoCover .dcBal"), /font-weight: 700/);
+  } finally {
+    qx.close();
+  }
+});

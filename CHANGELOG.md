@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.74.2] - 2026-09-28
+
+### Fixed
+- **The DEMO ACCOUNT label is Roboto Black (900), not Bold (700).** A second pair of live screenshots showed
+  everything else matching theirs to the pixel - box 150x38, label at 43-118 rows 6-12, balance at 43 rows
+  19-28, arrow at 129-137, ClearType on both - but their label carried 15% more ink than ours at exactly the
+  same width and height. Rendering "DEMO ACCOUNT" in Roboto at each weight: 700 and 900 give the same 77 px
+  width, and 900 adds 10.5% ink under greyscale smoothing (more under ClearType); 800 adds only 3.5%. So theirs
+  is 900. The balance matches 700 stroke for stroke and stays. The icon moved 1 px left and grew 1 px, to
+  their 12-31.
+
 ## [1.74.1] - 2026-09-28
 
 ### Fixed
