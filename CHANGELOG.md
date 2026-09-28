@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.72.1] - 2026-09-28
+
+### Fixed
+- **The bar looks for "Alerts" in more ways.** On the live page 1.72.0 found "WEB TRADING PLATFORM" but not
+  "Alerts" (`bar: Alerts not found`), so the bar stayed where it was. "Alerts" is not text on the page. A word
+  is now looked for as text, as text starting with it ("Alerts 3"), as the hover label of an icon
+  (aria-label, title, alt, data-tooltip), and as a closed Quotex component named after it (`<qx-...alert...>`,
+  whose box is on the page even though its inside is not). The `bar` field says which one worked.
+- **If it is still not found, the `bar` field lists what the header has**: its components and its hover
+  labels. One read then says what "Alerts" is, instead of another guess. Not yet seen on the live page.
+
 ## [1.72.0] - 2026-09-28
 
 ### Changed

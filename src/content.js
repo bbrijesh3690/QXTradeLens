@@ -1812,36 +1812,120 @@
     // window resize or its own width changing. A spot the user drags to wins, as before. Either word not
     // found - Quotex renamed it, or hid it in a closed component - leaves the bar where it was, and the
     // diagnostics line says which.
+    // v1.72.1: seen live on 1.72.0 - "WEB TRADING PLATFORM" is text on the page, "Alerts" is not. So a word is
+    // looked for in four ways, in order, and the one that worked is reported: as text; as text that starts
+    // with it ("Alerts 3"); as a hover label on an icon (aria-label, title, alt, data-tooltip); and as one of
+    // Quotex's closed components named after it (`<qx-...alert...>` - the host is on the page and has a box
+    // even though nothing inside it can be read).
+    const UPPER = "translate(normalize-space(.),'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ')";
     const HEADER_WORDS = {
-      logo: "//text()[contains(translate(normalize-space(.),'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ'),'WEB TRADING PLATFORM')]",
-      alerts: "//text()[translate(normalize-space(.),'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ')='ALERTS']",
+      logo: { name: "WEB TRADING PLATFORM", text: "//text()[contains(" + UPPER + ",'WEB TRADING PLATFORM')]", label: /web trading platform/i, tag: null },
+      alerts: {
+        name: "Alerts",
+        text: "//text()[" + UPPER + "='ALERTS']",
+        textStart: "//text()[starts-with(" + UPPER + ",'ALERTS')]",
+        label: /^\s*alerts?\b/i,
+        tag: "alert",
+      },
     };
-    const headerFound = {};
+    const headerFound = {},
+      headerVia = {};
     let headerLookAt = 0;
+    // The header: on screen, near the top. The same words lower down (a menu, a settings page) are not it.
+    const inHeader = (el) => {
+      if (!el || isOurElement(el)) {
+        return false;
+      }
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && r.top >= 0 && r.top < 150;
+    };
+    const topmost = (els) => {
+      let best = null,
+        bestTop = Infinity;
+      for (const el of els) {
+        if (inHeader(el)) {
+          const top = el.getBoundingClientRect().top;
+          if (top < bestTop) {
+            best = el;
+            bestTop = top;
+          }
+        }
+      }
+      return best;
+    };
+    const textParents = (xpath) => {
+      const out = [];
+      try {
+        const x = document.evaluate(xpath, document.body, null, 7, null);
+        for (let i = 0; i < x.snapshotLength; i++) {
+          out.push(x.snapshotItem(i).parentElement);
+        }
+      } catch (e) {}
+      return out;
+    };
+    const LABEL_ATTRS = ["aria-label", "title", "alt", "data-tooltip", "data-title"];
+    function labelled(re) {
+      const out = [];
+      for (const el of document.querySelectorAll("[aria-label],[title],[alt],[data-tooltip],[data-title]")) {
+        if (LABEL_ATTRS.some((a) => re.test(el.getAttribute(a) || ""))) {
+          out.push(el);
+        }
+      }
+      return out;
+    }
+    function customTags(stem) {
+      const out = [];
+      for (const el of document.querySelectorAll("*")) {
+        const tag = el.tagName.toLowerCase();
+        if (tag.includes("-") && (!stem || tag.includes(stem))) {
+          out.push(el);
+        }
+      }
+      return out;
+    }
     function findHeaderWord(key) {
       const kept = headerFound[key];
       if (kept && kept.isConnected) {
         return kept;
       }
-      let best = null,
-        bestTop = Infinity;
-      try {
-        const x = document.evaluate(HEADER_WORDS[key], document.body, null, 7, null);
-        for (let i = 0; i < x.snapshotLength; i++) {
-          const el = x.snapshotItem(i).parentElement;
-          if (!el || isOurElement(el)) {
-            continue;
-          }
-          const r = el.getBoundingClientRect();
-          // The header: on screen, near the top. The same words lower down (a menu, a settings page) are not it.
-          if (r.width > 0 && r.height > 0 && r.top >= 0 && r.top < 150 && r.top < bestTop) {
-            best = el;
-            bestTop = r.top;
+      const w = HEADER_WORDS[key],
+        ways = [
+          ["text", () => textParents(w.text)],
+          ["text", () => (w.textStart ? textParents(w.textStart) : [])],
+          ["hover label", () => labelled(w.label)],
+          ["component", () => (w.tag ? customTags(w.tag) : [])],
+        ];
+      let found = null;
+      for (const [via, look] of ways) {
+        found = topmost(look());
+        if (found) {
+          headerVia[key] = via === "component" ? "component <" + found.tagName.toLowerCase() + ">" : via;
+          break;
+        }
+      }
+      headerFound[key] = found;
+      return found;
+    }
+    // What the header does have, for the diagnostics line when a word is not found: its closed components
+    // and its hover labels. One read then says what the missing word has turned into.
+    function headerInventory() {
+      const tags = new Set(),
+        labels = new Set();
+      for (const el of customTags(null)) {
+        if (inHeader(el)) {
+          tags.add("<" + el.tagName.toLowerCase() + ">");
+        }
+      }
+      for (const el of document.querySelectorAll("[aria-label],[title]")) {
+        if (inHeader(el)) {
+          const t = (el.getAttribute("aria-label") || el.getAttribute("title") || "").trim();
+          if (t && t.length <= 30) {
+            labels.add(t);
           }
         }
-      } catch (e) {}
-      headerFound[key] = best;
-      return best;
+      }
+      const list = (set) => Array.from(set).slice(0, 8).join(", ") || "none";
+      return "header components: " + list(tags) + " \u00b7 hover labels: " + list(labels);
     }
     function placeBarInHeader() {
       if (prefGet("tc_pos")) {
@@ -1865,7 +1949,7 @@
         alerts = findHeaderWord("alerts");
       if (!logo || !alerts) {
         barInHeader = false;
-        barAnchor = (!logo ? "WEB TRADING PLATFORM" : "Alerts") + " not found";
+        barAnchor = (!logo ? "WEB TRADING PLATFORM" : "Alerts") + " not found \u00b7 " + headerInventory();
         return;
       }
       const a = logo.getBoundingClientRect(),
@@ -1883,7 +1967,8 @@
       barInHeader = true;
       barAnchor =
         "in the header \u00b7 gap " + Math.round(a.right) + "-" + Math.round(b.left) + " \u00b7 bar " + Math.round(w) +
-        (w > b.left - a.right ? " (wider than the gap)" : "");
+        (w > b.left - a.right ? " (wider than the gap)" : "") +
+        " \u00b7 Alerts found as " + headerVia.alerts;
       if (panelPos.x !== x || panelPos.y !== y) {
         panelPos.x = panelPos.tx = x;
         panelPos.y = panelPos.ty = y;

@@ -165,17 +165,26 @@ test("the bar comes back where it was when the toolbar icon shows it again (v1.7
 // ── v1.72.0: the bar's home is Quotex's header ───────────────────────────────────────────────────
 // jsdom has no layout, so the page gets real-looking boxes: the header's two words, a strip of pair tabs
 // under them, and the bar itself (its stylesheet puts it 5 px from the top, moved by its transform).
-function headerPage({ logo = true, alerts = true } = {}) {
+// `alerts`: "text" (a button reading Alerts), "label" (an icon whose hover label is Alerts), "component" (a closed
+// component named after it, as Quotex ships more of the page now), or false.
+function headerPage({ logo = true, alerts = "text" } = {}) {
   return (w) => {
     const bar = w.document.createElement("div");
+    const alertsHtml = {
+      text: '<button class="tAlerts"> Alerts </button>',
+      label: '<button class="tAlerts" title="Alerts"><svg></svg></button>',
+      component: '<qx-price-alerts class="tAlerts"></qx-price-alerts>',
+    };
     bar.innerHTML =
-      (logo ? '<span class="tLogoSub">Web Trading Platform</span>' : "") + (alerts ? '<button class="tAlerts"> Alerts </button>' : "");
+      (logo ? '<span class="tLogoSub">Web Trading Platform</span>' : "") + (alerts ? alertsHtml[alerts] : "") +
+      '<qx-usermenu-trigger class="tUser"></qx-usermenu-trigger>';
     w.document.body.prepend(bar);
     const rect = w.Element.prototype.getBoundingClientRect;
     const box = (left, top, width, height) => ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top });
     w.Element.prototype.getBoundingClientRect = function () {
       if (this.classList && this.classList.contains("tLogoSub")) return box(20, 30, 130, 12); // right edge 150
       if (this.classList && this.classList.contains("tAlerts")) return box(950, 14, 50, 24); // left edge 950
+      if (this.classList && this.classList.contains("tUser")) return box(1010, 10, 10, 30);
       if (this.classList && this.classList.contains("dJ15T")) return box(0, 0, 2000, 40);
       if (this.id === "__tradeCalc") {
         const m = /translate3d\((-?[\d.]+)px,\s*(-?[\d.]+)px/.exec(this.style.transform) || [0, 0, 0];
@@ -240,7 +249,42 @@ test("either header word missing: the bar keeps its old place and the line says 
     await sleep(700);
     assert.equal(barAt(qx).y, 38, "kept off the pair tabs, as a bar with no home always was");
     await sleep(2100);
-    assert.equal(diagBar(qx), "Alerts not found");
+    assert.match(String(diagBar(qx)), /^Alerts not found/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("Alerts is found when it is an icon with a hover label (v1.72.1)", async () => {
+  // Seen live on 1.72.0: "Alerts" is not text on the page, so the bar never moved.
+  const qx = await boot({ setup: headerPage({ alerts: "label" }) });
+  try {
+    await sleep(700);
+    assert.deepEqual(barAt(qx), { x: -100, y: 0 });
+    await sleep(2100);
+    assert.match(String(diagBar(qx)), /Alerts found as hover label/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("Alerts is found when it is a closed component named after it (v1.72.1)", async () => {
+  const qx = await boot({ setup: headerPage({ alerts: "component" }) });
+  try {
+    await sleep(700);
+    assert.deepEqual(barAt(qx), { x: -100, y: 0 });
+    await sleep(2100);
+    assert.match(String(diagBar(qx)), /Alerts found as component <qx-price-alerts>/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("Alerts missing: the line lists what the header does have, so one read says what it became (v1.72.1)", async () => {
+  const qx = await boot({ setup: headerPage({ alerts: false }) });
+  try {
+    await sleep(2800);
+    assert.match(String(diagBar(qx)), /header components: <qx-usermenu-trigger>/);
   } finally {
     qx.close();
   }
