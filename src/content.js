@@ -791,10 +791,33 @@
       }
       return isNaN(serverClock.offset) ? 0 : serverClock.offset;
     }
-    // Which way Quotex rounds a countdown, learnt from its own rows: counts of rows that showed the whole
-    // seconds rounded down, or up. Up until the rows say otherwise.
-    const tradeRounding = { down: 0, up: 0 };
-    const roundSecondsLeft = (exact) => Math.max(0, tradeRounding.down > tradeRounding.up ? Math.floor(exact) : Math.ceil(exact));
+    // v1.75.2: how Quotex turns seconds left into the number it shows, learnt from its own rows. Read live on
+    // 1.75.1: by Quotex's clock a trade had 8.84 s left while its row showed 00:10 - their number runs about
+    // 0.2 s ahead of a plain round-up, so a fixed "up or down" rule was one second out at times. Instead, one
+    // shift s is learnt such that rounding up (seconds left + s) gives their number. Each agreeing row says s
+    // lies in (shown - 1 - left, shown - left], widened by 0.15 s for the moment their text takes to update;
+    // the overlap of all of them is kept and its middle used. Rounding down is the same with s near -1, so
+    // either way it is learnt. A row that cannot fit the overlap means their clock or rounding changed: the
+    // learning starts again from that row.
+    const TRADE_SHIFT_SLACK = 0.15;
+    const tradeShift = { lo: -Infinity, hi: Infinity, rows: 0, restarts: 0 };
+    function learnTradeShift(shown, exact) {
+      const lo = shown - 1 - exact - TRADE_SHIFT_SLACK,
+        hi = shown - exact + TRADE_SHIFT_SLACK,
+        nlo = Math.max(tradeShift.lo, lo),
+        nhi = Math.min(tradeShift.hi, hi);
+      if (nlo < nhi) {
+        tradeShift.lo = nlo;
+        tradeShift.hi = nhi;
+      } else {
+        tradeShift.lo = lo;
+        tradeShift.hi = hi;
+        tradeShift.restarts++;
+      }
+      tradeShift.rows++;
+    }
+    const tradeShiftNow = () => (tradeShift.rows ? (tradeShift.lo + tradeShift.hi) / 2 : 0);
+    const roundSecondsLeft = (exact) => Math.max(0, Math.ceil(exact + tradeShiftNow()));
     // Quotex's trade history, read at most every 200 ms: [{ secs, pair, text }] for each open trade's row.
     let tradeRowsCache = { at: 0, rows: [] };
     function tradeHistoryCountdowns() {
@@ -855,13 +878,7 @@
         }
         if (match) {
           used.add(match);
-          if (Math.floor(exact) !== Math.ceil(exact)) {
-            if (match.secs === Math.floor(exact)) {
-              tradeRounding.down++;
-            } else if (match.secs === Math.ceil(exact)) {
-              tradeRounding.up++;
-            }
-          }
+          learnTradeShift(match.secs, exact);
           notes.push("Quotex shows " + match.text + " (copied)");
           return { secs: match.secs, via: "trade history" };
         }
@@ -875,9 +892,9 @@
         return { secs: roundSecondsLeft(exact), via: "Quotex clock" };
       });
       tradeClockNote = deals.length
-        ? "Quotex clock " + (offset >= 0 ? "+" : "") + offset.toFixed(2) + " s against this computer \u00b7 rounding " +
-          (tradeRounding.down > tradeRounding.up ? "down" : "up") + " (rows seen: " + tradeRounding.down + " down, " + tradeRounding.up + " up) \u00b7 " +
-          notes.join("; ")
+        ? "Quotex clock " + (offset >= 0 ? "+" : "") + offset.toFixed(2) + " s against this computer \u00b7 shift " +
+          (tradeShiftNow() >= 0 ? "+" : "") + tradeShiftNow().toFixed(2) + " s learnt from " + tradeShift.rows + " rows" +
+          (tradeShift.restarts ? " (" + tradeShift.restarts + " restarts)" : "") + " \u00b7 " + notes.join("; ")
         : "no trade open";
       return out;
     }

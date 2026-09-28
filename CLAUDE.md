@@ -199,8 +199,10 @@ check will say so if only one happened.
 - **Trade countdowns (chip and tab title) match Quotex by construction (v1.75.0).** Order: Quotex's own number
   from the trade's row in their trade history (matched by pair and time, copied only within 2.5 s of the close
   time, so no stale row or stray clock is copied); otherwise the close time against Quotex's server clock
-  (`targetTime` via chart_reader - highest offset of the last 10 s, sampled only when it moves), rounded the
-  way their rows were seen to round (learnt; up until shown otherwise). `tradeClock` on the diagnostics line
+  (`targetTime` via chart_reader - highest offset of the last 10 s, sampled only when it moves), plus a shift
+  learnt from their rows so that rounding up gives their number (v1.75.2 - live, their number ran ~0.2 s ahead
+  of a plain round-up; rounding down would be learnt as a shift near -1). Verified live on 1.75.1: three reads,
+  chip = trade history each time. `tradeClock` on the diagnostics line
   says which source was used and why. If they disagree again, read that field before changing anything.
 - **Parked by the user:** retrying a timeframe that still comes back short after a fill (v1.74.3 fixed the
   cause that was seen).

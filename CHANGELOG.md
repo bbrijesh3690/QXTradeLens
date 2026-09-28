@@ -5,6 +5,25 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.75.2] - 2026-09-28
+
+### Fixed
+- **The countdown's fallback learns exactly how Quotex turns seconds into its number.** Checked live on 1.75.1
+  with a demo trade: three reads, and each time the chip showed exactly Quotex's number, copied from the trade
+  history (`00:10`, `00:07`, `00:03`). The same reads showed the fallback - used when the trade history is not
+  on screen - would have been a second out at times: by Quotex's clock the trade had 8.84 s left while its row
+  showed 00:10, so their number runs about 0.2 s ahead of a plain round-up, and no fixed "round up or down"
+  rule matches it. Now one shift is learnt from the rows: each agreeing row narrows where it can lie, and
+  rounding up (seconds left + shift) gives their number. Rounding down is the same with the shift near -1, so
+  either is learnt. A row that cannot fit means their clock or rounding changed, and the learning starts again
+  from it. `tradeClock` on the diagnostics line reports the shift and how many rows taught it.
+- Also seen: Quotex's clock ran about 1.2 s behind this computer's - which is why the chip used to show a
+  second or two less than their trade history.
+
+### Tests
+- Rows running 0.6 s ahead of a round-up: the shift is learnt, and with the rows gone the chip goes on showing
+  their number. Rows rounding down: learnt as a shift near -1. Both fail on 1.75.1.
+
 ## [1.75.1] - 2026-09-28
 
 ### Changed

@@ -234,7 +234,7 @@ function openTradePage({ rowText = null, ahead = 2, rowFollows = null } = {}) {
       }, 100);
     }
   };
-  return { store, setup, pin: () => Object.defineProperty(store.__plot.pointsManager, "targetTime", { get: () => Date.now() / 1000 + ahead, configurable: true }) };
+  return { store, close, setup, pin: () => Object.defineProperty(store.__plot.pointsManager, "targetTime", { get: () => Date.now() / 1000 + ahead, configurable: true }) };
 }
 const chipTime = (qx) => ((chipEl(qx) && chipEl(qx).textContent) || "").match(/\d{2}:\d{2}(\.\d{2})?/)?.[0];
 const clockLine = (qx) => String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").tradeClock);
@@ -295,7 +295,32 @@ test("countdown: the rounding is learnt from Quotex's rows (v1.75.0)", async () 
   try {
     page.pin();
     await sleep(2400);
-    assert.match(clockLine(qx), /rounding down \(rows seen: [1-9]\d* down/);
+    // v1.75.2: rounding down is learnt as a shift just above -1.
+    const shift = parseFloat((clockLine(qx).match(/shift ([+-]\d+\.\d+) s/) || [])[1]);
+    assert.ok(shift <= -0.5 && shift > -1.2, "learnt a shift near -1: " + clockLine(qx));
+  } finally {
+    qx.close();
+  }
+});
+
+test("countdown: Quotex's number running ahead of a round-up is learnt, and the fallback follows it (v1.75.2)", async () => {
+  // Read live on 1.75.1: 8.84 s left by Quotex's clock while its row showed 00:10. Here their rows run 0.6 s
+  // ahead; once the rows are gone, the chip must go on showing what they would have shown.
+  const page = openTradePage({ rowFollows: (e) => Math.ceil(e + 0.6) });
+  const qx = await boot({ store: page.store, setup: page.setup });
+  try {
+    page.pin();
+    await sleep(2400);
+    const shift = parseFloat((clockLine(qx).match(/shift ([+-]\d+\.\d+) s/) || [])[1]);
+    assert.ok(shift > 0.4 && shift < 0.8, "learnt about +0.6: " + clockLine(qx));
+    // The trade history goes off screen: the chip now counts by itself.
+    qx.window.document.querySelectorAll(".A7vDd").forEach((row) => row.remove());
+    await sleep(400);
+    const expect = () => Math.ceil(page.close - (Date.now() / 1000 + 2) + 0.6);
+    const before = expect(),
+      shown = parseInt(chipTime(qx).slice(3), 10),
+      after = expect();
+    assert.ok(shown === before || shown === after, "the chip shows " + shown + ", their rows would show " + before);
   } finally {
     qx.close();
   }
