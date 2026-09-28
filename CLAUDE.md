@@ -136,14 +136,19 @@ check will say so if only one happened.
   `null → 0` is collection rather than just navigation. Not caught live: the `running · 2 of 4` state. The
   whole walk is about 60 s at ~15 s a pair, which is finer than a read from another tab can reliably land
   inside; it is covered by a spec only.
-- **"Show Live as Demo" rewrites Quotex's own label and nothing else** — byte-for-byte as frozen in
-  v1.54.4. Their 2026-09-23 build moved that label into the closed `<qx-usermenu-trigger>`, so on those
-  pages the switch does nothing at all; the tab-title cover still works. **Do not paint over their
-  component to get it back.** That was tried twice (v1.58.0, v1.58.1) and reverted in v1.59.0: it covered
-  more than the job needed, there is no background to sample — every ancestor of their block is
-  transparent up to `<body>`, which computes to white on a page that renders dark — and the result looked
-  wrong on the real page both times. If their label returns to the light DOM, the relabel resumes on its
-  own.
+- **"Show Live as Demo" is now our own Demo Account block drawn over theirs (v1.74.0, the user's choice
+  after being shown the options).** Their 2026-09-23 build moved the label into the closed
+  `<qx-usermenu-trigger>`, so the text relabel (still there, byte-for-byte as frozen in v1.54.4) finds nothing
+  on those pages. v1.58.0/v1.58.1 painted over the block and were reverted in v1.59.0 because the background
+  was guessed from the block's parents, all transparent up to a white `<body>`. v1.74.0 guesses nothing: the
+  colour behind the block was read with `elementsFromPoint` (the layer that really paints there - `div.app`,
+  `#1c1f2d`), and the block's own look was measured from the user's screenshot of their demo block: `#2b3040`,
+  4 px corners, cap icon at 12,10, orange `#ff8a00` DEMO ACCOUNT at 10 px bold and the balance at 14 px bold,
+  both starting at 43 px so the label lines up with the ₹ sign, arrow 6 px from the right, Roboto. Clicks pass
+  through. It is not drawn on the demo page, without a readable live balance, or while their block is taller
+  than 60 px (a menu inside it). `demoCover` on the diagnostics line says which. If it ever looks off, compare
+  against a fresh screenshot of their block rather than guessing - the side-by-side check (their screenshot
+  and ours, enlarged) is how 1.74.0 was matched.
 - **The payout floor was watched both ways on the live page on 2026-09-27** (v1.61.0, v1.61.1). Floor raised
   from 90 to 93 with twelve pairs open: ten went, a replacement was opened as the board thinned, and it
   settled at exactly two pairs with `2 pairs at or above 93%` once the 30 s throttle expired - so the

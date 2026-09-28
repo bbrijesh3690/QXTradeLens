@@ -110,3 +110,66 @@ test("account block: the line reports its box, what paints behind it and its fon
     qx.close();
   }
 });
+
+// ── v1.74.0: step 2 - our own "Demo Account" block over theirs, on the live page ───────────────────
+function accountHost(height = 38) {
+  return (w) => {
+    const host = w.document.createElement("qx-usermenu-trigger");
+    w.document.body.append(host);
+    const rect = w.Element.prototype.getBoundingClientRect;
+    w.Element.prototype.getBoundingClientRect = function () {
+      if (this === host) return { left: 1551, top: 15, width: 143, height, right: 1694, bottom: 15 + height, x: 1551, y: 15 };
+      return rect.call(this);
+    };
+  };
+}
+const cover = (qx) => qx.panelRoot().getElementById("__tcDemoCover");
+
+test("demo cover: on the live page, our Demo Account block sits exactly over theirs (v1.74.0)", async () => {
+  const qx = await boot({ path: "/en/trade", store: quotexStore({ liveBalance: 30696.29, demoBalance: 10000, activeAccount: "live" }), setup: accountHost() });
+  try {
+    await sleep(2300);
+    const c = cover(qx);
+    assert.equal(c.hidden, false, "shown");
+    assert.deepEqual([c.style.left, c.style.top, c.style.width, c.style.height], ["1551px", "15px", "143px", "38px"], "over their block");
+    assert.equal(c.querySelector(".dcLbl").textContent, "DEMO ACCOUNT");
+    assert.equal(c.querySelector(".dcBal").textContent, "₹30,696.29", "with the live balance");
+    assert.match(String(diag(qx).demoCover), /^shown at 1551,15 143x38/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("demo cover: not drawn on the demo page, where their block already says Demo (v1.74.0)", async () => {
+  const qx = await boot({ path: "/en/demo-trade", store: quotexStore({ liveBalance: 30696.29, demoBalance: 10000 }), setup: accountHost() });
+  try {
+    await sleep(2300);
+    assert.equal(cover(qx).hidden, true);
+    assert.match(String(diag(qx).demoCover), /demo page/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("demo cover: never covers their block while it is open - a menu drawn inside it (v1.74.0)", async () => {
+  const qx = await boot({ path: "/en/trade", store: quotexStore({ liveBalance: 30696.29, activeAccount: "live" }), setup: accountHost(240) });
+  try {
+    await sleep(2300);
+    assert.equal(cover(qx).hidden, true);
+    assert.match(String(diag(qx).demoCover), /is open/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("demo cover: not drawn when the live balance cannot be read (v1.74.0)", async () => {
+  // No store: their block would be the only place the balance shows, so it is left alone.
+  const qx = await boot({ path: "/en/trade", setup: accountHost() });
+  try {
+    await sleep(2300);
+    assert.equal(cover(qx).hidden, true);
+    assert.match(String(diag(qx).demoCover), /balance cannot be read/);
+  } finally {
+    qx.close();
+  }
+});

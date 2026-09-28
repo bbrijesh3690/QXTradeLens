@@ -5,6 +5,28 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.74.0] - 2026-09-28
+
+### Added
+- **"Show Live as Demo" works again, as our own Demo Account block over Quotex's.** Their account block
+  (`<qx-usermenu-trigger>`) is a closed component, so its words cannot be changed; on the live page the panel
+  now draws a copy of how the block looks on demo, exactly over it, with the live balance - and clicks go
+  straight through, so the account menu still opens. The v1.58 tries failed on the background; this time
+  nothing is guessed. The colour behind the block (`#1c1f2d`) was read from the layer that really paints there
+  (1.72.7); the block's own `#2b3040`, 4 px corners, the cap icon, the orange `#ff8a00` DEMO ACCOUNT at 10 px
+  bold, the balance at 14 px bold and the arrow were measured from a screenshot of their demo block, in
+  Roboto, the font their page uses. Checked side by side with that screenshot, enlarged: text widths match
+  within half a pixel. The label and the balance both start 43 px in, so DEMO ACCOUNT lines up with the ₹ sign, as on
+  theirs.
+- It is not drawn on the demo page (their block already says Demo), when the live balance cannot be read
+  (theirs would be the only place showing it), or while their block is taller than a button - a menu drawn
+  inside it is never covered. The diagnostics line has a `demoCover` field: `shown at 1551,15 143x38`, or
+  `hidden:` and why.
+
+### Tests
+- Four specs, all failing on 1.73.0: shown over their block on the live page with the live balance; not on the
+  demo page; not while the block is open; not without a balance.
+
 ## [1.73.0] - 2026-09-28
 
 ### Changed
