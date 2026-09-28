@@ -131,10 +131,12 @@ test("demo cover: on the live page, our Demo Account block sits exactly over the
     await sleep(2300);
     const c = cover(qx);
     assert.equal(c.hidden, false, "shown");
-    assert.deepEqual([c.style.left, c.style.top, c.style.width, c.style.height], ["1551px", "15px", "143px", "38px"], "over their block");
+    // v1.74.1: laid out like their demo block - as wide as its text needs - with its right edge on theirs.
+    assert.equal(parseFloat(c.style.left) + parseFloat(c.style.width), 1694, "right edge on theirs");
+    assert.deepEqual([c.style.top, c.style.height], ["15px", "38px"], "same top and height");
     assert.equal(c.querySelector(".dcLbl").textContent, "DEMO ACCOUNT");
     assert.equal(c.querySelector(".dcBal").textContent, "₹30,696.29", "with the live balance");
-    assert.match(String(diag(qx).demoCover), /^shown at 1551,15 143x38/);
+    assert.match(String(diag(qx).demoCover), /^shown at .* \(theirs 1551,15 143x38\)/);
   } finally {
     qx.close();
   }
@@ -146,6 +148,30 @@ test("demo cover: not drawn on the demo page, where their block already says Dem
     await sleep(2300);
     assert.equal(cover(qx).hidden, true);
     assert.match(String(diag(qx).demoCover), /demo page/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("demo cover: the arrow sits 10 px after the text and 12 px from the edge, as on theirs (v1.74.1)", async () => {
+  // jsdom has no text layout, so the label and balance are given the widths measured on the live page.
+  const setup = (w) => {
+    accountHost()(w);
+    Object.defineProperty(w.HTMLElement.prototype, "offsetWidth", {
+      configurable: true,
+      get() {
+        return this.classList && this.classList.contains("dcLbl") ? 77 : this.classList && this.classList.contains("dcBal") ? 36 : 0;
+      },
+    });
+  };
+  const qx = await boot({ path: "/en/trade", store: quotexStore({ liveBalance: 0, demoBalance: 10000, activeAccount: "live" }), setup });
+  try {
+    await sleep(2300);
+    const c = cover(qx);
+    // 42 + 77 + 10 = 129 for the arrow; 129 + 9 + 12 = 150 wide - their demo block, measured.
+    assert.equal(c.querySelector(".dcChev").style.left, "129px");
+    assert.equal(c.style.width, "150px");
+    assert.equal(c.style.left, "1544px", "grown to the left, right edge kept");
   } finally {
     qx.close();
   }

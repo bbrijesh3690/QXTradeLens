@@ -5,6 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.74.1] - 2026-09-28
+
+### Fixed
+- **Our Demo Account block now matches theirs in weight, spacing and position.** Measured pixel by pixel from
+  two screenshots on the live page - ours and theirs side by side:
+  - **Weight.** Theirs is drawn with ClearType, ours was not: Chrome keeps subpixel text only on a fully
+    opaque layer, and our rounded corners made the edges see-through, so the text fell back to grey smoothing
+    and looked lighter (strokes 1.58 px against their 1.84). The cover is now an opaque rectangle in the
+    colour that paints behind their block, read from the page, with the rounded block drawn inside it.
+  - **Width.** Their block grows to fit its text and keeps its right edge: 150 px on demo, 143 on live where
+    "LIVE ACCOUNT" is shorter. The arrow sits 10 px after the text and 12 px from the edge. Ours now follows the
+    same rules for "DEMO ACCOUNT", so it is as wide as their demo block, right edge on theirs - it was squeezed
+    into their live box, with the arrow crowding the text.
+  - **Position.** Label and balance 1 px further left, the balance 1 px lower, the arrow 9 px wide, the icon
+    20 px - each by the amount measured. Font and size were already right: the same 7 px and 10 px letter
+    heights at the same widths.
+
 ## [1.74.0] - 2026-09-28
 
 ### Added
