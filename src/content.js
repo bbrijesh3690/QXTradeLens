@@ -4612,6 +4612,55 @@
     }
     // For the diagnostics line: how the list is found, whether it is open, and how the last close went.
     let lastAssetClose = null;
+    // v1.72.6: where Quotex's own candle timer is, before the chips are placed around it (requested: the
+    // amount above it, the trade countdown below). Either it is an element over the chart - then it can be
+    // found and followed - or it is painted on the chart canvas, where its position cannot be read (the chart
+    // is one WebGL canvas, see CLAUDE.md). This only reports which, for the diagnostics line; nothing moves.
+    const probeTimerTexts = new WeakMap();
+    function candleTimerProbe() {
+      const canvas = document.querySelector("#graph canvas") || document.querySelector("canvas.layer.plot");
+      if (!canvas) {
+        return "no chart on the page";
+      }
+      const c = canvas.getBoundingClientRect();
+      // The chart's own neighbourhood: a few levels up from the canvas, not the whole page.
+      let scope = canvas.parentElement;
+      for (let i = 0; i < 3 && scope && scope.parentElement && scope.parentElement !== document.body; i++) {
+        scope = scope.parentElement;
+      }
+      const clock = /^\s*\d{1,2}:\d{2}(:\d{2})?\s*$/,
+        found = [];
+      for (const el of (scope || document.body).querySelectorAll("*")) {
+        if (found.length >= 4) {
+          break;
+        }
+        if (isOurElement(el)) {
+          continue;
+        }
+        let own = "";
+        for (const n of el.childNodes) {
+          if (n.nodeType === 3) {
+            own += n.textContent;
+          }
+        }
+        if (!clock.test(own)) {
+          continue;
+        }
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0 || r.right < c.left || r.left > c.right || r.bottom < c.top || r.top > c.bottom) {
+          continue;
+        }
+        own = own.trim();
+        const before = probeTimerTexts.get(el);
+        probeTimerTexts.set(el, own);
+        const cls = typeof el.className === "string" && el.className ? "." + el.className.split(" ")[0] : "";
+        found.push(
+          el.tagName.toLowerCase() + cls + ' "' + own + '" at ' + Math.round(r.left - c.left) + "," + Math.round(r.top - c.top) +
+            (before && before !== own ? " (ticking)" : ""),
+        );
+      }
+      return found.length ? found.join(" | ") : "nothing over the chart reads like a timer - it is painted on the chart";
+    }
     function assetListDiag() {
       const t = getAssetDropdown();
       const via = !t ? "not on the page" : t.id === "asset-select-dropdown" ? "by id" : "by class " + (t.className || "").toString().split(" ")[0];
@@ -8147,6 +8196,7 @@
             // all about the tab actually in front of someone.
             bar: barAnchor,
             assetList: assetListDiag(),
+            candleTimer: candleTimerProbe(),
             relabel: (() => {
               const ours = document.querySelectorAll("[data-tc-relabel]").length;
               return ours ? "rewritten \u00b7 " + ours : "nothing matched";

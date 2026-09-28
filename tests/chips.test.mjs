@@ -130,3 +130,42 @@ test("chips: an open deal still counts down in the tab title (v1.50.0)", async (
     qx.close();
   }
 });
+
+// ── v1.72.6: where Quotex's candle timer is, before the chips are placed around it ────────────────
+const candleDiag = (qx) => JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").candleTimer;
+const overChart = (w, withTimer) => {
+  if (withTimer) {
+    const t = w.document.createElement("div");
+    t.className = "qTimer";
+    t.textContent = "00:42";
+    w.document.getElementById("graph").appendChild(t);
+    let left = 42;
+    w.setInterval(() => (t.textContent = "00:" + String(--left).padStart(2, "0")), 1000);
+  }
+  const rect = w.Element.prototype.getBoundingClientRect;
+  w.Element.prototype.getBoundingClientRect = function () {
+    if (this.tagName === "CANVAS") return { left: 0, top: 100, width: 800, height: 400, right: 800, bottom: 500, x: 0, y: 100 };
+    if (this.classList && this.classList.contains("qTimer")) return { left: 600, top: 300, width: 40, height: 16, right: 640, bottom: 316, x: 600, y: 300 };
+    return rect.call(this);
+  };
+};
+
+test("candle timer: an element over the chart that reads like a clock is reported, ticking (v1.72.6)", async () => {
+  const qx = await boot({ setup: (w) => overChart(w, true) });
+  try {
+    await sleep(4300); // two diagnostics writes, so the text has changed between them
+    assert.match(String(candleDiag(qx)), /div\.qTimer "00:\d\d" at 600,200 \(ticking\)/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("candle timer: with none over the chart, the line says it is painted on the chart (v1.72.6)", async () => {
+  const qx = await boot({ setup: (w) => overChart(w, false) });
+  try {
+    await sleep(2200);
+    assert.match(String(candleDiag(qx)), /painted on the chart/);
+  } finally {
+    qx.close();
+  }
+});

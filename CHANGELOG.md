@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.72.6] - 2026-09-28
+
+### Added
+- **A `candleTimer` field on the diagnostics line**, before the chips are moved around Quotex's candle timer
+  (the amount above it, the trade countdown below - requested). It lists what over the chart reads like a
+  clock (`div.xyz "00:42" at 600,200 (ticking)`), or says the timer is painted on the chart canvas. If it is
+  painted, its position cannot be read at all - the chart is one WebGL canvas - and that settles what can be
+  built. Nothing on the screen changes.
+
 ## [1.72.5] - 2026-09-28
 
 ### Fixed
