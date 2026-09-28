@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.74.4] - 2026-09-28
+
+### Added
+- **A `tradeClock` field on the diagnostics line**, because the trade countdown chip and Quotex's own countdown
+  for the same trade in their trade history do not match (reported live). Two causes are possible: the chip
+  counts against this computer's clock while Quotex counts against its server's (a steady gap), and the chip
+  rounds to the nearest second and shows a fixed ".00", where Quotex may drop the fraction (one second out half
+  the time). The field gives how far Quotex's clock is from this computer's, both countdowns as shown, and the
+  exact seconds left by each clock - one read with a trade open says which fix is right. Nothing on screen
+  changes yet.
+- `chart_reader.js` now returns Quotex's server time (the chart's `targetTime`) with its state answer, and this
+  computer's time at the same moment. A plain value read; nothing is called.
+- The chip-follows-Quotex's-timer plan was discussed and dropped at the user's request; the chips stay where
+  1.73.0 put them.
+
 ## [1.74.3] - 2026-09-28
 
 ### Fixed

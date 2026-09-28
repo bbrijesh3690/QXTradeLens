@@ -193,3 +193,22 @@ test("chips: the amount stands just above the middle of the chart's right side, 
     qx.close();
   }
 });
+
+test("trade clock: the line says how far Quotex's clock is from this one, and both countdowns (v1.74.4)", async () => {
+  // Reported live: the chip's countdown and Quotex's own in the trade history do not match.
+  const now = Math.floor(Date.now() / 1000);
+  const store = quotexStore({
+    opened: [{ id: "a", asset: "USDDZD_otc", amount: 1000, profit: 0, isDemo: 1, command: 0, openPrice: 100, percentProfit: 80, openTimestamp: now - 10, closeTimestamp: now + 50 }],
+  });
+  const qx = await boot({ store });
+  try {
+    // Quotex's server clock running 2 s ahead of this computer's.
+    Object.defineProperty(store.__plot.pointsManager, "targetTime", { get: () => Date.now() / 1000 + 2, configurable: true });
+    await sleep(2300);
+    const line = String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").tradeClock);
+    assert.match(line, /^Quotex clock \+2\.0\d s against this computer/, line);
+    assert.match(line, /left by this computer's clock 4\d\.\d\d s, by Quotex's 4\d\.\d\d s/, line);
+  } finally {
+    qx.close();
+  }
+});

@@ -236,6 +236,11 @@
       openedDeals: dealList(deals.openedById, deals.openedIds, 0),
       quotes: quoteMap(st.quotes),
       closedDeals: dealList(deals.closedById, deals.closedIds, MAX_CLOSED_DEALS),
+      // v1.74.4: Quotex's own clock - the chart's `targetTime`, server time in seconds - and this
+      // computer's clock at the same moment, so the panel can tell how far apart they are. Trade
+      // countdowns are measured against the server; a plain value read, nothing is called.
+      serverTime: plot.pointsManager ? num(plot.pointsManager.targetTime) : null,
+      readAt: Date.now(),
       assets: null
     };
     if (withAssets && bySymbol) {

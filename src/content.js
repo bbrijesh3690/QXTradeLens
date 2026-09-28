@@ -4823,6 +4823,42 @@
         " \u00b7 font " + cs.fontFamily.slice(0, 40) + " " + cs.fontSize + " " + cs.fontWeight + " " + cs.color
       );
     }
+    // v1.74.4: reported live - the trade countdown chip and Quotex's countdown for the same trade in their
+    // trade history do not match. Two causes are possible and this says which: the chip counts against this
+    // computer's clock while Quotex counts against its server's (a steady gap), and the chip rounds to the
+    // nearest second where Quotex may drop the fraction (one second out half the time). For the diagnostics
+    // line only - nothing on screen changes.
+    function tradeClockProbe() {
+      const state = readQuotexState();
+      const server = state && typeof state.serverTime === "number" ? state.serverTime : NaN,
+        readAt = state && typeof state.readAt === "number" ? state.readAt / 1000 : NaN,
+        ahead = isNaN(server) || isNaN(readAt) ? NaN : server - readAt;
+      let out = "Quotex clock " + (isNaN(ahead) ? "unknown" : (ahead >= 0 ? "+" : "") + ahead.toFixed(2) + " s against this computer");
+      const deals = state && Array.isArray(state.openedDeals) ? dealsForThisAccount(state.openedDeals) : [];
+      const deal = deals.find((d) => d && d.closeTimestamp);
+      if (!deal) {
+        return out + " \u00b7 no trade open";
+      }
+      const localNow = Date.now() / 1000,
+        byThisClock = deal.closeTimestamp - localNow,
+        byQuotexClock = isNaN(ahead) ? NaN : deal.closeTimestamp - (localNow + ahead);
+      // Quotex's own countdown for an open trade, from their trade history, as the chips' page fallback reads it.
+      let theirs = "not on the page";
+      const rows = getOpenTradeRows();
+      for (const row of rows) {
+        const clock = row.querySelector(".PiYD4") || row.querySelector(".xEiET") || row.querySelector(".wcb43") || findClockEl(row);
+        if (clock) {
+          theirs = '"' + clock.textContent.trim() + '"';
+          break;
+        }
+      }
+      const chip = byId(ids.tcTradeTimer),
+        ours = chip && chip.style.display !== "none" ? (chip.textContent.match(/\d{2}:\d{2}(\.\d{2})?/) || [""])[0] : "hidden";
+      return (
+        out + " \u00b7 trade: Quotex shows " + theirs + ", the chip shows " + ours +
+        " \u00b7 left by this computer's clock " + byThisClock.toFixed(2) + " s, by Quotex's " + (isNaN(byQuotexClock) ? "-" : byQuotexClock.toFixed(2) + " s")
+      );
+    }
     function assetListDiag() {
       const t = getAssetDropdown();
       const via = !t ? "not on the page" : t.id === "asset-select-dropdown" ? "by id" : "by class " + (t.className || "").toString().split(" ")[0];
@@ -8358,6 +8394,13 @@
               }
             })(),
             demoCover: demoCoverState,
+            tradeClock: (() => {
+              try {
+                return tradeClockProbe();
+              } catch (err) {
+                return "probe failed: " + (err && err.message ? err.message : err);
+              }
+            })(),
             accountBlock: (() => {
               try {
                 return typeof document.elementsFromPoint === "function" ? accountBlockProbe() : "no elementsFromPoint";
