@@ -376,3 +376,40 @@ test("MTF: an empty walk does not claim the pair was filled (v1.53.0)", async ()
     qx.close();
   }
 });
+
+test("MTF: a chart that already holds a few bars still waits for the timeframe's history (v1.74.3)", async () => {
+  // Seen live: after a fill, 5M held 3 of 39 bars. It already had those 3 - folded from the 1m the panel
+  // collects as you watch - and the walk counted them as arrived: three quiet polls, under half a second,
+  // ended the wait before Quotex had switched the chart and sent its 5m history. Here Quotex takes 700 ms.
+  const now = Math.floor(Date.now() / 1000);
+  const thin = { candles: rows(3, 300, Math.floor(now / 300) * 300), capturedAt: now, periodSeconds: 300 };
+  const cache = { v: 2, symbols: { USDDZD_otc: { "USDDZD_otc@300": thin } } };
+  const store = quotexStore();
+  store.__candles = makeCandles(200, 60);
+  const setup = (w) => {
+    const bar = w.document.createElement("div");
+    bar.innerHTML =
+      '<div class="HgaSf">1m</div><div class="kCc27"><div class="Dy2a9">1m</div><div class="Dy2a9">5m</div><div class="Dy2a9">15m</div></div>';
+    w.document.body.appendChild(bar);
+    for (const item of bar.querySelectorAll(".Dy2a9")) {
+      item.addEventListener("click", () => {
+        const sec = { "1m": 60, "5m": 300, "15m": 900 }[item.textContent];
+        w.setTimeout(() => (store.__plot.pointsManager.candles = makeCandles(200, sec)), 700);
+      });
+    }
+  };
+  const qx = await boot({
+    storage: { ...bigTfStorage, __tradeCalc_mtf_tfs: JSON.stringify(["1m", "5m"]), __tradeCalc_mtf_cache: JSON.stringify(cache) },
+    store,
+    setup,
+  });
+  try {
+    await sleep(11000); // the pair settles (3 s), then the walk visits 1m and 5m and comes back
+    const saved = JSON.parse(pref(qx, "__tradeCalc_mtf_cache") || "{}");
+    const five = saved.symbols && saved.symbols.USDDZD_otc && saved.symbols.USDDZD_otc["USDDZD_otc@300"];
+    const have = five && five.candles ? five.candles.length : 0;
+    assert.ok(have >= 150, "5m got its history, not the 3 bars it started with: " + have);
+  } finally {
+    qx.close();
+  }
+});

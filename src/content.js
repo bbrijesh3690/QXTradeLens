@@ -6929,16 +6929,23 @@
           quiet = 0;
         const step = () => {
           pullChartSnapshot();
+          // v1.74.3: nothing counts until the chart is really on this timeframe. Seen live: after a fill, 5M
+          // held 3 of 39 bars - the 3 it already had, folded from the 1m collected as you watch. Those counted
+          // as arrived, so three quiet polls (under half a second) ended the wait before Quotex had switched
+          // the chart and sent the timeframe's history.
+          const onIt = mtfChartSec === tfSec;
           const entry = mtfSymbol && mtfEntries[mtfSymbol + "@" + tfSec];
           const have = entry && entry.candles ? entry.candles.length : 0;
-          if (have > most) {
+          if (!onIt) {
+            quiet = 0;
+          } else if (have > most) {
             most = have;
             quiet = 0;
           } else {
             quiet++;
           }
-          // Three quiet polls is the platform saying it has finished with this timeframe.
-          if ((have > 0 && quiet >= 3) || Date.now() > deadline) {
+          // Three quiet polls on the timeframe is the platform saying it has finished with it.
+          if ((onIt && have > 0 && quiet >= 3) || Date.now() > deadline) {
             done();
             return;
           }

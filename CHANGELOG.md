@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.74.3] - 2026-09-28
+
+### Fixed
+- **A chart that already holds a few bars now gets its full history from the fill.** Seen live: after the
+  pair was filled, the 5M chart showed "3/39 bars". The walk switches the chart to each timeframe and waits
+  until Quotex stops sending candles - three quiet polls, 150 ms apart. But it counted the bars the panel
+  already had: 5M held 3, folded from the 1m it collects as you watch, so the three quiet polls passed in under
+  half a second, before Quotex had even switched the chart, and the walk moved on with those 3. Now nothing
+  counts until the chart is really on that timeframe. The spec puts a 700 ms delay on Quotex's switch, as a
+  real page has: 3 bars on 1.74.2, the full 200 on 1.74.3.
+
 ## [1.74.2] - 2026-09-28
 
 ### Fixed
