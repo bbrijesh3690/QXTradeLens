@@ -5,6 +5,13 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.72.3] - 2026-09-28
+
+### Changed
+- **The ⚙ and 📊 buttons sit in the middle of the bar's height**, halfway between the labels and the values,
+  level with the version text and the grip dots. 1.71.0 had put them on the value row, which read as out of
+  line with the rest of the bar's right end. Checked by eye on a local copy of the page.
+
 ## [1.72.2] - 2026-09-28
 
 ### Fixed
