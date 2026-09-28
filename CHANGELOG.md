@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.75.1] - 2026-09-28
+
+### Changed
+- **Auto-open opens OTC pairs only** (requested). Both of its paths - refilling the board after a close, and
+  opening one when every pair is below the floor - now pick only from OTC pairs, even when a regular pair pays
+  more; with no OTC pair clearing the floor, nothing is opened. OTC is recognised three ways, so no single one
+  going missing lets a regular pair through: the platform's own flag, "(OTC)" in the name, and the `_otc`
+  ending of the symbol. When it has to fall back to the asset list's rows, only rows named OTC count. The R
+  hotkey already opened OTC pairs only. The diagnostics line's `autoOpen` says "OTC" in its reasons.
+
+### Tests
+- A regular pair paying 96% beside an OTC pair at 93%: the OTC one is opened. Only a regular pair clearing the
+  floor: nothing is opened. Both fail on 1.75.0.
+
 ## [1.75.0] - 2026-09-28
 
 ### Fixed

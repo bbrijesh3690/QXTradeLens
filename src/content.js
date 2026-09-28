@@ -5226,6 +5226,10 @@
     }
     // The best instrument the platform says is worth opening: active, at or above the floor, not already
     // open. Ties go to the first name alphabetically so the choice is the same on every tab.
+    // v1.75.1: auto-open opens OTC pairs only (requested) - with none clearing the floor it opens nothing.
+    // OTC is read three ways, so no one of them going missing lets a regular pair through: the platform's own
+    // flag, the "(OTC)" in the name, and the "_otc" ending of the symbol.
+    const isOtcAsset = (a, symbol) => !!(a && (a.isOtc === 1 || a.isOtc === true || /\botc\b/i.test(a.label || ""))) || /_otc$/i.test(symbol || "");
     function bestAssetAboveFloor(min) {
       const assets = readQuotexAssets();
       if (!assets) {
@@ -5235,7 +5239,7 @@
       let best = null;
       for (const symbol in assets) {
         const a = assets[symbol];
-        if (!a || !a.active || a.payout == null || !(a.payout >= min)) {
+        if (!a || !a.active || a.payout == null || !(a.payout >= min) || !isOtcAsset(a, symbol)) {
           continue;
         }
         const norm = normKey(a.label || symbol);
@@ -5297,18 +5301,18 @@
         }
       }, 12000);
       const wanted = bestAssetAboveFloor(min);
-      autoOpenReason = wanted ? "opening " + wanted.label + " at " + wanted.payout + "%" : "looking for a pair above " + min + "%";
+      autoOpenReason = wanted ? "opening " + wanted.label + " at " + wanted.payout + "%" : "looking for an OTC pair above " + min + "%";
       ensureAssetDropdown(0, () => {
         const rows = getAssetChoices(),
           open = new Set(getPairTabs().map((t) => normKey(getTabName(t)))),
           pick =
             (wanted && rows.find((r) => r.norm === wanted.norm)) ||
             rows
-              .filter((r) => !isNaN(r.payout) && r.payout >= min && !open.has(r.norm))
+              .filter((r) => /\botc\b/i.test(r.name) && !isNaN(r.payout) && r.payout >= min && !open.has(r.norm))
               .sort((a, b) => b.payout - a.payout || a.name.localeCompare(b.name))[0],
           target = pick && (pick.click || pick.row);
         if (!target || !target.isConnected) {
-          autoOpenReason = "nothing in the asset list clears " + min + "%";
+          autoOpenReason = "no OTC pair in the asset list clears " + min + "%";
           autoOpenFill = false;
           autoOpenFinish();
           return;
@@ -5361,7 +5365,7 @@
         const next = bestAssetAboveFloor(min);
         if (!next) {
           autoOpenFill = false;
-          return stop("every pair at or above " + min + "% is already open");
+          return stop("every OTC pair at or above " + min + "% is already open");
         }
         autoOpenReason = "refilling the board - " + next.label + " at " + next.payout + "%";
         return autoOpenBetterPair(min);

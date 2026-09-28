@@ -801,3 +801,50 @@ test("payout floor: in the source, only the box's own save routine reads what is
   assert.equal(reads.length, 1, "reads of the box: " + reads.map((l) => l.trim()).join(" | "));
   assert.match(reads[0], /minPayoutInput\.value\.replace\(/, "and it is the save routine parsing the box");
 });
+
+// ── v1.75.1: auto-open opens OTC pairs only ─────────────────────────────────────────────────────────
+function otcOnlyPage(withOtc) {
+  const row = (name, pct, id) =>
+    '<div class="R2Rgm" id="' + id + '"><div class="teoXG">' + name + '</div><div class="mQX6T">' + pct + ' %</div></div>';
+  return FIXTURE.replace('<div class="ElyTP">91 %</div>', '<div class="ElyTP">70 %</div>')
+    .replace('<span class="UI2Kh">91 %</span>', '<span class="UI2Kh">70 %</span>')
+    .replace(
+      '<div id="graph">',
+      '<div id="asset-select-dropdown">' + row("GBP/USD", 96, "rowGbpUsd") + (withOtc ? row("AUD/CAD (OTC)", 93, "rowAud") : "") + '</div><div id="graph">',
+    );
+}
+function otcOnlyStore(withOtc) {
+  const store = quotexStore({ payout: 70 });
+  store.assets.assetBySymbol.GBPUSD = { symbol: "GBPUSD", label: "GBP/USD", payout: 96, is_otc: 0, active: true };
+  if (withOtc) store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  return store;
+}
+const recordClicks = (clicked, ids) => (w) =>
+  ids.forEach((id) => {
+    const el = w.document.getElementById(id);
+    if (el) el.addEventListener("click", (e) => clicked.push(e.currentTarget.id));
+  });
+
+test("auto-open: an OTC pair is opened even when a regular pair pays more (v1.75.1)", async () => {
+  const clicked = [];
+  const qx = await boot({ html: otcOnlyPage(true), store: otcOnlyStore(true), setup: recordClicks(clicked, ["rowGbpUsd", "rowAud"]) });
+  try {
+    await sleep(7000);
+    assert.ok(clicked.includes("rowAud"), "AUD/CAD (OTC) was opened: " + clicked.join(","));
+    assert.ok(!clicked.includes("rowGbpUsd"), "GBP/USD, not OTC, was not - though it pays 96%");
+  } finally {
+    qx.close();
+  }
+});
+
+test("auto-open: with only a regular pair clearing the floor, nothing is opened (v1.75.1)", async () => {
+  const clicked = [];
+  const qx = await boot({ html: otcOnlyPage(false), store: otcOnlyStore(false), setup: recordClicks(clicked, ["rowGbpUsd"]) });
+  try {
+    await sleep(7000);
+    assert.deepEqual(clicked, [], "GBP/USD was not opened");
+    assert.match(String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").autoOpen), /OTC/);
+  } finally {
+    qx.close();
+  }
+});
