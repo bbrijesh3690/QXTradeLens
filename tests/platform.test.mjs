@@ -984,3 +984,68 @@ test("self-healing: the win/loss preview still sits above renamed Up / Down butt
     qx.close();
   }
 });
+
+// ── v1.77.0: self-healing, step 2 - the pair list, its "+", the timeframe button, middle-click ──────
+test("self-healing: auto-open works with the pair list and its + renamed (v1.77.0)", async () => {
+  // No id and no known class on the list or on "+": the list is found as the block of asset rows, and "+"
+  // as the plus sign beside the pair tabs.
+  const store = quotexStore({ payout: 70 });
+  store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  const html = FIXTURE.replace('<div class="ElyTP">91 %</div>', '<div class="ElyTP">70 %</div>')
+    .replace('<span class="UI2Kh">91 %</span>', '<span class="UI2Kh">70 %</span>')
+    .replace('<div class="Q02Z1">', '<div class="Q02Z1"></div><button class="xP4qa" id="plus">+</button><div class="Hm2vT">');
+  const events = [];
+  const setup = (w) => {
+    const rect = w.Element.prototype.getBoundingClientRect;
+    w.Element.prototype.getBoundingClientRect = function () {
+      if (this.classList && (this.classList.contains("zL8kq") || this.classList.contains("rT5wy"))) {
+        return { left: 10, top: 60, width: 300, height: 40, right: 310, bottom: 100, x: 10, y: 60 };
+      }
+      return rect.call(this);
+    };
+    w.document.getElementById("plus").addEventListener("click", () => {
+      if (w.document.querySelector(".zL8kq")) return;
+      events.push("opened list");
+      const list = w.document.createElement("div");
+      list.className = "zL8kq";
+      const row = (name, pct, id) => '<div class="rT5wy" id="' + id + '"><span>' + name + "</span><b>" + pct + " %</b></div>";
+      list.innerHTML = row("EUR/USD (OTC)", 70, "rEur") + row("GBP/JPY (OTC)", 71, "rGbp") + row("AUD/CAD (OTC)", 93, "rAud") + '<button aria-label="Close">x</button>';
+      w.document.getElementById("graph").before(list);
+      list.querySelector('[aria-label="Close"]').addEventListener("click", () => {
+        events.push("closed list");
+        list.remove();
+      });
+      w.document.getElementById("rAud").addEventListener("click", () => {
+        if (events.includes("picked AUD/CAD")) return;
+        events.push("picked AUD/CAD");
+        const tab = w.document.createElement("div");
+        tab.className = "dJ15T vXMlv";
+        tab.setAttribute("data-symbol", "AUDCAD_otc");
+        tab.innerHTML = '<div class="WRocw">AUD/CAD (OTC)</div><div class="ElyTP">93 %</div>';
+        w.document.querySelector(".Hm2vT").appendChild(tab);
+      });
+    });
+  };
+  const qx = await boot({ html, store, setup });
+  try {
+    await sleep(10000);
+    assert.ok(events.includes("opened list") && events.includes("picked AUD/CAD"), "the renamed list was opened and used: " + events.join(", "));
+    assert.equal(qx.window.document.querySelector(".zL8kq"), null, "and closed after");
+  } finally {
+    qx.close();
+  }
+});
+
+test("self-healing: middle-click closes a pair tab whose class was renamed (v1.77.0)", async () => {
+  const html = FIXTURE.replace('<div class="dJ15T vXMlv" id="tab-active" data-symbol="USDDZD_otc">', '<div class="kW3nb" id="tab-active" data-symbol="USDDZD_otc"><button aria-label="Close" id="closeMe">x</button>');
+  const qx = await boot({ html });
+  try {
+    let closed = 0;
+    qx.window.document.getElementById("closeMe").addEventListener("click", () => closed++);
+    const tabName = qx.window.document.querySelector(".WRocw");
+    tabName.dispatchEvent(new qx.window.MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
+    assert.equal(closed, 1, "its close button was pressed");
+  } finally {
+    qx.close();
+  }
+});

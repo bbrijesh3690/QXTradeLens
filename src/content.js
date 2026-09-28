@@ -286,6 +286,7 @@
         timeframeItem: [".Dy2a9", ".blYud"],
         historyRow: [".ib6yR", ".SDEZP"],
         assetDropdown: ["#asset-select-dropdown", ".a_IoG", ".yejPg", ".nu9IG"],
+        assetAddButton: ["#asset-select--button button", "#asset-select--button"],
         assetRow: [".vPvlJ", ".R2Rgm", ".fZEV1"],
         assetRowName: [".e4qZ6 span", ".Z2fyK", ".pC7xL"],
         assetRowPayout: [".mQX6T span", ".bQodW span", ".dkV9n span"],
@@ -438,6 +439,7 @@
       } catch (t) {}
       return out;
     }
+    let assetListLookAt = 0;
     const SEMANTIC_FINDERS = {
       // The balance sits next to the "Live Account" / "Demo Account" label.
       balance: () => {
@@ -484,6 +486,73 @@
         return null;
       },
       tradeButtons: () => getTradeButtons()[0] || null,
+      // v1.77.0 (self-healing, step 2): the pair list - the block holding several asset rows (a pair name and
+      // a payout %) that is not the pair tabs, the chart or the trade buttons. A full walk of the page, so it
+      // runs at most every 1.5 s, or every 150 ms for the 5 s after "+" was pressed.
+      assetDropdown: () => {
+        const now = Date.now(),
+          busy = now - lastPlusAt < 5000;
+        if (now - assetListLookAt < (busy ? 150 : 1500)) {
+          return null;
+        }
+        assetListLookAt = now;
+        const tabs = getPairTabs(),
+          avoid = [...tabs, document.getElementById("graph"), tradeButtonsBlock()].filter(Boolean);
+        const rows = [];
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let n = walker.nextNode(); n && rows.length < 60; n = walker.nextNode()) {
+          if (!/\d{2,3}\s*%/.test(n.textContent || "")) {
+            continue;
+          }
+          for (let el = n.parentElement, hop = 0; el && hop < 4; el = el.parentElement, hop++) {
+            if (PAIR_TEXT_RE.test(el.textContent || "")) {
+              // A row is small: a pair and its payout, never a block holding the tabs, chart or buttons.
+              const small = (el.textContent || "").length <= 120 && !avoid.some((a) => el.contains(a));
+              if (small && !isOurElement(el) && !avoid.some((a) => a.contains(el)) && !rows.includes(el)) {
+                rows.push(el);
+              }
+              break;
+            }
+          }
+        }
+        if (rows.length < 3) {
+          return null;
+        }
+        let box = rows[0].parentElement;
+        while (box && box !== document.body && !rows.every((r) => box.contains(r))) {
+          box = box.parentElement;
+        }
+        return box && box !== document.body && !avoid.some((a) => box.contains(a)) ? box : null;
+      },
+      // The "+" that opens the pair list: its plus icon, else a small control beside the pair tabs showing a
+      // plus sign or a plus icon.
+      assetAddButton: () => {
+        const clickable = (el) => el && (el.closest("button, [role='button']") || el);
+        const icon = document.querySelector('svg.icon-plus, svg[class*="icon-plus"], use[href*="plus"], use[xlink\\:href*="plus"]');
+        if (icon && !isOurElement(icon) && !icon.closest(".deal-amount-input")) {
+          return clickable(icon);
+        }
+        const tabs = getPairTabs();
+        const bar = tabs.length && tabs[0].parentElement && tabs[0].parentElement.parentElement;
+        if (!bar) {
+          return null;
+        }
+        return (
+          Array.from(bar.querySelectorAll("button, [role='button'], div, span")).find(
+            (el) => !tabs.some((t) => t.contains(el)) && el.children.length <= 1 && /^\+$/.test(textOf(el)),
+          ) || null
+        );
+      },
+      // The button that opens the timeframe menu: the one element on the page showing a single timeframe
+      // label ("1m", "15s") - the open menu shows several side by side, and is not it.
+      timeframeCTA: () => {
+        const labels = leafMatches(document, TF_LABEL_RE, isVisible).filter((el) => !isOurElement(el));
+        const lone = labels.find((el) => {
+          const siblings = el.parentElement ? Array.from(el.parentElement.children).filter((c) => TF_LABEL_RE.test(textOf(c))) : [];
+          return siblings.length < 3;
+        });
+        return lone ? lone.closest("button, [role='button']") || lone : null;
+      },
       amountInput: () => {
         const legend = Array.from(document.querySelectorAll("legend")).find((el) => textOf(el).toLowerCase() === "investment");
         const field = legend && legend.closest("fieldset");
@@ -1860,7 +1929,7 @@
               if (n - tabStripBottomCache.ts < 500) {
                 return tabStripBottomCache.val;
               }
-              const o = document.querySelectorAll(".dJ15T, .pPomf");
+              const o = getPairTabs();
               let r = 0;
               for (let n = 0; n < o.length; n++) {
                 const a = o[n].getBoundingClientRect();
@@ -2283,7 +2352,7 @@
     };
     window.__tcMiddleClickClose = (t) => {
       if (t.button === 1) {
-        const e = t.target.closest(".dJ15T") || t.target.closest(".pPomf");
+        const e = getPairTabs().find((tab) => tab.contains(t.target)); // v1.77.0: the tab finder that heals
         if (e) {
           const n = getTabCloseBtn(e);
           if (n) {
@@ -3995,10 +4064,9 @@
     function getTimeframeButton() {
       if (!window._tcTimeBtnCache || !window._tcTimeBtnCache.isConnected) {
         const t = Array.from(document.querySelectorAll(".HgaSf"));
+        // v1.77.0: then a remembered name, then the lone timeframe label on the page (SEMANTIC_FINDERS).
         window._tcTimeBtnCache =
-          t.find((t) => TF_LABEL_RE.test((t.textContent || "").trim())) ||
-          t[0] ||
-          document.querySelector(".M6Rz0 .Wy5Or");
+          t.find((t) => TF_LABEL_RE.test((t.textContent || "").trim())) || t[0] || findEl("timeframeCTA", { cache: false });
       }
       return window._tcTimeBtnCache;
     }
@@ -4042,7 +4110,11 @@
         return normLabel(t.textContent);
       }
       const e = document.querySelector(".NDbAT");
-      return e ? normLabel(e.textContent) : "";
+      if (e) {
+        return normLabel(e.textContent);
+      }
+      const b = getTimeframeButton();
+      return b && TF_LABEL_RE.test(textOf(b)) ? normLabel(textOf(b)) : "";
     }
     function selectTimeframe(t, e) {
       const n = getTimeframeButton();
@@ -4859,25 +4931,13 @@
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Asset dropdown automation (OTC rebuild `R`, close tabs)
     // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // v1.77.0: known names, then a remembered one, then the block of asset rows (SEMANTIC_FINDERS).
     function getAssetDropdown() {
-      return (
-        document.querySelector("#asset-select-dropdown") ||
-        document.querySelector(".a_IoG") ||
-        document.querySelector(".yejPg") ||
-        document.querySelector(".nu9IG")
-      );
+      return findEl("assetDropdown", { cache: false });
     }
+    // v1.77.0: known names, then a remembered one, then its plus icon or a "+" beside the pair tabs.
     function getAssetAddButton() {
-      const t = (t) => {
-        const e = document.querySelector(t);
-        return e && e.closest("button");
-      };
-      return (
-        document.querySelector("#asset-select--button button") ||
-        document.querySelector("#asset-select--button") ||
-        t("#trade-page-content svg.icon-plus") ||
-        t("svg.icon-plus")
-      );
+      return findEl("assetAddButton", { cache: false });
     }
     // v1.72.4: reported live - after auto-open picked a pair, the pair list stayed open. The list was found
     // for opening by any of its names (getAssetDropdown), but "is it open?" and the close button were looked
@@ -5111,16 +5171,14 @@
       }
       let e = resolveList("assetRows", t, [".R2Rgm", ".vPvlJ", ".fZEV1"], () => []);
       if (!e.length) {
-        e = Array.from(t.querySelectorAll("*")).filter((t) => {
-          const e = t.textContent || "";
-          return (
-            !(!/[A-Z]{3}\/[A-Z]{3}/.test(e) || !/\d+%/.test(e)) &&
-            !Array.from(t.children).some((t) => {
-              const e = t.textContent || "";
-              return /[A-Z]{3}\/[A-Z]{3}/.test(e) && /\d+%/.test(e);
-            })
-          );
-        });
+        // v1.77.0: a row is the smallest block holding an asset name and a payout. The name is a pair
+        // (ABC/XYZ) or anything marked OTC - so crypto and stock rows ("Toncoin (OTC)") count - and the payout
+        // may have a space before its % sign.
+        const isRow = (el) => {
+          const text = el.textContent || "";
+          return PAIR_TEXT_RE.test(text) && /\d{2,3}\s*%/.test(text);
+        };
+        e = Array.from(t.querySelectorAll("*")).filter((el) => isRow(el) && !Array.from(el.children).some(isRow));
       }
       return e;
     }

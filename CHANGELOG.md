@@ -5,6 +5,29 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.77.0] - 2026-09-28
+
+Self-healing, step 2.
+
+### Fixed
+- **Auto-open, R and Q find Quotex's pair list and its "+" button after a rename.** Both were known by fixed
+  names only. Each now goes through the self-repairing finder - known names, then a remembered one, then by
+  what it is - and remembers what worked: the list as the block holding several asset rows (a name and a
+  payout %) that is not the tabs, the chart or the trade buttons; "+" by its plus icon, or as a "+" beside the
+  pair tabs.
+- **Asset rows are recognised by what they are more widely**: a name marked OTC counts, not only ABC/XYZ
+  pairs - so crypto and stock rows like "Toncoin (OTC)" are rows - and a payout may have a space before %.
+- **The timeframe button (S/D keys, the chart fill) is found after a rename** - as the one lone timeframe
+  label on the page ("1m"); the open menu shows several side by side and is not it. The chart's own
+  timeframe falls back to that button's label too.
+- **Middle-click closes a pair tab after a rename** - it used the tabs' fixed class names; it now uses the
+  tab finder that already heals. So does the bar's keep-off-the-tabs nudge.
+
+### Tests
+- The pair list and "+" with names the panel has never seen: auto-open opens the pair and closes the list. The
+  timeframe button and menu renamed: the chart fill still collects 5m's history. A renamed pair tab: middle-
+  click still closes it. All fail on 1.76.0.
+
 ## [1.76.0] - 2026-09-28
 
 Self-healing, step 1 of the audit (every feature checked for what happens when Quotex renames its markup).
