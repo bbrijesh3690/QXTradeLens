@@ -5170,7 +5170,8 @@
     // The list appearing and going, whoever does it - the platform, the user, or this panel. `assetListOpenSince`
     // is when it last appeared, so a closing step can tell a list that has settled open from one in motion.
     let assetListWasOpen = false,
-      assetListOpenSince = 0;
+      assetListOpenSince = 0,
+      lastPlusAt = 0;
     every(250, () => {
       const open = isAssetDropdownOpen();
       if (open !== assetListWasOpen) {
@@ -5202,6 +5203,7 @@
           const t = getAssetAddButton();
           if (!(!t || t.closest(".deal-amount-input") || t.closest("#__tradeCalc"))) {
             noteAsset("pressed + to open the list");
+            lastPlusAt = Date.now();
             synthClick(t);
           }
         }
@@ -5287,6 +5289,20 @@
     // OTC is read three ways, so no one of them going missing lets a regular pair through: the platform's own
     // flag, the "(OTC)" in the name, and the "_otc" ending of the symbol.
     const isOtcAsset = (a, symbol) => !!(a && (a.isOtc === 1 || a.isOtc === true || /\botc\b/i.test(a.label || ""))) || /_otc$/i.test(symbol || "");
+    // v1.75.4: read live - the refill wanted Toncoin (OTC), a crypto pair, while Quotex's list was showing
+    // another category, so there was nothing to click; it opened the list for it again on the next close. A
+    // pair that was not in the list when it was open is left out for 10 minutes (the list may show its
+    // category by then), and the best OTC pair that IS in the list is opened instead.
+    const UNREACHABLE_MS = 600000;
+    const unreachablePairs = new Map();
+    const isUnreachable = (norm) => {
+      const at = unreachablePairs.get(norm);
+      if (at && Date.now() - at < UNREACHABLE_MS) {
+        return true;
+      }
+      unreachablePairs.delete(norm);
+      return false;
+    };
     function bestAssetAboveFloor(min) {
       const assets = readQuotexAssets();
       if (!assets) {
@@ -5300,7 +5316,7 @@
           continue;
         }
         const norm = normKey(a.label || symbol);
-        if (!norm || open.has(norm)) {
+        if (!norm || open.has(norm) || isUnreachable(norm)) {
           continue;
         }
         if (!best || a.payout > best.payout || (a.payout === best.payout && norm < best.norm)) {
@@ -5362,8 +5378,12 @@
       noteAsset("auto-open" + (autoOpenFill ? " (refill after a close)" : "") + ": " + autoOpenReason);
       ensureAssetDropdown(0, () => {
         const rows = getAssetChoices(),
-          open = new Set(getPairTabs().map((t) => normKey(getTabName(t)))),
-          pick =
+          open = new Set(getPairTabs().map((t) => normKey(getTabName(t))));
+        if (wanted && !rows.some((r) => r.norm === wanted.norm)) {
+          unreachablePairs.set(wanted.norm, Date.now());
+          noteAsset(wanted.label + " is not in the list shown - left out for 10 min");
+        }
+        const pick =
             (wanted && rows.find((r) => r.norm === wanted.norm)) ||
             rows
               .filter((r) => /\botc\b/i.test(r.name) && !isNaN(r.payout) && r.payout >= min && !open.has(r.norm))
@@ -5471,7 +5491,18 @@
         }
         waitUntil(() => !isAssetDropdownOpen(), 100, 400, e);
       };
-      waitUntil(() => !isAssetDropdownOpen(), 100, 600, e);
+      const start = () => waitUntil(() => !isAssetDropdownOpen(), 100, 600, e);
+      // v1.75.4: read live - auto-open pressed "+", found nothing to pick and closed within half a second,
+      // before the list had finished opening: the close saw nothing open and stopped, the list then arrived
+      // and stayed open (and, while open, kept auto-open away). A list "+" was pressed for in the last 2 s is
+      // now waited for, and closed once it is there.
+      const sincePlus = Date.now() - lastPlusAt;
+      if (sincePlus < 2000 && !isAssetDropdownOpen()) {
+        noteAsset("close waits for the list it opened");
+        waitUntil(() => isAssetDropdownOpen(), 100, 2000 - sincePlus, start);
+      } else {
+        start();
+      }
     }
     if (typeof chrome != "undefined" && chrome.storage && chrome.storage.sync) {
       chrome.storage.sync.get(

@@ -896,3 +896,46 @@ test("auto-open: every step with the pair list is on the diagnostics line, with 
     qx.close();
   }
 });
+
+test("auto-open: a list that is still opening when auto-open gives up is closed once it is there (v1.75.4)", async () => {
+  // Read live on 1.75.3 (assetLog): the refill wanted Toncoin (OTC), pressed +, found nothing to pick and ran
+  // its close within half a second - before the list was on screen. The close saw nothing open, the list then
+  // arrived and stayed open. Here the list's rows are in the page at once but it becomes visible 400 ms later,
+  // and Toncoin is not in it (Quotex shows one category at a time).
+  const store = quotexStore({ payout: 70 });
+  store.assets.assetBySymbol.TONUSD_otc = { symbol: "TONUSD_otc", label: "Toncoin (OTC)", payout: 93, is_otc: 1, active: true };
+  const row = (name, pct, id) =>
+    '<div class="R2Rgm" id="' + id + '"><div class="teoXG">' + name + '</div><div class="mQX6T">' + pct + ' %</div></div>';
+  const html = FIXTURE.replace('<div class="ElyTP">91 %</div>', '<div class="ElyTP">70 %</div>')
+    .replace('<span class="UI2Kh">91 %</span>', '<span class="UI2Kh">70 %</span>')
+    .replace('<div id="graph">', '<div id="asset-select--button"><button id="plus">+</button></div><div id="graph">');
+  const setup = (w) => {
+    const rect = w.Element.prototype.getBoundingClientRect;
+    w.Element.prototype.getBoundingClientRect = function () {
+      if (this.classList && (this.classList.contains("a_IoG") || this.classList.contains("R2Rgm"))) {
+        return { left: 10, top: 60, width: 300, height: 40, right: 310, bottom: 100, x: 10, y: 60 };
+      }
+      return rect.call(this);
+    };
+    w.document.getElementById("plus").addEventListener("click", () => {
+      if (w.document.querySelector(".a_IoG")) return;
+      const list = w.document.createElement("div");
+      list.className = "a_IoG";
+      list.style.opacity = "0"; // on its way in
+      list.innerHTML = row("EUR/USD (OTC)", 70, "rowEur") + '<button aria-label="Close">x</button>';
+      w.document.getElementById("graph").before(list);
+      w.setTimeout(() => (list.style.opacity = "1"), 400);
+      list.querySelector('[aria-label="Close"]').addEventListener("click", () => list.remove());
+    });
+  };
+  const qx = await boot({ html, store, setup });
+  try {
+    await sleep(9000);
+    assert.equal(qx.window.document.querySelector(".a_IoG"), null, "the list is not left open");
+    const log = String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").assetLog);
+    assert.ok(log.includes("Toncoin (OTC) is not in the list shown"), log);
+    assert.ok(log.includes("close waits for the list it opened"), log);
+  } finally {
+    qx.close();
+  }
+});

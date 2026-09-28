@@ -5,6 +5,27 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.75.4] - 2026-09-28
+
+### Fixed
+- **Read from the live page with the 1.75.3 log, two refills a few seconds after a pair was closed:**
+  - **The close ran before the list was on screen, and left it open.** Auto-open pressed "+", found nothing
+    to pick and ran its close within half a second - while the list was still arriving. The close saw
+    nothing open and stopped; the list then appeared and stayed open, which also held auto-open off ("the
+    asset list is open"). A list "+" was pressed for in the last 2 s is now waited for, and closed once it is
+    there.
+  - **The refill kept opening the list for a pair it could not click.** It wanted Toncoin (OTC) - a crypto
+    pair, the best OTC payout - while Quotex's list was showing another category, so the pair was not there
+    to click, and every close brought the list up again for it. A pair that is not in the list when it is open
+    is now left out for 10 minutes, and the best OTC pair that is in the list is opened instead (or nothing,
+    if none clears the floor).
+- `assetLog` records both: `close waits for the list it opened`, and `Toncoin (OTC) is not in the list shown -
+  left out for 10 min`.
+
+### Tests
+- A list whose rows are on the page at once but which becomes visible 400 ms later, without the wanted pair:
+  on 1.75.3 it is left open, as seen live; on 1.75.4 it is closed and both steps are in the log.
+
 ## [1.75.3] - 2026-09-28
 
 ### Added
