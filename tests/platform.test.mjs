@@ -848,3 +848,51 @@ test("auto-open: with only a regular pair clearing the floor, nothing is opened 
     qx.close();
   }
 });
+
+test("auto-open: every step with the pair list is on the diagnostics line, with times (v1.75.3)", async () => {
+  // Reported live: the list opened again 2-3 s after it closed when auto-open ran. Two causes fit; the log
+  // says which after the next time it happens.
+  const store = quotexStore({ payout: 70 });
+  store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  const row = (name, pct, id) =>
+    '<div class="R2Rgm" id="' + id + '"><div class="teoXG">' + name + '</div><div class="mQX6T">' + pct + ' %</div></div>';
+  const html = FIXTURE.replace('<div class="ElyTP">91 %</div>', '<div class="ElyTP">70 %</div>')
+    .replace('<span class="UI2Kh">91 %</span>', '<span class="UI2Kh">70 %</span>')
+    .replace('<div id="graph">', '<div id="asset-select--button"><button id="plus">+</button></div><div id="graph">');
+  const setup = (w) => {
+    const rect = w.Element.prototype.getBoundingClientRect;
+    w.Element.prototype.getBoundingClientRect = function () {
+      if (this.classList && (this.classList.contains("a_IoG") || this.classList.contains("R2Rgm"))) {
+        return { left: 10, top: 60, width: 300, height: 40, right: 310, bottom: 100, x: 10, y: 60 };
+      }
+      return rect.call(this);
+    };
+    w.document.getElementById("plus").addEventListener("click", () => {
+      if (w.document.querySelector(".a_IoG")) return;
+      const list = w.document.createElement("div");
+      list.className = "a_IoG";
+      list.innerHTML = row("AUD/CAD (OTC)", 93, "rowAud");
+      w.document.getElementById("graph").before(list);
+      // As on the live page: picking a pair closes the list by itself.
+      w.document.getElementById("rowAud").addEventListener("click", () => {
+        const tab = w.document.createElement("div");
+        tab.className = "dJ15T vXMlv";
+        tab.setAttribute("data-symbol", "AUDCAD_otc");
+        tab.innerHTML = '<div class="WRocw">AUD/CAD (OTC)</div><div class="ElyTP">93 %</div>';
+        w.document.querySelector(".Q02Z1").appendChild(tab);
+        list.remove();
+      });
+    });
+  };
+  const qx = await boot({ html, store, setup });
+  try {
+    await sleep(9000);
+    const log = String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").assetLog);
+    for (const step of ["auto-open", "pressed + to open the list", "list appeared", "auto-open picked AUD/CAD (OTC)", "list went", "close: closed by itself"]) {
+      assert.ok(log.includes(step), "the log has \"" + step + "\": " + log);
+    }
+    assert.match(log, /\d+\.\ds ago: /, "with times");
+  } finally {
+    qx.close();
+  }
+});

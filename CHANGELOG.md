@@ -5,6 +5,28 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.75.3] - 2026-09-28
+
+### Added
+- **An `assetLog` field on the diagnostics line**: the last eight steps with the "select trade pair" list, each
+  with how long ago - auto-open looking (and whether it is a refill after a close), the "+" press that opened
+  the list, which pair it picked, the list appearing and going (whoever did it), each closing try, and how the
+  close ended. Reported live: the list opened again 2-3 s after it closed when auto-open ran. Two causes fit
+  and need opposite fixes - the refill opening the next qualifying pair (v1.62.0 opens them one at a time), or
+  a closing step re-opening a list that was already shutting - and no auto-open had run since the last refresh,
+  so there was nothing to read. Following the rule to check live data before changing logic, the refill is
+  left as it is until the log shows the cause.
+
+### Fixed
+- **The closing steps never press "+" on a list that is not settled open.** "+" opens the list as well as
+  closing it; it is now pressed only once the list has stayed open 1.5 s without a break and is not fading out,
+  so a list already on its way out cannot be opened again by our own click. Hardening - this was not reproduced;
+  the existing close specs still pass.
+
+### Tests
+- A list that closes itself when a pair is picked, as on the live page: the log records auto-open, the "+"
+  press, the list appearing, the pick, the list going and "closed by itself", with times. Fails on 1.75.2.
+
 ## [1.75.2] - 2026-09-28
 
 ### Fixed

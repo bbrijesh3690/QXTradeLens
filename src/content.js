@@ -5011,6 +5011,10 @@
         : "";
       return via + (t ? (isAssetDropdownOpen() ? " \u00b7 open" : " \u00b7 closed") : "") + closeNote;
     }
+    // v1.75.3: "+" opens the list as well as closing it, so it is pressed only once the list has settled -
+    // open for 1.5 s without a break. Before, a try could press it while the list was already on its way out,
+    // and the press opened it again.
+    const PLUS_ONLY_AFTER_MS = 1500;
     function closeAssetDropdownStep(t) {
       if (!isAssetDropdownOpen()) {
         return true;
@@ -5018,7 +5022,11 @@
       const e = getAssetDropdown(),
         n = e && e.querySelector('[aria-label="Close"]'),
         o = getAssetAddButton(),
-        r = o && !o.closest(".deal-amount-input") && !o.closest("#__tradeCalc");
+        r =
+          o && !o.closest(".deal-amount-input") && !o.closest("#__tradeCalc") &&
+          assetListWasOpen && Date.now() - assetListOpenSince >= PLUS_ONLY_AFTER_MS &&
+          !(e && parseFloat(getComputedStyle(e).opacity || "1") < 1); // not while it is fading out
+      noteAsset("close try " + t);
       if (t === 0 && n && !n.closest("#__tradeCalc")) {
         synthClick(n);
       } else if (t === 1 || t >= 4) {
@@ -5142,6 +5150,37 @@
     });
     window.__tradeCalcObs = pageObserver;
     let otcRebuildBusy = false;
+    // v1.75.3: reported live - the "select trade pair" list opened again 2-3 s after it closed, when auto-open
+    // ran. Two causes fit and need opposite fixes (the refill opening the next pair, or a closing step
+    // re-opening a list that was already shutting), so every step is written down here, with the time, and
+    // the diagnostics line carries the last eight. One read after it happens says which.
+    const assetEvents = [];
+    function noteAsset(what) {
+      assetEvents.push({ at: Date.now(), what });
+      if (assetEvents.length > 8) {
+        assetEvents.shift();
+      }
+    }
+    function assetLogDiag() {
+      const now = Date.now();
+      return assetEvents.length
+        ? assetEvents.map((e) => ((now - e.at) / 1000).toFixed(1) + "s ago: " + e.what).join(" | ")
+        : "nothing yet";
+    }
+    // The list appearing and going, whoever does it - the platform, the user, or this panel. `assetListOpenSince`
+    // is when it last appeared, so a closing step can tell a list that has settled open from one in motion.
+    let assetListWasOpen = false,
+      assetListOpenSince = 0;
+    every(250, () => {
+      const open = isAssetDropdownOpen();
+      if (open !== assetListWasOpen) {
+        assetListWasOpen = open;
+        if (open) {
+          assetListOpenSince = Date.now();
+        }
+        noteAsset(open ? "list appeared" : "list went");
+      }
+    });
     function waitUntil(t, e, n, o) {
       const r = Date.now(),
         a = () => {
@@ -5162,6 +5201,7 @@
         if (!isAssetDropdownOpen()) {
           const t = getAssetAddButton();
           if (!(!t || t.closest(".deal-amount-input") || t.closest("#__tradeCalc"))) {
+            noteAsset("pressed + to open the list");
             synthClick(t);
           }
         }
@@ -5319,6 +5359,7 @@
       }, 12000);
       const wanted = bestAssetAboveFloor(min);
       autoOpenReason = wanted ? "opening " + wanted.label + " at " + wanted.payout + "%" : "looking for an OTC pair above " + min + "%";
+      noteAsset("auto-open" + (autoOpenFill ? " (refill after a close)" : "") + ": " + autoOpenReason);
       ensureAssetDropdown(0, () => {
         const rows = getAssetChoices(),
           open = new Set(getPairTabs().map((t) => normKey(getTabName(t)))),
@@ -5334,6 +5375,7 @@
           autoOpenFinish();
           return;
         }
+        noteAsset("auto-open picked " + pick.name);
         synthClick(target);
         waitUntil(() => isPairTabOpen(pick.norm), 80, 800, autoOpenFinish);
       });
@@ -5418,6 +5460,7 @@
               at: Date.now(),
               what: isAssetDropdownOpen() ? "still open after " + t + " tries" : t ? "closed at try " + t : "closed by itself",
             };
+            noteAsset("close: " + lastAssetClose.what);
             otcRebuildBusy = false;
             return;
           }
@@ -8532,6 +8575,7 @@
             // all about the tab actually in front of someone.
             bar: barAnchor,
             assetList: assetListDiag(),
+            assetLog: assetLogDiag(),
             candleTimer: (() => {
               try {
                 return candleTimerProbe();
