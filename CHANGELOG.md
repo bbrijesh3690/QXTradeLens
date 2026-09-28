@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.82.0] - 2026-09-29
+
+Self-healing: the Entry tags, step 2 of 2 - the last item on the list.
+
+### Added
+- **The trade-history "Entry" tags survive a rename.** They found everything by Quotex's class names: the rows, the
+  pair, the amounts and the detail lines. The row's shape was read live on 1.80.4 - a pair "USD/BDT (OTC)", a time
+  "00:00:47" and a result "+572.83 ₹" - and the fallback is built from it: a row is a small block holding a pair
+  name, a time and an amount with pennies, outside the pair tabs, the chart and the trade panel; its pair is the
+  piece of text naming one; a detail line's label and value are its first and last pieces of text. The known names
+  are still tried first (all present on today's page, 4 of 4 rows tagged). The page walk runs at most once a
+  second, with one more look after the pause so a row that turned up meanwhile is not missed.
+- `historyRow` on the diagnostics line uses the same finder and says how the rows were found.
+
 ## [1.81.0] - 2026-09-29
 
 Self-healing: Quotex's data.

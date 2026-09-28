@@ -569,15 +569,38 @@ test("history: the diagnostics line carries the shape of a trade-history row (v1
   const qx = await boot({ storage: { ...slStorage(10000), __tradeCalc_trade_log: JSON.stringify(log) } });
   try {
     await sleep(2500); // the line is written every 2 s
-    assert.match(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").historyRow || "", /^no row by name/, "said plainly when there is none");
+    assert.match(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").historyRow || "", /^no row found/, "said plainly when there is none");
     const holder = qx.window.document.createElement("div");
     holder.innerHTML = historyRow("EUR/USD (OTC)", "100");
     qx.window.document.body.appendChild(holder);
     await sleep(2500);
     const line = JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").historyRow || "";
-    assert.match(line, /^1 rows · names present: ib6yR Fqtla RxOUE/, line);
+    assert.match(line, /^1 rows by class · names present: ib6yR Fqtla RxOUE/, line);
     assert.match(line, /tagged: 1/, "and how many carry a tag: " + line);
     assert.match(line, /div\.ib6yR -div\.RxOUE "EUR\/USD \(OTC\)" -div\.Fqtla "100"$/, "and the row's outline: " + line);
+  } finally {
+    qx.close();
+  }
+});
+
+test("self-healing: the Entry tag still lands on a trade-history row whose names are all renamed (v1.82.0)", async () => {
+  // The row as it was read live on 1.80.4 (caret, icons, pair, time, result), every class renamed.
+  const log = [{ uuid: null, ts: Date.now() - 30000, pair: "USD/BDT (OTC)", amount: 100, bal: 5000 }];
+  const qx = await boot({ storage: { ...slStorage(10000), __tradeCalc_trade_log: JSON.stringify(log) } });
+  try {
+    await sleep(400);
+    const holder = qx.window.document.createElement("div");
+    holder.innerHTML =
+      '<div class="k9Qa"><svg class="zCaret"></svg><div class="zIcons"></div><div class="p0Za">USD/BDT (OTC)</div>' +
+      '<div class="t1Mx">00:00:47</div><div class="r4Zz"><svg class="zArrow"></svg><div class="m8Qq">+572.83 ₹</div></div></div>';
+    qx.window.document.body.appendChild(holder);
+    await sleep(2000); // a page walk runs at most once a second
+    const row = holder.querySelector(".k9Qa");
+    const tag = [...row.querySelectorAll("*")].find((el) => /^Entry /.test(el.textContent || ""));
+    assert.ok(tag, "the row carries its entry balance: " + row.textContent);
+    assert.match(tag.textContent, /5,000/, tag.textContent);
+    const tab = qx.window.document.getElementById("tab-active");
+    assert.ok(![...tab.querySelectorAll("*")].some((el) => /^Entry /.test(el.textContent || "")), "and the pair tab is not taken for a row");
   } finally {
     qx.close();
   }

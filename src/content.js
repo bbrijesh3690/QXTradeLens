@@ -5050,37 +5050,82 @@
       });
       saveTradeLog();
     }
+    // v1.82.0: a detail line's label and value by name, else its first and last pieces of text.
     function readDetailField(t, e) {
       if (!t) {
         return "";
       }
       const n = t.querySelectorAll("li");
       for (let t = 0; t < n.length; t++) {
-        const o = n[t].querySelector(".AUfBG") || n[t].querySelector(".qWutN");
+        const leaves = Array.from(n[t].querySelectorAll("*")).filter((c) => c.children.length === 0 && textOf(c));
+        const o = n[t].querySelector(".AUfBG") || n[t].querySelector(".qWutN") || leaves[0];
         if (o && o.textContent.trim().toLowerCase().indexOf(e) === 0) {
-          const e = n[t].querySelector(".w3o70") || n[t].querySelector(".UFtUT");
+          const e = n[t].querySelector(".w3o70") || n[t].querySelector(".UFtUT") || (leaves.length > 1 ? leaves[leaves.length - 1] : null);
           return e ? e.textContent.trim() : "";
         }
       }
       return "";
     }
+    // v1.82.0 (self-healing): the trade-history rows - by name, else a remembered name, else by what a row shows
+    // (read live on 1.80.4: a pair "USD/BDT (OTC)", a time "00:00:47" and a result "+572.83 ₹"): a small block
+    // holding a pair name, a time and an amount with pennies, outside the pair tabs, the chart and the trade panel.
+    const MONEY_TEXT_RE = /\d[\d,]*\.\d{2}/;
+    let historyLook = { at: 0, rows: [] };
+    function getHistoryRows() {
+      return resolveList("historyRows", document, [".ib6yR", ".SDEZP"], (root) => {
+        // A walk of the page, and the page changes all the time: at most once a second.
+        if (Date.now() - historyLook.at < 1000) {
+          // ...and a row that turned up meanwhile is looked for again once the second is up.
+          if (!historyLook.again) {
+            historyLook.again = setTimeout(() => {
+              historyLook.again = 0;
+              onPageMutationsForHistory();
+            }, 1050);
+          }
+          return historyLook.rows.filter((r) => r.isConnected);
+        }
+        historyLook.at = Date.now();
+        const avoid = [...getPairTabs(), getChartBox(), tradeButtonsBlock()].filter(Boolean);
+        const rows = [];
+        for (const clock of leafMatches(root, CLOCK_ONLY_RE)) {
+          for (let el = clock.parentElement, hop = 0; el && hop < 4; el = el.parentElement, hop++) {
+            const text = textOf(el);
+            if (text.length > 120 || isOurElement(el) || avoid.some((a) => el.contains(a) || a.contains(el))) {
+              break;
+            }
+            if (PAIR_TEXT_RE.test(text) && MONEY_TEXT_RE.test(text)) {
+              if (!rows.includes(el)) {
+                rows.push(el);
+              }
+              break;
+            }
+          }
+        }
+        historyLook.rows = rows;
+        return rows;
+      });
+    }
     function tagHistoryEntryBalances() {
       // v1.68.0: always on. v1.66.0 removed this along with its popup switch; it was the switch that was
       // meant to go. The balance at entry is read from the trade log, which was never removed.
-      const t = document.querySelectorAll(".ib6yR, .SDEZP");
+      const t = getHistoryRows();
+      const byShape = listVia.historyRows !== "class";
       let e = false;
       for (let n = 0; n < t.length; n++) {
         const o = t[n],
           r = o.querySelector(".Fqtla"),
           a = o.querySelector(".O5xJP");
-        if (!r && !a) {
+        if (!r && !a && !byShape) {
           continue;
         }
         const i = a || o;
         if (i.querySelector("." + ids.tcPlacedBal)) {
           continue;
         }
-        const s = o.querySelector(".RxOUE") || o.querySelector(".glItV"),
+        const s =
+            o.querySelector(".RxOUE") ||
+            o.querySelector(".glItV") ||
+            Array.from(o.querySelectorAll("*")).find((c) => c.children.length === 0 && PAIR_TEXT_RE.test(textOf(c)) && textOf(c).length <= 30),
           l = s ? s.textContent.trim() : "";
         let d = NaN;
         if (r) {
@@ -5090,7 +5135,7 @@
             t = t.replace(e.textContent, "");
           }
           d = parseNum(t);
-        } else {
+        } else if (a) {
           const t = a.querySelector(".h6J0L");
           let e = t ? t.textContent : "";
           const n = t && t.querySelector(".B7WYW");
@@ -5099,7 +5144,7 @@
           }
           d = parseNum(e);
         }
-        const u = o.querySelector(".ow8Ej") || o.querySelector(".b98_V"),
+        const u = o.querySelector(".ow8Ej") || o.querySelector(".b98_V") || (byShape ? o : null),
           p = readDetailField(u, "id"),
           h = readDetailField(u, "open time"),
           f = h ? new Date(h.replace(" ", "T")).getTime() : NaN;
@@ -5142,11 +5187,11 @@
     // markup rather than a guess.
     const HISTORY_NAMES = ["ib6yR", "SDEZP", "Fqtla", "O5xJP", "RxOUE", "glItV", "lCITV", "h6J0L", "B7WYW", "ow8Ej", "b98_V", "AUfBG", "qWutN", "w3o70", "UFtUT"];
     function historyRowDiag() {
-      const rows = document.querySelectorAll(".ib6yR, .SDEZP");
+      const rows = getHistoryRows();
       const present = HISTORY_NAMES.filter((n) => document.querySelector("." + n));
       const row = rows[0];
       if (!row) {
-        return "no row by name · names present: " + (present.join(" ") || "none");
+        return "no row found · names present: " + (present.join(" ") || "none");
       }
       const parts = [];
       const walk = (el, depth) => {
@@ -5163,7 +5208,7 @@
         }
       };
       walk(row, 0);
-      return rows.length + " rows · names present: " + present.join(" ") + " · tagged: " + document.querySelectorAll("." + ids.tcPlacedBal).length + " · " + parts.join(" ");
+      return rows.length + " rows by " + (listVia.historyRows || "?") + " · names present: " + present.join(" ") + " · tagged: " + document.querySelectorAll("." + ids.tcPlacedBal).length + " · " + parts.join(" ");
     }
     window.__tcRecordPlacement = recordPlacement;
     let historyTagQueued = false;
