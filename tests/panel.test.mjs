@@ -606,6 +606,23 @@ test("self-healing: the Entry tag still lands on a trade-history row whose names
   }
 });
 
+test("mobile bar: gone - a phone-width window keeps the main panel, and the bar's stored position is cleared (v1.83.0)", async () => {
+  // The user trades on desktop and asked for it to go. It replaced the panel below 640 px.
+  const narrow = (w) => {
+    w.matchMedia = (q) => ({ matches: /max-width:\s*(640|900)px/.test(q), media: q, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
+  };
+  const qx = await boot({ setup: narrow, storage: { ...slStorage(10000), __tradeCalc_mobile_pos_v3: '{"left":10,"top":10}' } });
+  try {
+    await sleep(400);
+    assert.equal(qx.window.document.getElementById("__tcMobileBar"), null, "no mobile bar");
+    const panel = qx.panelRoot().getElementById("__tradeCalc") || qx.panelRoot().host;
+    assert.notEqual(panel.style.display, "none", "the main panel is shown");
+    assert.equal(pref(qx, "__tradeCalc_mobile_pos_v3"), null, "its stored position is cleared");
+  } finally {
+    qx.close();
+  }
+});
+
 test("trade log: a placed trade is still recorded, because the win projection falls back on it (v1.66.0)", async () => {
   // The tags were only one reader of this log. projectedPayout also uses it to price an open trade when
   // the store cannot, so removing the tags must not stop recordPlacement.

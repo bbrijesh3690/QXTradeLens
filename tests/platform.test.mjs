@@ -396,6 +396,22 @@ test("selectors: deal rows with renamed classes are still found by shape", async
   }
 });
 
+test("health: with Quotex's data saying nothing is open, page rows that look like trades are not counted (v1.83.0)", async () => {
+  // Read live on 1.81.0: "Open trades list 1 open" and "Trade timers 1 tracked" beside "Open trades 0 store",
+  // with no trade running - a settled history row was read as one.
+  const rows = '<div class="Zz9Tt"><div class="Qq1">USD/DZD (OTC)</div><div class="Qq2">00:45</div><div class="Qq3">+3,700.00 ₹</div></div>';
+  const html = FIXTURE.replace('<div id="graph">', rows + '<div id="graph">');
+  const qx = await boot({ html, store: quotexStore({ opened: [] }) });
+  try {
+    const list = healthRow(qx, "Open trades list");
+    assert.equal(list.status, "idle", JSON.stringify(list));
+    assert.equal(list.value, "no open trades · 1 on the page", "the page's count is shown beside it: " + list.value);
+    assert.equal(healthRow(qx, "Trade timers").value, "no open trades");
+  } finally {
+    qx.close();
+  }
+});
+
 test("selectors: timeframe and expiry menus with renamed classes are still found", async () => {
   const menus =
     '<div class="Mm1"><div class="Mm2">15s</div><div class="Mm2">1m</div><div class="Mm2">5m</div><div class="Mm2">15m</div></div>';

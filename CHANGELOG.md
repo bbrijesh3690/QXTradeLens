@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.83.0] - 2026-09-29
+
+### Removed
+- **The mobile bar.** It replaced the panel when the Quotex window was narrower than 640 px. The user trades on
+  desktop and asked for it to go; it was also the one part left on the self-healing list. A narrow window now keeps
+  the main panel (its own narrow layout below 900 px is unchanged). About 410 lines and 27 style rules went; its
+  stored position (`__tradeCalc_mobile_pos_v3`) is cleared on start. Nothing changes on a desktop window.
+
+### Fixed
+- **Check said "Open trades list 1 open" with nothing running** (read live on 1.81.0, beside "Open trades 0
+  store"). The row counted trade-history rows on the page first, and a settled row was read as a running one.
+  Quotex's data now decides when it answers, as it already does for MAX and the chips; if the page shows a
+  different number it is noted beside it ("no open trades · 1 on the page"). "Trade timers" follows the same count.
+
 ## [1.82.0] - 2026-09-29
 
 Self-healing: the Entry tags, step 2 of 2 - the last item on the list.
