@@ -563,6 +563,26 @@ test("history: every placed trade is tagged \"Entry\" with the balance it was pl
   }
 });
 
+test("history: the diagnostics line carries the shape of a trade-history row (v1.80.4)", async () => {
+  // So the Entry tags can be given a fallback built from Quotex's real markup, read in one round trip.
+  const log = [{ uuid: null, ts: Date.now() - 30000, pair: "EUR/USD (OTC)", amount: 100, bal: 5000 }];
+  const qx = await boot({ storage: { ...slStorage(10000), __tradeCalc_trade_log: JSON.stringify(log) } });
+  try {
+    await sleep(2500); // the line is written every 2 s
+    assert.match(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").historyRow || "", /^no row by name/, "said plainly when there is none");
+    const holder = qx.window.document.createElement("div");
+    holder.innerHTML = historyRow("EUR/USD (OTC)", "100");
+    qx.window.document.body.appendChild(holder);
+    await sleep(2500);
+    const line = JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").historyRow || "";
+    assert.match(line, /^1 rows · names present: ib6yR Fqtla RxOUE/, line);
+    assert.match(line, /tagged: 1/, "and how many carry a tag: " + line);
+    assert.match(line, /div\.ib6yR -div\.RxOUE "EUR\/USD \(OTC\)" -div\.Fqtla "100"$/, "and the row's outline: " + line);
+  } finally {
+    qx.close();
+  }
+});
+
 test("trade log: a placed trade is still recorded, because the win projection falls back on it (v1.66.0)", async () => {
   // The tags were only one reader of this log. projectedPayout also uses it to price an open trade when
   // the store cannot, so removing the tags must not stop recordPlacement.

@@ -5137,6 +5137,34 @@
         saveTradeLog();
       }
     }
+    // v1.80.4: the shape of the first trade-history row, for the diagnostics line - which of the names the Entry
+    // tags use are there, and an outline (tag.class "text") of the row, so a fallback can be built from real
+    // markup rather than a guess.
+    const HISTORY_NAMES = ["ib6yR", "SDEZP", "Fqtla", "O5xJP", "RxOUE", "glItV", "lCITV", "h6J0L", "B7WYW", "ow8Ej", "b98_V", "AUfBG", "qWutN", "w3o70", "UFtUT"];
+    function historyRowDiag() {
+      const rows = document.querySelectorAll(".ib6yR, .SDEZP");
+      const present = HISTORY_NAMES.filter((n) => document.querySelector("." + n));
+      const row = rows[0];
+      if (!row) {
+        return "no row by name · names present: " + (present.join(" ") || "none");
+      }
+      const parts = [];
+      const walk = (el, depth) => {
+        if (parts.length >= 40 || depth > 5) {
+          return;
+        }
+        const cls = (el.getAttribute("class") || "").split(" ")[0];
+        const own = el.children.length ? "" : textOf(el).slice(0, 20);
+        parts.push("-".repeat(depth) + el.tagName.toLowerCase() + (cls ? "." + cls : "") + (own ? ' "' + own + '"' : ""));
+        for (const c of el.children) {
+          if (!c.classList.contains(ids.tcPlacedBal)) {
+            walk(c, depth + 1); // our own tag left out
+          }
+        }
+      };
+      walk(row, 0);
+      return rows.length + " rows · names present: " + present.join(" ") + " · tagged: " + document.querySelectorAll("." + ids.tcPlacedBal).length + " · " + parts.join(" ");
+    }
     window.__tcRecordPlacement = recordPlacement;
     let historyTagQueued = false;
     function onPageMutationsForHistory() {
@@ -8919,6 +8947,7 @@
             // all about the tab actually in front of someone.
             bar: barAnchor,
             assetList: assetListDiag(),
+            historyRow: historyRowDiag(),
             assetLog: assetLogDiag(),
             candleTimer: (() => {
               try {

@@ -5,6 +5,16 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.80.4] - 2026-09-29
+
+Self-healing: the Entry tags, step 1 of 2.
+
+### Added
+- **`historyRow` on the diagnostics line**: which of the 15 Quotex names the trade-history "Entry" tags depend on
+  are on the page, how many rows are tagged, and an outline of the first row (tag, first class, short text). The
+  tags have no fallback yet, and one cannot be written safely without seeing a real row; this reads one in a single
+  round trip. Step 2 builds the fallback from it.
+
 ## [1.80.3] - 2026-09-29
 
 ### Fixed
