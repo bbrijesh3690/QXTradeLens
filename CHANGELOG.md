@@ -5,6 +5,25 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.78.0] - 2026-09-28
+
+Self-healing, step 3.
+
+### Fixed
+- **← / → could type the amount into the expiry time box after a rename.** The amount box's second known name,
+  `input.input-control__input`, also matches Quotex's expiry time box - which comes first on the page. With the
+  box's container renamed, → would have written "4000" into the expiry. The spec shows it on 1.77.0. That name
+  is gone; the amount box is now found by its "Investment" label, else - in any language - as the box in the
+  trade panel holding an amount or a percent, never the one holding a time. RISK, REQ and the arrows all use
+  this one finder (RISK read the same wrong box).
+- **T finds the expiry box and its Time / Timer switch after a rename**: the box as the block around the box
+  holding a time, the switch as the one control in it outside the time field and its steppers - pressed only
+  when there is exactly one.
+
+### Tests
+- The amount box's container renamed and its label in another language: → doubles the amount and leaves the
+  expiry time alone. The expiry box renamed: T presses its switch. Both fail on 1.77.0.
+
 ## [1.77.0] - 2026-09-28
 
 Self-healing, step 2.

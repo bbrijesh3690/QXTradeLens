@@ -292,7 +292,9 @@
         assetRowPayout: [".mQX6T span", ".bQodW span", ".dkV9n span"],
         assetRowClick: [".e4qZ6", ".vPvlJ"],
         investmentBtns: [".deal-amount-input .VK9Nw", ".deal-amount-input .YqVwL"],
-        amountInput: [".deal-amount-input input.input-control__input", "input.input-control__input"],
+        amountInput: [".deal-amount-input input.input-control__input", ".deal-amount-input input"],
+        expiryBox: [".NEJ1S"],
+        expiryToggle: [".NEJ1S .EWNJc"],
         tabClose: [".LtauB", ".rGA6o"],
         chartClose: ["#graph canvas", "canvas.layer.plot", "#graph"],
         chartCanvas: ["#graph canvas.layer.plot", "#graph canvas", "#graph"],
@@ -440,6 +442,18 @@
       return out;
     }
     let assetListLookAt = 0;
+    const CLOCK_VALUE_RE = /^\d{1,2}:\d{2}(:\d{2})?$/;
+    // The inputs of Quotex's trade panel: those in the few blocks around the Up / Down buttons.
+    function tradePanelInputs() {
+      let panel = tradeButtonsBlock();
+      for (let i = 0; i < 4 && panel && panel.parentElement && panel.parentElement !== document.body; i++) {
+        panel = panel.parentElement;
+        if (panel.querySelectorAll("input").length >= 2) {
+          break;
+        }
+      }
+      return panel ? Array.from(panel.querySelectorAll("input")).filter((el) => !isOurElement(el) && el.type !== "hidden") : [];
+    }
     const SEMANTIC_FINDERS = {
       // The balance sits next to the "Live Account" / "Demo Account" label.
       balance: () => {
@@ -553,10 +567,37 @@
         });
         return lone ? lone.closest("button, [role='button']") || lone : null;
       },
+      // v1.78.0 (self-healing, step 3): the amount box - its "Investment" label, else, in any language, the
+      // box in the trade panel (around the Up / Down buttons) holding an amount or a percent: never the one
+      // holding a time, which is the expiry. Its old second name matched the expiry box first.
       amountInput: () => {
         const legend = Array.from(document.querySelectorAll("legend")).find((el) => textOf(el).toLowerCase() === "investment");
         const field = legend && legend.closest("fieldset");
-        return (field && field.querySelector("input")) || document.querySelector(".deal-amount-input input");
+        if (field && field.querySelector("input")) {
+          return field.querySelector("input");
+        }
+        return tradePanelInputs().find((el) => !CLOCK_VALUE_RE.test(el.value.trim()) && /\d/.test(el.value) && !isNaN(parseMoney(el.value))) || null;
+      },
+      // The expiry box: the block around the box holding a time (18:14, or 00:01:00 as a timer).
+      expiryBox: () => {
+        const input = tradePanelInputs().find((el) => CLOCK_VALUE_RE.test(el.value.trim()));
+        if (!input) {
+          return null;
+        }
+        const field = input.closest("fieldset");
+        return (field && field.parentElement) || (input.parentElement && input.parentElement.parentElement) || null;
+      },
+      // The expiry's Time / Timer switch: the one control in the expiry box outside the time field and its
+      // - / + steppers. Nothing is pressed unless there is exactly one.
+      expiryToggle: () => {
+        const box = findEl("expiryBox", { cache: false });
+        const input = box && box.querySelector("input");
+        const field = input && (input.closest("fieldset") || input.parentElement);
+        if (!box || !field) {
+          return null;
+        }
+        const others = Array.from(box.querySelectorAll("button, [role='button']")).filter((el) => !field.contains(el));
+        return others.length === 1 ? others[0] : null;
       },
       chartCanvas: () => document.querySelector("#graph canvas") || document.getElementById("graph"),
     };
@@ -1320,11 +1361,7 @@
     };
     function readStake() {
       var t, e;
-      e = ".deal-amount-input input.input-control__input";
-      stakeInputCache = (t = stakeInputCache) && t.isConnected ? t : document.querySelector(e);
-      if (!stakeInputCache) {
-        stakeInputCache = document.querySelector("input.input-control__input");
-      }
+      stakeInputCache = (t = stakeInputCache) && t.isConnected ? t : findEl("amountInput", { cache: false });
       if (!stakeInputCache) {
         stakeState.val = NaN;
         stakeState.isPercent = false;
@@ -1374,14 +1411,7 @@
     // Deliberately not readStake(): its last-resort fallback takes the first `input.input-control__input`
     // on the page, which is the expiry Time field ("18:14" would read as 1814).
     function readInvestmentFromStakeInput() {
-      let el = document.querySelector(".deal-amount-input input");
-      if (!el) {
-        const legend = Array.from(document.querySelectorAll("legend")).find(
-          (node) => (node.textContent || "").trim().toLowerCase() === "investment",
-        );
-        const field = legend && legend.closest("fieldset");
-        el = field && field.querySelector("input");
-      }
+      const el = findEl("amountInput", { cache: false });
       if (!el) {
         return NaN;
       }
@@ -4144,8 +4174,9 @@
     function getExpiryTimeItems(scope) {
       return resolveList("expiryTimes", scope || document, [".VPv5q"], (root) => leafMatches(root, TIME_TEXT_RE));
     }
+    // v1.78.0: known name, then a remembered one, then the block around the time box (SEMANTIC_FINDERS).
     function getExpiryBox() {
-      return document.querySelector(".NEJ1S");
+      return findEl("expiryBox", { cache: false });
     }
     function getExpiryInput() {
       const t = getExpiryBox();
@@ -4160,7 +4191,7 @@
       if (!t) {
         return;
       }
-      const e = t.querySelector(".EWNJc");
+      const e = t.querySelector(".EWNJc") || findEl("expiryToggle", { cache: false });
       if (e) {
         if (isExpiryTimerMode()) {
           synthClick(e);
@@ -6146,9 +6177,7 @@
     // True when the amount field was found, so the caller knows the key was used.
     function multiplyStake(t) {
       if (!(stakeInputEl && stakeInputEl.isConnected)) {
-        stakeInputEl =
-          document.querySelector(".deal-amount-input input.input-control__input") ||
-          document.querySelector("input.input-control__input");
+        stakeInputEl = findEl("amountInput", { cache: false });
       }
       const e = stakeInputEl;
       if (!e) {

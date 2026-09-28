@@ -324,3 +324,37 @@ test("privacy: keys left by the features removed in v1.65.0 are cleared on load 
     qx.close();
   }
 });
+
+// ── v1.78.0: self-healing, step 3 - the amount box and the expiry ─────────────────────────────────
+// The amount box's container renamed and its label in another language. Its old second name
+// (input.input-control__input) also matched the expiry time box, which comes first on the page - so ← / →
+// typed into the expiry time.
+const renamedAmount = () =>
+  FIXTURE.replace('<div class="deal-amount-input">', '<div class="zA1qw">').replace(">Investment<", ">Investimento<");
+
+test("self-healing: ← / → type into the amount box after a rename - never into the expiry time (v1.78.0)", async () => {
+  const qx = await boot({ html: renamedAmount(), storage: slStorage(10000) });
+  try {
+    const inputs = Array.from(qx.window.document.querySelectorAll("input"));
+    const time = inputs.find((i) => i.value === "18:14"),
+      amount = inputs.find((i) => i.value === "2000");
+    pressSideArrow(qx, "ArrowRight");
+    assert.equal(time.value, "18:14", "the expiry time is untouched");
+    assert.equal(amount.value, "4000", "the amount doubled");
+  } finally {
+    qx.close();
+  }
+});
+
+test("self-healing: T finds the expiry's Time / Timer switch after a rename (v1.78.0)", async () => {
+  const html = FIXTURE.replace('<div class="NEJ1S" aria-expanded="false">', '<div class="kS9lp" aria-expanded="false"><button id="modeSwitch">Timer</button>');
+  const qx = await boot({ html, storage: slStorage(10000) });
+  try {
+    let pressed = 0;
+    qx.window.document.getElementById("modeSwitch").addEventListener("click", () => pressed++);
+    qx.window.document.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key: "t", code: "KeyT", bubbles: true, cancelable: true }));
+    assert.equal(pressed, 1, "the switch was found and pressed");
+  } finally {
+    qx.close();
+  }
+});
