@@ -5,6 +5,31 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.80.0] - 2026-09-28
+
+Self-healing, step 4 - and a live bug that step 2 caused.
+
+### Fixed
+- **R opened the deposit window (reported live on 1.79.0).** Quotex's pair list has been renamed, so the
+  fallback from 1.77.0 was in use, and it guessed twice wrong. For the list it took a block that is always on the
+  page (rows of pairs and percents), so the list never looked closed ("still open after 8 tries"). For "+" it took
+  the first plus icon on the page - the deposit button in the header - which the close steps then pressed. Both
+  guesses were remembered, and a remembered name is tried first, so they stuck. Now:
+  - the list must hold its search box as well as the pair rows;
+  - "+" is only the plus nearest the pair tabs (never a link, never one with a word such as "Deposit" on it) -
+    1.76.0 also looked near the tabs first; 1.77.0 lost that;
+  - a remembered name is checked before use and forgotten if it no longer fits, which clears the two wrong ones on
+    the first run without anything to reset.
+  The diagnostics line's `assetList` now also says which "+" would be pressed.
+- **Pair tabs with no id, no class and no data-symbol left.** The tabs are found as the small blocks showing a pair
+  name and a payout %, starting from the one showing the chart's pair (from Quotex's data); the active tab and the
+  payout % beside it follow. A page that marks its active tab is still believed over the data.
+
+### Added
+- `tests/scramble.test.mjs`: the whole trade page renamed at once - every class and id replaced, every data-
+  attribute dropped, the field labels in another language - and each feature checked on it: every health-check
+  lookup, the payout floor, MAX, the arrows, the chips and balance, the pair tabs. On 1.79.0 the pair tabs fail.
+
 ## [1.79.0] - 2026-09-28
 
 Self-healing, step 4.

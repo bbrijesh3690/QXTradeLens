@@ -462,6 +462,47 @@
       }
       return best;
     }
+    // A box a trader can type a search into: a visible text input that is not ours and not a time.
+    const hasSearchBox = (box) =>
+      Array.from(box.querySelectorAll("input")).some((i) => !isOurElement(i) && i.type !== "hidden" && !CLOCK_VALUE_RE.test((i.value || "").trim()));
+    // v1.80.0: the controls showing a plus (icon or "+") nearest the pair tabs, nearest first: the tab strip's
+    // own block, then up to three blocks out, stopping before one holding the chart or the Up / Down buttons.
+    // Never a link, nothing with a word on it ("Deposit"), nothing in a field (the amount's and expiry's +).
+    function plusBesideTabs() {
+      const tabs = getPairTabs();
+      if (!tabs.length) {
+        return [];
+      }
+      const chart = getChartBox(),
+        trade = tradeButtonsBlock();
+      const clickable = (el) => el.closest("button, [role='button']") || el;
+      const ok = (el) =>
+        !isOurElement(el) && !tabs.some((t) => t.contains(el)) && !el.closest("a[href], fieldset, .deal-amount-input") && !/[A-Za-z]{2,}/.test(textOf(el));
+      let scope = tabs[0].parentElement;
+      for (let i = 0; i < 4 && scope && scope !== document.body; i++, scope = scope.parentElement) {
+        if ((chart && scope.contains(chart)) || (trade && scope.contains(trade))) {
+          break;
+        }
+        const icons = Array.from(scope.querySelectorAll('svg.icon-plus, svg[class*="icon-plus"], use[href*="plus"], use[xlink\\:href*="plus"]')).map(
+          (el) => clickable(el.closest("svg") || el),
+        );
+        const signs = Array.from(scope.querySelectorAll("button, [role='button'], div, span")).filter((el) => el.children.length <= 1 && /^\+$/.test(textOf(el)));
+        const found = [...icons, ...signs].map(clickable).filter((el, k, all) => ok(el) && all.indexOf(el) === k);
+        if (found.length) {
+          // Nearest the tabs first: the first one after the last tab, then the rest in reverse page order.
+          const last = tabs[tabs.length - 1];
+          const after = found.filter((el) => last.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+          return [...after, ...found.filter((el) => !after.includes(el)).reverse()];
+        }
+      }
+      return [];
+    }
+    // v1.80.0: a remembered name is checked before it is used, and forgotten if it no longer fits - a name
+    // learned from a wrong guess would otherwise be tried first for ever.
+    const LEARNED_CHECKS = {
+      assetDropdown: (el) => hasSearchBox(el) && !getPairTabs().some((t) => el.contains(t)),
+      assetAddButton: (el) => plusBesideTabs().includes(el.closest("button, [role='button']") || el),
+    };
     // Quotex's chart block: "#graph", a remembered name, or the block around the largest canvas.
     function getChartBox() {
       return findEl("chartBox");
@@ -501,7 +542,7 @@
       },
       // Payout % inside the active pair tab (e.g. "79 %").
       returnPct: () => {
-        const tab = document.getElementById("tab-active");
+        const tab = activePairTab();
         if (!tab) {
           return null;
         }
@@ -556,31 +597,33 @@
         if (rows.length < 3) {
           return null;
         }
-        let box = rows[0].parentElement;
-        while (box && box !== document.body && !rows.every((r) => box.contains(r))) {
-          box = box.parentElement;
+        // v1.80.0: the list is the block around three or more rows that also holds its search box. Reported
+        // live: without that, a block that is always on the page (rows of pairs and percents) was taken for
+        // the list, so the list never looked closed - and the close steps kept pressing "+".
+        let best = null,
+          bestCount = 0;
+        for (const r of rows) {
+          for (let box = r.parentElement, hop = 0; box && box !== document.body && hop < 8; box = box.parentElement, hop++) {
+            if (avoid.some((a) => box.contains(a))) {
+              break;
+            }
+            const count = rows.filter((x) => box.contains(x)).length;
+            if (count >= 3 && hasSearchBox(box)) {
+              if (count > bestCount) {
+                best = box;
+                bestCount = count;
+              }
+              break;
+            }
+          }
         }
-        return box && box !== document.body && !avoid.some((a) => box.contains(a)) ? box : null;
+        return best;
       },
       // The "+" that opens the pair list: its plus icon, else a small control beside the pair tabs showing a
       // plus sign or a plus icon.
-      assetAddButton: () => {
-        const clickable = (el) => el && (el.closest("button, [role='button']") || el);
-        const icon = document.querySelector('svg.icon-plus, svg[class*="icon-plus"], use[href*="plus"], use[xlink\\:href*="plus"]');
-        if (icon && !isOurElement(icon) && !icon.closest(".deal-amount-input")) {
-          return clickable(icon);
-        }
-        const tabs = getPairTabs();
-        const bar = tabs.length && tabs[0].parentElement && tabs[0].parentElement.parentElement;
-        if (!bar) {
-          return null;
-        }
-        return (
-          Array.from(bar.querySelectorAll("button, [role='button'], div, span")).find(
-            (el) => !tabs.some((t) => t.contains(el)) && el.children.length <= 1 && /^\+$/.test(textOf(el)),
-          ) || null
-        );
-      },
+      // v1.80.0: only the plus nearest the pair tabs - reported live, the first plus icon on the page was the
+      // deposit button in the header, so R opened the deposit window.
+      assetAddButton: () => plusBesideTabs()[0] || null,
       // The button that opens the timeframe menu: the one element on the page showing a single timeframe
       // label ("1m", "15s") - the open menu shows several side by side, and is not it.
       timeframeCTA: () => {
@@ -675,6 +718,13 @@
         try {
           a = document.querySelector(learned.sel);
         } catch (t) {}
+        if (a && LEARNED_CHECKS[e] && !LEARNED_CHECKS[e](a)) {
+          a = null;
+          delete learnedSelectors[e];
+          try {
+            prefSet(KEY_LEARNED_SELECTORS, JSON.stringify(learnedSelectors));
+          } catch (t) {}
+        }
         if (a) {
           via = "learned";
         }
@@ -1256,6 +1306,11 @@
         pairTabsVia = "semantic";
         return bySymbol;
       }
+      const byText = getPairTabsByText();
+      if (byText.length) {
+        pairTabsVia = "semantic";
+        return byText;
+      }
       pairTabsVia = "heuristic";
       const e =
         document.getElementById("tab-active") ||
@@ -1304,20 +1359,94 @@
     }
     // Pair tabs carry `data-symbol` (e.g. "USDDZD_otc"). Tabs may each sit in their own wrapper, so
     // climb from the active tab and use the ancestor level that holds the most tabs.
+    // v1.80.0: without "#tab-active", the tab carrying the chart's own symbol (from Quotex's data) is the start.
     function getPairTabsBySymbol() {
-      const active = document.getElementById("tab-active");
+      let active = document.getElementById("tab-active");
+      if (!active) {
+        const state = readQuotexState();
+        const sym = state && state.symbol;
+        active = sym ? Array.from(document.querySelectorAll("[data-symbol]")).find((el) => el.getAttribute("data-symbol") === sym && !isOurElement(el)) : null;
+      }
       if (!active || !active.hasAttribute("data-symbol")) {
         return [];
       }
+      return tabsAround(active, (scope) => Array.from(scope.querySelectorAll("[data-symbol]")));
+    }
+    // From one tab, the ancestor level (up to three up) that holds the most tabs - tabs may each sit in their
+    // own wrapper - stopping before a block that also holds the chart or the Up / Down buttons.
+    function tabsAround(active, tabsIn) {
       let best = [active];
+      const chart = getChartBox(),
+        trade = tradeButtonsBlock();
       let scope = active.parentElement;
-      for (let i = 0; i < 3 && scope; i++, scope = scope.parentElement) {
-        const found = Array.from(scope.querySelectorAll("[data-symbol]"));
+      for (let i = 0; i < 3 && scope && scope !== document.body; i++, scope = scope.parentElement) {
+        if ((chart && scope.contains(chart)) || (trade && scope.contains(trade))) {
+          break;
+        }
+        const found = tabsIn(scope);
         if (found.length > best.length) {
           best = found;
         }
       }
       return best;
+    }
+    // The chart's pair name as Quotex labels it ("USD/DZD (OTC)"), from its data; "" without it.
+    function currentPairLabel() {
+      const state = readQuotexState(),
+        assets = state && state.symbol ? readQuotexAssets() : null;
+      const asset = assets && assets[state.symbol];
+      return (asset && asset.label) || "";
+    }
+    // True when a leaf inside el reads exactly the given pair name.
+    const showsPair = (el, label) => !!label && [el, ...el.querySelectorAll("*")].some((c) => c.children.length === 0 && textOf(c) === label);
+    // v1.80.0 (self-healing): the pair tabs with no known name, no id and no data-symbol left - the small
+    // blocks showing a pair name and a payout %, found from the one showing the chart's pair. When the pair
+    // list is open it shows that pair too; its block holds far more rows, so the smaller group is the tabs.
+    // A walk of the page, so the answer is kept for a second.
+    let tabsByText = { at: 0, tabs: [] };
+    function getPairTabsByText() {
+      const now = Date.now();
+      if (now - tabsByText.at < 1000 && tabsByText.tabs.every((t) => t.isConnected)) {
+        return tabsByText.tabs;
+      }
+      tabsByText = { at: now, tabs: [] };
+      const label = currentPairLabel();
+      if (!label) {
+        return [];
+      }
+      const blocks = [];
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n && blocks.length < 300; n = walker.nextNode()) {
+        const t = (n.nodeValue || "").trim();
+        if (t.length > 30 || !PAIR_TEXT_RE.test(t)) {
+          continue;
+        }
+        for (let el = n.parentElement, hop = 0; el && hop < 3; el = el.parentElement, hop++) {
+          const text = textOf(el);
+          if (text.length > 40) {
+            break;
+          }
+          if (/\d{1,3}\s*%/.test(text)) {
+            if (!isOurElement(el) && !blocks.includes(el)) {
+              blocks.push(el);
+            }
+            break;
+          }
+        }
+      }
+      let best = [];
+      for (const active of blocks.filter((b) => showsPair(b, label))) {
+        const group = tabsAround(active, (scope) => blocks.filter((b) => scope.contains(b)));
+        if (!best.length || group.length < best.length) {
+          best = group;
+        }
+      }
+      tabsByText.tabs = best;
+      return best;
+    }
+    // The tab of the chart's pair.
+    function activePairTab() {
+      return document.getElementById("tab-active") || getPairTabs().find(isActiveTab) || null;
     }
     function getTabName(t) {
       if (!t) {
@@ -1337,6 +1466,10 @@
       }
       if (t.id && t.id !== "tab-active") {
         return t.id;
+      }
+      const leaf = Array.from(t.querySelectorAll("*")).find((c) => c.children.length === 0 && PAIR_TEXT_RE.test(textOf(c)) && !/%/.test(textOf(c)));
+      if (leaf) {
+        return textOf(leaf);
       }
       const n = (t.textContent || "").match(/[A-Z]{3}\/[A-Z]{3}/);
       return n ? n[0] + (t.textContent.includes("OTC") ? " (OTC)" : "") : "";
@@ -4346,8 +4479,23 @@
       // rather than waiting for the page to change.
       setTimeout(scheduleRecalc, PENDING_TRADE_MS + 50);
     }
+    // v1.80.0: without "#tab-active" on the page, the active tab is the one showing the chart's pair -
+    // by its data-symbol, else by its name - from Quotex's data.
     function isActiveTab(t) {
-      return t.id === "tab-active" || t.classList.contains("tab-active");
+      if (t.id === "tab-active" || t.classList.contains("tab-active")) {
+        return true;
+      }
+      // A page that marks its active tab is believed: only with no mark at all does Quotex's data decide.
+      if (document.getElementById("tab-active") || document.querySelector(".tab-active")) {
+        return false;
+      }
+      const state = readQuotexState(),
+        sym = state && state.symbol;
+      if (!sym) {
+        return false;
+      }
+      const ds = t.getAttribute("data-symbol");
+      return ds ? ds === sym : showsPair(t, currentPairLabel());
     }
     function activateTab(t) {
       const e = t.querySelector(".WRocw") || t.querySelector(".l5ftG") || t.querySelector(".pC7xL");
@@ -4879,10 +5027,7 @@
       const e = readPayoutAndInvestment(),
         n = readStake(),
         o = e && !isNaN(e.investment) ? e.investment : !n || isNaN(n.val) || n.isPercent ? null : n.val,
-        r =
-          document.getElementById("tab-active") ||
-          document.querySelector(".dJ15T") ||
-          document.querySelector(".pPomf");
+        r = activePairTab() || document.querySelector(".dJ15T") || document.querySelector(".pPomf");
       tradeLog.unshift({
         uuid: null,
         ts: Date.now(),
@@ -5164,7 +5309,13 @@
       const closeNote = lastAssetClose
         ? " \u00b7 last close: " + lastAssetClose.what + " " + fmtAgo(Math.round((Date.now() - lastAssetClose.at) / 1000))
         : "";
-      return via + (t ? (isAssetDropdownOpen() ? " \u00b7 open" : " \u00b7 closed") : "") + closeNote;
+      // v1.80.0: and which "+" would be pressed, so a wrong one shows up in one read.
+      const plus = getAssetAddButton();
+      const plusNote = plus
+        ? " \u00b7 + is " + plus.tagName.toLowerCase() + (plus.getAttribute("class") ? "." + plus.getAttribute("class").split(" ")[0] : "") +
+          " via " + (selectorVia.assetAddButton || "?") + (textOf(plus) ? ' "' + textOf(plus).slice(0, 12) + '"' : "")
+        : " \u00b7 no +";
+      return via + (t ? (isAssetDropdownOpen() ? " \u00b7 open" : " \u00b7 closed") : "") + closeNote + plusNote;
     }
     // v1.75.3: "+" opens the list as well as closing it, so it is pressed only once the list has settled -
     // open for 1.5 s without a break. Before, a try could press it while the list was already on its way out,

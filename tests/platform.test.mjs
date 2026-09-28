@@ -1009,7 +1009,7 @@ test("self-healing: auto-open works with the pair list and its + renamed (v1.77.
       const list = w.document.createElement("div");
       list.className = "zL8kq";
       const row = (name, pct, id) => '<div class="rT5wy" id="' + id + '"><span>' + name + "</span><b>" + pct + " %</b></div>";
-      list.innerHTML = row("EUR/USD (OTC)", 70, "rEur") + row("GBP/JPY (OTC)", 71, "rGbp") + row("AUD/CAD (OTC)", 93, "rAud") + '<button aria-label="Close">x</button>';
+      list.innerHTML = '<input type="text" placeholder="Search">' + row("EUR/USD (OTC)", 70, "rEur") + row("GBP/JPY (OTC)", 71, "rGbp") + row("AUD/CAD (OTC)", 93, "rAud") + '<button aria-label="Close">x</button>';
       w.document.getElementById("graph").before(list);
       list.querySelector('[aria-label="Close"]').addEventListener("click", () => {
         events.push("closed list");
@@ -1035,6 +1035,72 @@ test("self-healing: auto-open works with the pair list and its + renamed (v1.77.
     qx.close();
   }
 });
+
+// ── v1.80.0: reported live on 1.79.0 - R opened the deposit window ─────────────────────────────────
+// The pair list had been renamed. The fallback took a block that is always on the page (rows of pairs and
+// percents) for the list, so the list never looked closed, and the close steps pressed "+" - the first plus
+// icon on the page, the deposit button in the header. Both guesses were remembered, and a remembered name is
+// tried first, so they stuck. The page here has both, and both wrong names already remembered.
+async function autoOpenBesideDeposit(remembered) {
+  const store = quotexStore({ payout: 70 });
+  store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  const topRow = (name, pct) => "<div><span>" + name + "</span><b>" + pct + " %</b></div>";
+  const html = FIXTURE.replace('<div class="ElyTP">91 %</div>', '<div class="ElyTP">70 %</div>')
+    .replace('<span class="UI2Kh">91 %</span>', '<span class="UI2Kh">70 %</span>')
+    .replace('<div class="QE4Zb">', '<div class="ze4yk"><button class="dP0sT" id="deposit"><svg class="icon-plus"></svg>Deposit</button></div><div class="QE4Zb">')
+    .replace('<div class="Q02Z1">', '<div class="Q02Z1"></div><button class="xP4qa" id="plus"><svg class="icon-plus"></svg></button><div class="Hm2vT">')
+    .replace('<div id="graph">', '<div class="wN3Yc">' + topRow("EUR/JPY (OTC)", 80) + topRow("NZD/USD (OTC)", 82) + topRow("USD/INR (OTC)", 85) + '</div><div id="graph">');
+  const learned = { assetDropdown: { sel: ".wN3Yc", at: "2026-09-28T16:53:20.835Z" }, assetAddButton: { sel: ".ze4yk > button", at: "2026-09-28T16:55:04.385Z" } };
+  const events = [];
+  const setup = (w) => {
+    const rect = w.Element.prototype.getBoundingClientRect;
+    w.Element.prototype.getBoundingClientRect = function () {
+      if (this.classList && (this.classList.contains("zL8kq") || this.classList.contains("rT5wy") || this.classList.contains("wN3Yc"))) {
+        return { left: 10, top: 60, width: 300, height: 40, right: 310, bottom: 100, x: 10, y: 60 };
+      }
+      return rect.call(this);
+    };
+    w.document.getElementById("deposit").addEventListener("click", () => events.push("DEPOSIT"));
+    w.document.getElementById("plus").addEventListener("click", () => {
+      if (w.document.querySelector(".zL8kq")) return;
+      events.push("opened list");
+      const list = w.document.createElement("div");
+      list.className = "zL8kq";
+      const row = (name, pct, id) => '<div class="rT5wy" id="' + id + '"><span>' + name + "</span><b>" + pct + " %</b></div>";
+      list.innerHTML = '<input type="text" placeholder="Search">' + row("EUR/USD (OTC)", 70, "rEur") + row("GBP/JPY (OTC)", 71, "rGbp") + row("AUD/CAD (OTC)", 93, "rAud") + '<button aria-label="Close">x</button>';
+      w.document.getElementById("graph").before(list);
+      list.querySelector('[aria-label="Close"]').addEventListener("click", () => {
+        events.push("closed list");
+        list.remove();
+      });
+      w.document.getElementById("rAud").addEventListener("click", () => {
+        if (events.includes("picked AUD/CAD")) return;
+        events.push("picked AUD/CAD");
+        const tab = w.document.createElement("div");
+        tab.className = "dJ15T vXMlv";
+        tab.setAttribute("data-symbol", "AUDCAD_otc");
+        tab.innerHTML = '<div class="WRocw">AUD/CAD (OTC)</div><div class="ElyTP">93 %</div>';
+        w.document.querySelector(".Hm2vT").appendChild(tab);
+      });
+    });
+  };
+  const storage = { ...slStorage(10000) };
+  if (remembered) storage[prefKey("__tradeCalc_learned_selectors")] = JSON.stringify(learned);
+  const qx = await boot({ html, store, setup, storage });
+  try {
+    await sleep(10000);
+    assert.ok(!events.includes("DEPOSIT"), "the deposit button was never pressed: " + events.join(", "));
+    assert.ok(events.includes("opened list") && events.includes("picked AUD/CAD"), "the pair list was opened and used: " + events.join(", "));
+    assert.equal(qx.window.document.querySelector(".zL8kq"), null, "and closed after");
+    const now = JSON.parse(pref(qx, "__tradeCalc_learned_selectors") || "{}");
+    assert.notEqual((now.assetDropdown || {}).sel, ".wN3Yc", "the wrong list is forgotten");
+    assert.notEqual((now.assetAddButton || {}).sel, ".ze4yk > button", "and so is the deposit button");
+  } finally {
+    qx.close();
+  }
+}
+test("self-healing: auto-open presses the + beside the tabs, not the deposit + in the header (v1.80.0)", () => autoOpenBesideDeposit(false));
+test("self-healing: a wrong list and + learnt earlier are forgotten, and auto-open works (v1.80.0)", () => autoOpenBesideDeposit(true));
 
 test("self-healing: middle-click closes a pair tab whose class was renamed (v1.77.0)", async () => {
   const html = FIXTURE.replace('<div class="dJ15T vXMlv" id="tab-active" data-symbol="USDDZD_otc">', '<div class="kW3nb" id="tab-active" data-symbol="USDDZD_otc"><button aria-label="Close" id="closeMe">x</button>');

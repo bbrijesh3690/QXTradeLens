@@ -87,6 +87,11 @@ Three things exist because of this:
 - **Check the live data before changing logic.** The S/R work churned through several releases
   because presentation was built on assumptions; the pass that fixed it started by running the
   detector over every cached asset and finding it was already correct.
+- **A fallback finder runs when the element is simply absent too** (a closed list), and whatever it finds is
+  remembered and tried first. v1.77.0 learnt the deposit "+" and an always-visible block that way (v1.80.0). A
+  finder must demand what only the real thing has (the list's search box, the "+" nearest the tabs), and a
+  remembered name that can be wrong gets an entry in `LEARNED_CHECKS`. `tests/scramble.test.mjs` renames the
+  whole page at once; a new finder gets a case there.
 - **Say what was not verified.** "Covered by tests, not seen live" is a useful sentence.
 
 ## Commands
