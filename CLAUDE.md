@@ -192,10 +192,18 @@ check will say so if only one happened.
   bar (`chrome.action.onClicked`, which only fires because the manifest names no `default_popup`). The
   user confirmed v1.69.0 live ("all good"), deposit scan included. **Still to look at: the chart panel
   itself** - the user said it comes last.
-- **Requested for after the redesign - the chips around Quotex's own timer.** Quotex shows a timer beside the
-  running candle. The user wants the running amount (dynamic) just *above* that timer and the trade countdown
-  just *below* it, replacing follow-cursor. Their timer is part of the WebGL chart or its overlay - check which
-  before promising a position (see "What cannot be verified": a price cannot be mapped to a pixel).
+- **The chips stand at the chart's right side (v1.73.0).** Quotex's candle countdown is painted on the canvas
+  (probe, v1.72.6). Making the chips ride beside it with the chart engine's `getXFromTime` / `getYFromValue`
+  (the way the user's QX CRT Alert extension does) was planned and then **dropped by the user** - do not
+  rebuild it unless asked.
+- **Trade countdowns (chip and tab title) match Quotex by construction (v1.75.0).** Order: Quotex's own number
+  from the trade's row in their trade history (matched by pair and time, copied only within 2.5 s of the close
+  time, so no stale row or stray clock is copied); otherwise the close time against Quotex's server clock
+  (`targetTime` via chart_reader - highest offset of the last 10 s, sampled only when it moves), rounded the
+  way their rows were seen to round (learnt; up until shown otherwise). `tradeClock` on the diagnostics line
+  says which source was used and why. If they disagree again, read that field before changing anything.
+- **Parked by the user:** retrying a timeframe that still comes back short after a fill (v1.74.3 fixed the
+  cause that was seen).
 - Offered and not started: a sound for the trend-flip mark (left visual on purpose — a tone mid-trade
   is intrusive and gives no clue which chart it came from), and per-asset rather than per-timeframe
   zoom memory.

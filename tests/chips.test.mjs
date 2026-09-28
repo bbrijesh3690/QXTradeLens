@@ -212,3 +212,91 @@ test("trade clock: the line says how far Quotex's clock is from this one, and bo
     qx.close();
   }
 });
+
+// ── v1.75.0: the countdown the way Quotex shows it, kept right by itself ───────────────────────────
+function openTradePage({ rowText = null, ahead = 2, rowFollows = null } = {}) {
+  const now = Math.floor(Date.now() / 1000);
+  const store = quotexStore({
+    opened: [{ id: "a", asset: "USDDZD_otc", amount: 1000, profit: 0, isDemo: 1, command: 0, openPrice: 100, percentProfit: 80, openTimestamp: now - 10, closeTimestamp: now + 50 }],
+  });
+  const close = now + 50;
+  const setup = (w) => {
+    if (rowText == null && !rowFollows) return;
+    const row = w.document.createElement("div");
+    row.className = "A7vDd";
+    row.innerHTML = '<span class="DBihS">USD/DZD (OTC)</span><span class="PiYD4">' + (rowText || "00:50") + '</span><span class="Os2ep">1,800.00</span>';
+    w.document.body.appendChild(row);
+    // Quotex's own row counting down against its server clock, rounding the way `rowFollows` says.
+    if (rowFollows) {
+      w.setInterval(() => {
+        const left = rowFollows(close - (Date.now() / 1000 + ahead));
+        row.querySelector(".PiYD4").textContent = "00:" + String(left).padStart(2, "0");
+      }, 100);
+    }
+  };
+  return { store, setup, pin: () => Object.defineProperty(store.__plot.pointsManager, "targetTime", { get: () => Date.now() / 1000 + ahead, configurable: true }) };
+}
+const chipTime = (qx) => ((chipEl(qx) && chipEl(qx).textContent) || "").match(/\d{2}:\d{2}(\.\d{2})?/)?.[0];
+const clockLine = (qx) => String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").tradeClock);
+
+test("countdown: with Quotex's trade history on screen, the chip shows its number (v1.75.0)", async () => {
+  // Reported live: the chip and Quotex's own countdown for the trade disagreed. Quotex's row reads 00:46,
+  // a little off the computed close - it is its number the chip must show.
+  const page = openTradePage({ rowText: "00:46" });
+  const qx = await boot({ store: page.store, setup: page.setup });
+  try {
+    page.pin();
+    await sleep(900);
+    assert.equal(chipTime(qx), "00:46", "copied from the trade history");
+    await sleep(1500);
+    assert.match(clockLine(qx), /Quotex shows 00:46 \(copied\)/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("countdown: a row that disagrees with the trade's close time is not copied (v1.75.0)", async () => {
+  // Nothing on the page is trusted just for looking like a clock: this row is 17 s off.
+  const page = openTradePage({ rowText: "00:30" });
+  const qx = await boot({ store: page.store, setup: page.setup });
+  try {
+    page.pin();
+    await sleep(900);
+    const shown = chipTime(qx);
+    assert.notEqual(shown, "00:30", "not the disagreeing row");
+    assert.match(shown, /^00:4[6-8]$/, "the close time against Quotex's clock: " + shown);
+    await sleep(1500);
+    assert.match(clockLine(qx), /not trusted/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("countdown: without the trade history, the chip counts against Quotex's server clock (v1.75.0)", async () => {
+  // Quotex's clock 5 s ahead of this computer's: 50 s to the close by this clock is 45 by theirs.
+  const page = openTradePage({ ahead: 5 });
+  const qx = await boot({ store: page.store, setup: page.setup });
+  try {
+    page.pin();
+    await sleep(900);
+    const shown = chipTime(qx);
+    assert.match(shown, /^00:4[2-5]$/, "by Quotex's clock, in whole seconds: " + shown);
+    await sleep(1500);
+    assert.match(clockLine(qx), /Quotex clock \+5\.\d\d s/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("countdown: the rounding is learnt from Quotex's rows (v1.75.0)", async () => {
+  // Their rows drop the fraction; after watching them, the fallback does the same.
+  const page = openTradePage({ rowFollows: Math.floor });
+  const qx = await boot({ store: page.store, setup: page.setup });
+  try {
+    page.pin();
+    await sleep(2400);
+    assert.match(clockLine(qx), /rounding down \(rows seen: [1-9]\d* down/);
+  } finally {
+    qx.close();
+  }
+});

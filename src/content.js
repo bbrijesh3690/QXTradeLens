@@ -757,6 +757,130 @@
     // amount a win would return. Independent of the platform's markup, so the chart countdown chips, the
     // tab-title countdown and the live totals keep working when the deal-list classes rotate.
     // command 0 = Up, 1 = Down (checked against 10 settled trades live on 2026-09-18).
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // v1.75.0: a trade's seconds left, the way Quotex shows it - and kept right by itself
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // Reported live: the chip's countdown did not match Quotex's own for the same trade in their trade
+    // history. The chip counted against this computer's clock (Quotex counts against its server's) and
+    // rounded to the nearest second. Now, in order:
+    //  1. Quotex's own number, from the trade's row in their trade history, when that row is on screen. The
+    //     row is matched to the trade by pair and by time, and only taken if it agrees with the trade's close
+    //     time to within a couple of seconds - so a finished row or some other clock on the page is never
+    //     copied, which is what made the rows the second source in v1.34.0.
+    //  2. Otherwise the close time against Quotex's server clock (the chart's own time, read every quote),
+    //     rounded the way Quotex's rows were seen to round.
+    // Every agreeing row teaches the rounding, so the fallback keeps matching Quotex even if they change it.
+    // The rows are found by the self-repairing finders (class first, then by what a deal row holds).
+    const TRADE_ROW_AGREE_SEC = 2.5;
+    const serverClock = { samples: [], lastServer: NaN, offset: NaN };
+    // How far Quotex's clock is ahead of this computer's, in seconds. Sampled only when the chart's time has
+    // moved (a frozen chart in a hidden tab would otherwise drag it down); the highest of the last 10 s is
+    // kept, because the chart's time is that of its latest quote and trails the server's by up to one quote.
+    function serverClockOffset(state) {
+      const now = Date.now();
+      if (state && typeof state.serverTime === "number" && typeof state.readAt === "number" && state.serverTime !== serverClock.lastServer) {
+        serverClock.lastServer = state.serverTime;
+        const off = state.serverTime - state.readAt / 1000;
+        if (Math.abs(off) < 3600) {
+          serverClock.samples.push({ at: now, off });
+        }
+      }
+      serverClock.samples = serverClock.samples.filter((p) => now - p.at < 10000).slice(-120);
+      if (serverClock.samples.length) {
+        serverClock.offset = Math.max(...serverClock.samples.map((p) => p.off));
+      }
+      return isNaN(serverClock.offset) ? 0 : serverClock.offset;
+    }
+    // Which way Quotex rounds a countdown, learnt from its own rows: counts of rows that showed the whole
+    // seconds rounded down, or up. Up until the rows say otherwise.
+    const tradeRounding = { down: 0, up: 0 };
+    const roundSecondsLeft = (exact) => Math.max(0, tradeRounding.down > tradeRounding.up ? Math.floor(exact) : Math.ceil(exact));
+    // Quotex's trade history, read at most every 200 ms: [{ secs, pair, text }] for each open trade's row.
+    let tradeRowsCache = { at: 0, rows: [] };
+    function tradeHistoryCountdowns() {
+      const now = Date.now();
+      if (now - tradeRowsCache.at < 200) {
+        return tradeRowsCache.rows;
+      }
+      const rows = [];
+      let found = [];
+      try {
+        // The row finders are set up further down the panel; before that there is simply nothing to read.
+        found = getOpenTradeRows();
+      } catch (e) {}
+      for (const row of found) {
+        const clock = row.querySelector(".PiYD4") || row.querySelector(".xEiET") || row.querySelector(".wcb43") || findClockEl(row);
+        const text = clock ? (clock.textContent || "").trim() : "";
+        const secs = /^\d{1,2}:\d{2}(:\d{2})?$/.test(text) ? parseClock(text) : NaN;
+        if (isNaN(secs)) {
+          continue;
+        }
+        const nameEl =
+          row.querySelector(".DBihS") || row.querySelector(".RxOUE") || row.querySelector(".JJ_i9") ||
+          Array.from(row.querySelectorAll("*")).find((el) => el.children.length === 0 && PAIR_TEXT_RE.test(el.textContent || ""));
+        rows.push({ secs, text, pair: nameEl ? normKey(nameEl.textContent) : "" });
+      }
+      tradeRowsCache = { at: now, rows };
+      return rows;
+    }
+    // What the diagnostics line reports about the last pass.
+    let tradeClockNote = "no trade open";
+    function tradeSecondsLeft(deals, labelOf) {
+      const state = readQuotexState(),
+        offset = serverClockOffset(state),
+        now = Date.now() / 1000 + offset,
+        rows = tradeHistoryCountdowns(),
+        used = new Set(),
+        notes = [];
+      const out = deals.map((d) => {
+        if (!d.closeTimestamp) {
+          return { secs: NaN, via: "no close time" };
+        }
+        const exact = d.closeTimestamp - now,
+          pair = normKey(labelOf(d));
+        let match = null,
+          samePairOff = null;
+        for (const r of rows) {
+          if (used.has(r) || (r.pair && pair && r.pair !== pair)) {
+            continue;
+          }
+          const off = Math.abs(r.secs - exact);
+          if (off <= TRADE_ROW_AGREE_SEC) {
+            if (!match || off < Math.abs(match.secs - exact)) {
+              match = r;
+            }
+          } else if (r.pair && r.pair === pair && samePairOff == null) {
+            samePairOff = Math.round((r.secs - exact) * 10) / 10;
+          }
+        }
+        if (match) {
+          used.add(match);
+          if (Math.floor(exact) !== Math.ceil(exact)) {
+            if (match.secs === Math.floor(exact)) {
+              tradeRounding.down++;
+            } else if (match.secs === Math.ceil(exact)) {
+              tradeRounding.up++;
+            }
+          }
+          notes.push("Quotex shows " + match.text + " (copied)");
+          return { secs: match.secs, via: "trade history" };
+        }
+        notes.push(
+          samePairOff != null
+            ? "its row is " + samePairOff + " s off the close time - not trusted, the clock is used"
+            : rows.length
+              ? "no row agrees - the clock is used"
+              : "trade history not on screen - the clock is used",
+        );
+        return { secs: roundSecondsLeft(exact), via: "Quotex clock" };
+      });
+      tradeClockNote = deals.length
+        ? "Quotex clock " + (offset >= 0 ? "+" : "") + offset.toFixed(2) + " s against this computer \u00b7 rounding " +
+          (tradeRounding.down > tradeRounding.up ? "down" : "up") + " (rows seen: " + tradeRounding.down + " down, " + tradeRounding.up + " up) \u00b7 " +
+          notes.join("; ")
+        : "no trade open";
+      return out;
+    }
     function storeOpenTrades() {
       const state = readQuotexState();
       if (!state || !Array.isArray(state.openedDeals)) {
@@ -764,8 +888,10 @@
       }
       const quotes = state.quotes || {};
       const assets = readQuotexAssets() || {};
-      const nowSec = Date.now() / 1000;
-      return dealsForThisAccount(state.openedDeals).map((d) => {
+      const deals = dealsForThisAccount(state.openedDeals),
+        labelOf = (d) => (assets[d.asset] && assets[d.asset].label) || d.asset || "",
+        left = tradeSecondsLeft(deals, labelOf);
+      return deals.map((d, i) => {
         const price = quotes[d.asset];
         const isUp = d.command === 0;
         const winning =
@@ -774,9 +900,10 @@
         return {
           id: d.id,
           symbol: d.asset,
-          pair: (assets[d.asset] && assets[d.asset].label) || d.asset || "",
+          pair: labelOf(d),
           amount: d.amount,
-          secondsLeft: d.closeTimestamp ? Math.max(0, Math.round(d.closeTimestamp - nowSec)) : NaN,
+          secondsLeft: left[i].secs,
+          secondsVia: left[i].via,
           winning,
           // What the platform shows in the deal row while it runs: the full return on a win, 0 on a loss.
           liveReturn: winning && pct != null ? d.amount * (1 + pct / 100) : 0,
@@ -4855,7 +4982,7 @@
       const chip = byId(ids.tcTradeTimer),
         ours = chip && chip.style.display !== "none" ? (chip.textContent.match(/\d{2}:\d{2}(\.\d{2})?/) || [""])[0] : "hidden";
       return (
-        out + " \u00b7 trade: Quotex shows " + theirs + ", the chip shows " + ours +
+        tradeClockNote + " \u00b7 now: Quotex shows " + theirs + ", the chip shows " + ours +
         " \u00b7 left by this computer's clock " + byThisClock.toFixed(2) + " s, by Quotex's " + (isNaN(byQuotexClock) ? "-" : byQuotexClock.toFixed(2) + " s")
       );
     }
@@ -5382,15 +5509,13 @@
       return null;
     }
     const countdownAnchors = new WeakMap();
-    function fmtCountdown(t, e) {
-      if (t < 0) {
-        t = 0;
-      }
-      const n = Math.floor(t / 60),
-        o = t % 60,
-        r = Math.floor(e / 10),
-        a = (t) => (t < 10 ? "0" + t : "" + t);
-      return a(n) + ":" + a(o) + "." + a(r);
+    // v1.75.0: whole seconds, the way Quotex's trade history shows them (hours only when there are some).
+    function fmtClockText(t) {
+      const n = Math.max(0, Math.round(t)),
+        a = (v) => (v < 10 ? "0" + v : "" + v),
+        h = Math.floor(n / 3600),
+        m = Math.floor((n % 3600) / 60);
+      return (h ? a(h) + ":" : "") + a(m) + ":" + a(n % 60);
     }
     let cursorPos = null,
       cursorInGraph = false,
@@ -5642,7 +5767,7 @@
         for (const trade of fromStore) {
           r.push({
             pair: trade.pair,
-            time: fmtCountdown(isNaN(trade.secondsLeft) ? 0 : trade.secondsLeft, 0),
+            time: fmtClockText(isNaN(trade.secondsLeft) ? 0 : trade.secondsLeft),
             secs: isNaN(trade.secondsLeft) ? 0 : trade.secondsLeft,
             win: trade.winning === true,
           });
@@ -5692,7 +5817,7 @@
           _ = g === 0 ? 0 : (1000 - (f % 1000)) % 1000;
         r.push({
           pair: l,
-          time: fmtCountdown(g, _),
+          time: fmtClockText(g),
           secs: m,
           win: p,
         });

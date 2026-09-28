@@ -5,6 +5,31 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.75.0] - 2026-09-28
+
+### Fixed
+- **The trade countdown matches Quotex's, and keeps matching by itself.** Reported live: the chip's countdown
+  and Quotex's own for the same trade in their trade history disagreed. The chip counted against this
+  computer's clock (Quotex counts against its server's), rounded to the nearest second, and showed a fixed
+  ".00". Now, in order:
+  1. **Quotex's own number**, from the trade's row in their trade history, when it is on screen - matched to
+     the trade by pair and by time, and copied only if it agrees with the trade's close time to within 2.5 s.
+     That check is why the rows can be the first source again without the phantoms that demoted them in
+     v1.34.0: a finished row or some other clock on the page is never copied.
+  2. Otherwise **the close time against Quotex's server clock** - the chart's own time, read with every quote
+     (1.74.4) - rounded the way Quotex's rows were seen to round. Every row that agrees teaches the rounding,
+     so the fallback follows Quotex if they change it.
+- The chip shows whole seconds, as Quotex does (`00:46`, hours only when there are some). The tab-title
+  countdown uses the same seconds.
+- `tradeClock` on the diagnostics line now says which source was used for each trade and why (`Quotex shows
+  00:46 (copied)`, `trade history not on screen - the clock is used`, `its row is 17 s off the close time -
+  not trusted`), with the clock gap and the rounding learnt so far.
+
+### Tests
+- Four specs, all failing on 1.74.4: the row's number is shown; a disagreeing row is not copied; without rows
+  the chip counts by Quotex's clock (5 s ahead in the spec); the rounding is learnt from rows that drop the
+  fraction.
+
 ## [1.74.4] - 2026-09-28
 
 ### Added
