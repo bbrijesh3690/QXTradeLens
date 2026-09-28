@@ -5,6 +5,21 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.72.7] - 2026-09-28
+
+### Added
+- **An `accountBlock` field on the diagnostics line** - step 1 of drawing our own "Demo Account" block over
+  Quotex's, whose words sit in a closed component and cannot be changed (the user chose this over hiding the
+  block). It reports the block's box, what really paints behind it - found with `elementsFromPoint`, which
+  returns everything stacked at a point on screen, not only the block's parents; the v1.58 tries looked only
+  at parents, which are all transparent - and the block's font. Nothing is drawn yet.
+- Both probes (`candleTimer`, `accountBlock`) are wrapped so a failure in one cannot stop the diagnostics line.
+
+### Found
+- `candleTimer` on the live page (1.72.6): the only element over the chart that reads like a clock is
+  `div.jHgax "17:50:40"` at the chart's top-left, ticking - Quotex's clock, not the candle countdown. The
+  countdown beside the running candle is painted on the chart canvas, so its position cannot be read.
+
 ## [1.72.6] - 2026-09-28
 
 ### Added

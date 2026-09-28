@@ -80,3 +80,33 @@ test("relabel: always on - a switch-off stored by an older build no longer stops
     qx.close();
   }
 });
+
+// ── v1.72.7: step 1 of our own "Demo Account" block - read what is behind theirs ─────────────────
+test("account block: the line reports its box, what paints behind it and its font (v1.72.7)", async () => {
+  // The v1.58 tries looked up through the block's parents, which are all transparent; the dark background is
+  // painted by a layer beside it. jsdom has no layout, so the page gets a stack at every point: the block,
+  // then a header strip painting the colour, then the body (white, as on the live page).
+  const setup = (w) => {
+    const bg = w.document.createElement("div");
+    bg.className = "qHeaderBg";
+    bg.style.backgroundColor = "rgb(28, 31, 45)";
+    const host = w.document.createElement("qx-usermenu-trigger");
+    w.document.body.append(bg, host);
+    const rect = w.Element.prototype.getBoundingClientRect;
+    w.Element.prototype.getBoundingClientRect = function () {
+      if (this === host) return { left: 1500, top: 8, width: 180, height: 40, right: 1680, bottom: 48, x: 1500, y: 8 };
+      return rect.call(this);
+    };
+    w.document.elementsFromPoint = (x) => (x >= 1500 && x <= 1680 ? [host, bg, w.document.body] : [bg, w.document.body]);
+  };
+  const qx = await boot({ path: "/en/trade", setup });
+  try {
+    await sleep(2200);
+    const line = String(diag(qx).accountBlock);
+    assert.match(line, /^box 1500,8 180x40/);
+    assert.match(line, /behind centre: div\.qHeaderBg rgb\(28, 31, 45\)/, line);
+    assert.match(line, /left of it: div\.qHeaderBg rgb\(28, 31, 45\)/, line);
+  } finally {
+    qx.close();
+  }
+});

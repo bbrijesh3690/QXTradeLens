@@ -4661,6 +4661,53 @@
       }
       return found.length ? found.join(" | ") : "nothing over the chart reads like a timer - it is painted on the chart";
     }
+    // v1.72.7: step 1 of drawing our own "Demo Account" block over Quotex's account block, which sits in a
+    // closed component (<qx-usermenu-trigger>) whose words cannot be changed. The two tries in v1.58 failed on
+    // the background: every PARENT of the block is transparent up to <body>, which computes to white on a page
+    // that renders dark. elementsFromPoint returns everything stacked at a point on screen - not only
+    // parents - so the layer that really paints behind the block can be found. This only reports it, with the
+    // block's box and font, for the diagnostics line; nothing is drawn yet.
+    const isSolid = (cs) => {
+      const m = /rgba?\(([^)]+)\)/.exec(cs.backgroundColor || "");
+      const alpha = m ? (m[1].split(",")[3] !== undefined ? parseFloat(m[1].split(",")[3]) : 1) : 0;
+      return alpha > 0.5 || (cs.backgroundImage && cs.backgroundImage !== "none");
+    };
+    function accountBlockProbe() {
+      const host = document.querySelector("qx-usermenu-trigger");
+      if (!host) {
+        return "no <qx-usermenu-trigger> on the page";
+      }
+      const r = host.getBoundingClientRect();
+      if (!(r.width > 0 && r.height > 0)) {
+        return "<qx-usermenu-trigger> has no box";
+      }
+      // What paints behind the block: just outside its left and right edges, at mid-height, and at its centre
+      // below the block itself.
+      const behind = (x, y) => {
+        const stack = document.elementsFromPoint(x, y);
+        const from = stack.indexOf(host) + 1;
+        for (const el of stack.slice(from > 0 ? from : 0)) {
+          if (el === host || isOurElement(el)) {
+            continue;
+          }
+          const cs = getComputedStyle(el);
+          if (isSolid(cs)) {
+            const cls = typeof el.className === "string" && el.className ? "." + el.className.split(" ")[0] : "";
+            return el.tagName.toLowerCase() + cls + " " + (cs.backgroundImage && cs.backgroundImage !== "none" ? "image " + cs.backgroundImage.slice(0, 60) : cs.backgroundColor);
+          }
+        }
+        return "nothing solid";
+      };
+      const mid = r.top + r.height / 2,
+        cs = getComputedStyle(host);
+      return (
+        "box " + Math.round(r.left) + "," + Math.round(r.top) + " " + Math.round(r.width) + "x" + Math.round(r.height) +
+        " \u00b7 behind centre: " + behind(r.left + r.width / 2, mid) +
+        " \u00b7 left of it: " + behind(r.left - 4, mid) +
+        " \u00b7 right of it: " + behind(r.right + 4, mid) +
+        " \u00b7 font " + cs.fontFamily.slice(0, 40) + " " + cs.fontSize + " " + cs.fontWeight + " " + cs.color
+      );
+    }
     function assetListDiag() {
       const t = getAssetDropdown();
       const via = !t ? "not on the page" : t.id === "asset-select-dropdown" ? "by id" : "by class " + (t.className || "").toString().split(" ")[0];
@@ -8196,7 +8243,20 @@
             // all about the tab actually in front of someone.
             bar: barAnchor,
             assetList: assetListDiag(),
-            candleTimer: candleTimerProbe(),
+            candleTimer: (() => {
+              try {
+                return candleTimerProbe();
+              } catch (err) {
+                return "probe failed: " + (err && err.message ? err.message : err);
+              }
+            })(),
+            accountBlock: (() => {
+              try {
+                return typeof document.elementsFromPoint === "function" ? accountBlockProbe() : "no elementsFromPoint";
+              } catch (err) {
+                return "probe failed: " + (err && err.message ? err.message : err);
+              }
+            })(),
             relabel: (() => {
               const ours = document.querySelectorAll("[data-tc-relabel]").length;
               return ours ? "rewritten \u00b7 " + ours : "nothing matched";
