@@ -4554,8 +4554,17 @@
         t("svg.icon-plus")
       );
     }
+    // v1.72.4: reported live - after auto-open picked a pair, the pair list stayed open. The list was found
+    // for opening by any of its names (getAssetDropdown), but "is it open?" and the close button were looked
+    // for under the id alone. With the id gone the list read as closed the moment a pair was picked, so the
+    // close never ran. Both now use the same finder; a list found by anything but its id counts as open only
+    // while it is showing pair rows, so a container that stays on the page is never taken for an open list.
+    const visibleBox = (el) => {
+      const b = el.getBoundingClientRect();
+      return b.width > 1 && b.height > 1;
+    };
     function isAssetDropdownOpen() {
-      const t = document.querySelector("#asset-select-dropdown");
+      const t = getAssetDropdown();
       if (!t) {
         return false;
       }
@@ -4563,14 +4572,26 @@
       if (e.display === "none" || e.visibility === "hidden" || parseFloat(e.opacity || "1") === 0) {
         return false;
       }
-      const n = t.getBoundingClientRect();
-      return n.width > 1 && n.height > 1;
+      if (!visibleBox(t)) {
+        return false;
+      }
+      return t.id === "asset-select-dropdown" || getAssetRows(t).some(visibleBox);
+    }
+    // For the diagnostics line: how the list is found, whether it is open, and how the last close went.
+    let lastAssetClose = null;
+    function assetListDiag() {
+      const t = getAssetDropdown();
+      const via = !t ? "not on the page" : t.id === "asset-select-dropdown" ? "by id" : "by class " + (t.className || "").toString().split(" ")[0];
+      const closeNote = lastAssetClose
+        ? " \u00b7 last close: " + lastAssetClose.what + " " + fmtAgo(Math.round((Date.now() - lastAssetClose.at) / 1000))
+        : "";
+      return via + (t ? (isAssetDropdownOpen() ? " \u00b7 open" : " \u00b7 closed") : "") + closeNote;
     }
     function closeAssetDropdownStep(t) {
       if (!isAssetDropdownOpen()) {
         return true;
       }
-      const e = document.querySelector("#asset-select-dropdown"),
+      const e = getAssetDropdown(),
         n = e && e.querySelector('[aria-label="Close"]'),
         o = getAssetAddButton(),
         r = o && !o.closest(".deal-amount-input") && !o.closest("#__tradeCalc");
@@ -4965,6 +4986,10 @@
       const e = () => {
         try {
           if (!isAssetDropdownOpen() || t >= 8) {
+            lastAssetClose = {
+              at: Date.now(),
+              what: isAssetDropdownOpen() ? "still open after " + t + " tries" : t ? "closed at try " + t : "closed by itself",
+            };
             otcRebuildBusy = false;
             return;
           }
@@ -8088,6 +8113,7 @@
             // far came from an automated tab whose page never finished loading, which is no evidence at
             // all about the tab actually in front of someone.
             bar: barAnchor,
+            assetList: assetListDiag(),
             relabel: (() => {
               const ours = document.querySelectorAll("[data-tc-relabel]").length;
               return ours ? "rewritten \u00b7 " + ours : "nothing matched";

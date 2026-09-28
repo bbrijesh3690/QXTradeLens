@@ -5,6 +5,23 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.72.4] - 2026-09-28
+
+### Fixed
+- **Auto-open closes the pair list after it opens a pair.** Reported live: the "select trade pair" list stayed
+  open once auto-open had done its job. The list was found for opening by any of its names, but "is it open?"
+  - and its Close button - were looked for under its id alone. With the id missing, the list read as closed
+  the moment a pair was picked, so the close never ran. Both now use the same finder. A list found by any name
+  but its id counts as open only while it is showing pair rows, so a container that stays on the page is never
+  taken for an open list. The same close serves the R and Q hotkeys.
+- The diagnostics line has an `assetList` field: how the list is found (`by id` / `by class ...`), whether
+  it is open, and how the last close went (`closed at try 1 2m ago`, or `still open after 8 tries`). The
+  cause above is the one the spec reproduces; the field confirms it on the live page after the next auto-open.
+
+### Tests
+- A spec with a list that has no id, appears on +, and goes on its own Close: on 1.72.3 the pair is picked and
+  the list is never closed, exactly as reported; on 1.72.4 it is closed.
+
 ## [1.72.3] - 2026-09-28
 
 ### Changed

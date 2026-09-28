@@ -509,6 +509,60 @@ test("payout floor: with every open pair below it, one that clears it is opened 
   }
 });
 
+test("auto-open closes the pair list after it opens a pair, when the list has no id (v1.72.4)", async () => {
+  // Reported live on 1.72.3: auto-open opened a pair and left the "select trade pair" list open. The list
+  // was found for opening by any of its names, but checked for "open" - and closed - by its id alone. Here it
+  // has no id, appears when + is pressed, and goes when its own Close button is pressed, as the platform's does.
+  const store = quotexStore({ payout: 70 });
+  store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  const row = (name, pct, id) =>
+    '<div class="R2Rgm" id="' + id + '"><div class="teoXG">' + name + '</div><div class="mQX6T">' + pct + ' %</div></div>';
+  const html = FIXTURE.replace('<div class="ElyTP">91 %</div>', '<div class="ElyTP">70 %</div>')
+    .replace('<span class="UI2Kh">91 %</span>', '<span class="UI2Kh">70 %</span>')
+    .replace('<div id="graph">', '<div id="asset-select--button"><button id="plus">+</button></div><div id="graph">');
+  const events = [];
+  const setup = (w) => {
+    const rect = w.Element.prototype.getBoundingClientRect;
+    w.Element.prototype.getBoundingClientRect = function () {
+      // jsdom has no layout: the list and its rows get a box while they are on the page.
+      if (this.classList && (this.classList.contains("a_IoG") || this.classList.contains("R2Rgm"))) {
+        return { left: 10, top: 60, width: 300, height: 40, right: 310, bottom: 100, x: 10, y: 60 };
+      }
+      return rect.call(this);
+    };
+    w.document.getElementById("plus").addEventListener("click", () => {
+      if (w.document.querySelector(".a_IoG")) return;
+      events.push("opened list");
+      const list = w.document.createElement("div");
+      list.className = "a_IoG";
+      list.innerHTML = row("EUR/USD (OTC)", 70, "rowEur") + row("AUD/CAD (OTC)", 93, "rowAud") + '<button aria-label="Close">x</button>';
+      w.document.getElementById("graph").before(list);
+      list.querySelector('[aria-label="Close"]').addEventListener("click", () => {
+        events.push("closed list");
+        list.remove();
+      });
+      w.document.getElementById("rowAud").addEventListener("click", () => {
+        if (events.includes("picked AUD/CAD")) return;
+        events.push("picked AUD/CAD");
+        const tab = w.document.createElement("div");
+        tab.className = "dJ15T vXMlv";
+        tab.setAttribute("data-symbol", "AUDCAD_otc");
+        tab.innerHTML = '<div class="WRocw">AUD/CAD (OTC)</div><div class="ElyTP">93 %</div>';
+        w.document.querySelector(".Q02Z1").appendChild(tab);
+      });
+    });
+  };
+  const qx = await boot({ html, store, setup });
+  try {
+    await sleep(9000);
+    assert.deepEqual(events, ["opened list", "picked AUD/CAD", "closed list"], "the list was closed after the pick: " + events.join(", "));
+    assert.equal(qx.window.document.querySelector(".a_IoG"), null, "and is gone from the page");
+    assert.match(String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").assetList), /last close: closed at try/);
+  } finally {
+    qx.close();
+  }
+});
+
 test("payout floor: a pair above it is reason enough to open nothing (v1.54.0)", async () => {
   const clicked = [];
   const setup = (w) => {
