@@ -3417,7 +3417,9 @@
             break;
           }
         }
-        return out;
+        // v1.84.1: checked against Quotex's data before it can be remembered - otherwise a block the data had
+        // just ruled out was found and learnt again at once.
+        return confirmedByStore(out.filter((row) => !isSettledRow(row) && hasRunningClock(row)));
       });
       const running = rows.filter((row) => !isSettledRow(row) && hasRunningClock(row)),
         confirmed = confirmedByStore(running);
@@ -9239,7 +9241,13 @@
       add("Tab close buttons", tabs.length && closeBtns === tabs.length ? "ok" : closeBtns ? "fallback" : "missing", "page", closeBtns + " of " + tabs.length);
       const domOpen = getOpenTradePnlEls().length;
       const storeOpen = storeOpenTradeCount();
-      add("Open trades", isNaN(storeOpen) && !domOpen ? "fallback" : "ok", isNaN(storeOpen) ? "page" : "store + page", domOpen + " page · " + (isNaN(storeOpen) ? "—" : storeOpen) + " store");
+      // v1.84.1: one number - Quotex's own when it answers - and the page's beside it only when they differ.
+      add(
+        "Open trades",
+        isNaN(storeOpen) && !domOpen ? "fallback" : "ok",
+        isNaN(storeOpen) ? "page" : "store",
+        (isNaN(storeOpen) ? domOpen : storeOpen) + " open" + (!isNaN(storeOpen) && domOpen !== storeOpen ? " · " + domOpen + " on the page" : ""),
+      );
       // Lists (v1.25.0). A menu that isn't open right now can't be checked; that's "not open", not broken.
       // v1.83.0: Quotex's data decides when it answers, as it does for MAX and the chips. Read live on 1.81.0,
       // a settled row in the trade history made this say "1 open" with nothing running.

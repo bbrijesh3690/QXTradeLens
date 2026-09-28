@@ -5,6 +5,17 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.84.1] - 2026-09-29
+
+### Fixed
+- **Check's "Open trades" reads as one number** - "0 open" - not "0 page · 0 store" (asked from the live Check on
+  1.84.0). It is Quotex's own count when it answers; the page's count is added only when the two differ, as the
+  rows below it already do.
+- **A wrong trade-row name, once forgotten, was learnt again at once.** 1.84.0 forgot a remembered name that Quotex's
+  data contradicted, but the fallback search then found the same block and remembered it again - a flip-flop, with
+  a storage write on every look. The search now checks its rows against Quotex's data before anything is
+  remembered. Its spec was flaky on 1.84.0 for exactly this reason; it now waits long enough to catch a re-learn.
+
 ## [1.84.0] - 2026-09-29
 
 Quotex compatibility (⚙ → Check), from the user's screenshot of 1.83.0.

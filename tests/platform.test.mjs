@@ -440,7 +440,7 @@ test("self-healing: a remembered trade-row name that Quotex's data contradicts i
   const learned = { "list:openTradeRows": { sel: ".hdbFu", at: "2026-09-20T05:54:08.645Z" } };
   const qx = await boot({ html, store: quotexStore({ opened: [] }), storage: { ...slStorage(10000), [prefKey("__tradeCalc_learned_selectors")]: JSON.stringify(learned) } });
   try {
-    await sleep(300);
+    await sleep(2500); // long enough for it to be looked for again - and not re-learnt (v1.84.1)
     const list = healthRow(qx, "Open trades list");
     assert.equal(list.value, "no open trades", JSON.stringify(list));
     const now = JSON.parse(pref(qx, "__tradeCalc_learned_selectors") || "{}");
@@ -465,6 +465,22 @@ test("self-healing: renamed trade buttons reading Buy / Sell are still guarded (
     assert.notEqual(healthRow(qx, "Up/Down buttons").status, "missing");
   } finally {
     qx.close();
+  }
+});
+
+test("health: Open trades is one number - \"0 open\" - with the page's only when it differs (v1.84.1)", async () => {
+  // Asked from the live Check on 1.84.0: "0 page · 0 store" should read "0 open".
+  const none = await boot({ store: quotexStore({ opened: [] }) });
+  try {
+    assert.equal(healthRow(none, "Open trades").value, "0 open");
+  } finally {
+    none.close();
+  }
+  const two = await boot({ store: quotexStore({ opened: [deal("a"), deal("b")] }) });
+  try {
+    assert.equal(healthRow(two, "Open trades").value, "2 open · 0 on the page", "Quotex's count, the page's beside it when it differs");
+  } finally {
+    two.close();
   }
 });
 
