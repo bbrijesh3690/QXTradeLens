@@ -238,6 +238,19 @@ test("charts closed: the auto-fill says so, rather than 'starting up' for good (
   }
 });
 
+test("charts closed: the check marks the auto-fill – (nothing to check), not 🔁 (v1.70.3)", async () => {
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_on: "0" } });
+  try {
+    await sleep(500);
+    assert.equal(healthRow(qx, "Charts auto-fill").status, "idle", "– while the charts are closed");
+    openMenu(qx);
+    click(qx, item(qx, "health"));
+    assert.match($(qx, "#__tcMnHealth").textContent, /– Charts auto-fill/, "and that is the mark shown");
+  } finally {
+    qx.close();
+  }
+});
+
 // ── Deposits ─────────────────────────────────────────────────────────────────────────────────────
 
 const RESULT = {

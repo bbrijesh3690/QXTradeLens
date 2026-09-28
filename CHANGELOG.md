@@ -5,6 +5,12 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.70.3] - 2026-09-28
+
+### Fixed
+- **Closed charts show – in the compatibility check, not 🔁.** 🔁 means Quotex changed something and the panel
+  coped; closed charts are just nothing to check right now, which is what – says. The spec fails on 1.70.2.
+
 ## [1.70.2] - 2026-09-28
 
 ### Fixed

@@ -8489,7 +8489,9 @@
       add("Currency", state && state.currency ? "ok" : "fallback", state && state.currency ? "store" : "page", detectCurrency());
       add(
         "Charts auto-fill",
-        !mtfAutofill ? "idle" : /^(ready|filling|filled)/.test(mtfAutofillReason) ? "ok" : "fallback",
+        // v1.70.3: closed charts are "nothing to check right now" (–), not a fallback (🔁) - 🔁 means Quotex
+        // changed something.
+        !mtfAutofill || !byId("__tcMTF") ? "idle" : /^(ready|filling|filled)/.test(mtfAutofillReason) ? "ok" : "fallback",
         byId("__tcMTF") ? "charts open" : "charts hidden",
         mtfAutofillReason,
       );
