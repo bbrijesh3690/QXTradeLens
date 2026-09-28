@@ -5,6 +5,29 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.84.0] - 2026-09-29
+
+Quotex compatibility (⚙ → Check), from the user's screenshot of 1.83.0.
+
+### Fixed
+- **"Open trades list · no open trades · 1 on the page" with nothing running.** A name remembered on 2026-09-20 for
+  the open-trade rows still matched a block holding a pair and a clock, and nothing ever checked it again. Now, when
+  Quotex's data answers, a row on the page counts as an open trade only if its pair is one Quotex says is open, and
+  a remembered name whose rows the data contradicts is forgotten and looked for afresh - the same re-check the pair
+  list and "+" got in 1.80.0. Check and the countdowns that read these rows both heal with it.
+- **The Up / Down fallback did not know "Buy" / "Sell".** Check showed Quotex's Up button as "Buy". The buttons are
+  found by their known name today, but after a rename the word fallback looked only for "Up" / "Down", so the trade
+  guard (PAYOUT floor, MAX, FAST) could have stopped silently. Both wordings are accepted now.
+- **Check showed "input" and "canvas"** for the Investment field and the Chart canvas. It shows the amount and the
+  canvas size now.
+- **Check's values were cut off** ("no open trades · 1 …", "charts are hidden (…"). They wrap now.
+
+### Added
+- **Timeframe button** in Check (S/D and the chart auto-fill press it): found by name, by a remembered name, or as the
+  lone timeframe label on the page.
+- **Expiry box** and **Expiry switch (T)** in Check: the time shown, and whether the switch is on Time or Timer. If
+  either is missing, T does nothing - Check now says so.
+
 ## [1.83.0] - 2026-09-29
 
 ### Removed

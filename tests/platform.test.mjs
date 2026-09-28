@@ -405,8 +405,80 @@ test("health: with Quotex's data saying nothing is open, page rows that look lik
   try {
     const list = healthRow(qx, "Open trades list");
     assert.equal(list.status, "idle", JSON.stringify(list));
-    assert.equal(list.value, "no open trades · 1 on the page", "the page's count is shown beside it: " + list.value);
+    // v1.84.0: and the page's rows are not counted either - their pair is not one Quotex says is open.
+    assert.equal(list.value, "no open trades", list.value);
     assert.equal(healthRow(qx, "Trade timers").value, "no open trades");
+  } finally {
+    qx.close();
+  }
+});
+
+test("health: Check reports the timeframe button - by its name, and by what it shows once renamed (v1.84.0)", async () => {
+  const known = await boot({ html: FIXTURE.replace('<div id="graph">', '<div class="HgaSf">1m</div><div id="graph">') });
+  try {
+    const row = healthRow(known, "Timeframe button");
+    assert.equal(row.status, "ok", JSON.stringify(row));
+    assert.equal(row.value, "1m");
+  } finally {
+    known.close();
+  }
+  const renamed = await boot({ html: FIXTURE.replace('<div id="graph">', '<div class="zT7qe">1m</div><div id="graph">') });
+  try {
+    const row = healthRow(renamed, "Timeframe button");
+    assert.equal(row.status, "fallback", "found, not by its name: " + JSON.stringify(row));
+    assert.equal(row.value, "1m");
+  } finally {
+    renamed.close();
+  }
+});
+
+test("self-healing: a remembered trade-row name that Quotex's data contradicts is forgotten (v1.84.0)", async () => {
+  // Read live on 1.83.0: "Open trades list · no open trades · 1 on the page" - a name learnt on 2026-09-20
+  // (.hdbFu) still matched a block holding a pair and a clock, with nothing running.
+  const block = '<div class="hdbFu"><div>USD/DZD (OTC)</div><div>00:45</div></div>';
+  const html = FIXTURE.replace('<div id="graph">', block + '<div id="graph">');
+  const learned = { "list:openTradeRows": { sel: ".hdbFu", at: "2026-09-20T05:54:08.645Z" } };
+  const qx = await boot({ html, store: quotexStore({ opened: [] }), storage: { ...slStorage(10000), [prefKey("__tradeCalc_learned_selectors")]: JSON.stringify(learned) } });
+  try {
+    await sleep(300);
+    const list = healthRow(qx, "Open trades list");
+    assert.equal(list.value, "no open trades", JSON.stringify(list));
+    const now = JSON.parse(pref(qx, "__tradeCalc_learned_selectors") || "{}");
+    assert.equal(now["list:openTradeRows"], undefined, "the wrong name is forgotten: " + JSON.stringify(now));
+  } finally {
+    qx.close();
+  }
+});
+
+test("self-healing: renamed trade buttons reading Buy / Sell are still guarded (v1.84.0)", async () => {
+  // Read live on 1.83.0: Check showed Quotex's Up button as "Buy". The word fallback knew only Up / Down.
+  const html = FIXTURE.replace('<div class="DSGsX" id="trade-button">', '<div class="zQ9xT">')
+    .replace('<span class="oQ4Z4">Up</span>', '<span class="kP3wL">Buy</span>')
+    .replace('<span class="oQ4Z4">Down</span>', '<span class="kP3wL">Sell</span>');
+  const qx = await boot({ html, store: quotexStore({ opened: [deal("a"), deal("b")] }) });
+  try {
+    const buy = Array.from(qx.window.document.querySelectorAll("button")).find((b) => /^Buy$/.test(b.textContent.trim()));
+    let reached = false;
+    buy.addEventListener("click", () => (reached = true));
+    buy.dispatchEvent(new qx.window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    assert.equal(reached, false, "two open, MAX 2: the Buy click is stopped");
+    assert.notEqual(healthRow(qx, "Up/Down buttons").status, "missing");
+  } finally {
+    qx.close();
+  }
+});
+
+test("health: Check shows the amount and the expiry time, and finds the expiry switch (v1.84.0)", async () => {
+  const html = FIXTURE.replace('<div class="NEJ1S" aria-expanded="false">', '<div class="NEJ1S" aria-expanded="false"><button class="EWNJc">Timer</button>');
+  const qx = await boot({ html });
+  try {
+    assert.equal(healthRow(qx, "Investment field").value, "2000", "the amount, not \"input\"");
+    const box = healthRow(qx, "Expiry box");
+    assert.equal(box.status, "ok", JSON.stringify(box));
+    assert.equal(box.value, "18:14");
+    const sw = healthRow(qx, "Expiry switch (T)");
+    assert.equal(sw.status, "ok", JSON.stringify(sw));
+    assert.equal(sw.value, "on Time");
   } finally {
     qx.close();
   }
@@ -468,8 +540,9 @@ test("health: lists that aren't open right now read as idle, not broken", async 
     assert.equal(byName["Open trades list"].status, "idle");
     assert.equal(byName["Asset list rows"].value, "not open");
     assert.equal(byName["Timeframe menu"].status, "idle");
-    // Only the tab close button is genuinely absent on this Quotex build.
-    assert.equal(report.rows.filter((r) => r.status === "missing").map((r) => r.name).join(","), "Tab close buttons");
+    // Only the tab close button and (v1.84.0) the timeframe button and expiry switch are genuinely absent on
+    // this test page.
+    assert.equal(report.rows.filter((r) => r.status === "missing").map((r) => r.name).join(","), "Tab close buttons,Timeframe button,Expiry switch (T)");
   } finally {
     qx.close();
   }
