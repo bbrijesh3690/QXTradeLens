@@ -62,7 +62,8 @@ Three things exist because of this:
 
 - **The diagnostics line** — the foreground tab writes build, pair, chart timeframe, open-trade
   count, what the auto-fill is doing, the payout floor and what each open pair pays, what that
-  floor last decided, what the win-projection chip is showing, and per-chart
+  floor last decided, what the win-projection chip is showing, where the bar is placed (`bar`: in the
+  header between "WEB TRADING PLATFORM" and "Alerts" since v1.72.0, or dragged, or which word is missing), and per-chart
   `zoom / have / drawn / pannedTo / atLive` into the site's own storage every 2 s, under the hashed key
   for `__tradeCalc_diag`. Any tab on the
   origin can read it back. This is how a live problem gets diagnosed in one round trip.

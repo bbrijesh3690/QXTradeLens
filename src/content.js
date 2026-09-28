@@ -1651,6 +1651,9 @@
         el.style.setProperty(prop, styles[prop], "important");
       }
     }
+    // v1.72.0: with no spot of the user's own, the bar lives in Quotex's header (placeBarInHeader).
+    let barInHeader = false,
+      barAnchor = "not looked for yet";
     let panelPos = {
         x: 0,
         y: 0,
@@ -1686,7 +1689,7 @@
             panelPos.y = panelPos.y - c;
             delete panelPos.isAbsolute;
           }
-        } else {
+        } else if (!barInHeader) {
           panelPos.tx = 0;
           panelPos.ty = 0;
           panelPos.x = 0;
@@ -1700,7 +1703,7 @@
         // below the pair tabs is for a bar that has never been moved. The push used to apply to a saved spot
         // too, but only when the tabs were already drawn as the bar was built: not on a page refresh (they
         // come later), yes when the toolbar icon brought it back - so it came back somewhere else.
-        const p = t || prefGet("tc_pos")
+        const p = t || prefGet("tc_pos") || barInHeader
           ? 3
           : ((t, e) => {
               if (isMobileWidth()) {
@@ -1733,6 +1736,12 @@
         panelPos.x = d - i;
         panelPos.y = u - c;
       };
+    // v1.72.0: the bar's home moved into the header. A spot saved before that is cleared once, so it can go
+    // there; a spot dragged to from now on is kept, as it always was.
+    if (prefGet("__tradeCalc_pos_home") !== "header") {
+      prefRemove("tc_pos");
+      prefSet("__tradeCalc_pos_home", "header");
+    }
     try {
       const t = JSON.parse(prefGet("tc_pos"));
       if (t) {
@@ -1792,10 +1801,96 @@
       }
       clampPanelPos();
       panel.style.transform = `translate3d(${panelPos.x}px, ${panelPos.y}px, 0)`;
+      placeBarInHeader();
     });
     let dragOffsetX,
       dragOffsetY,
       isDragging = false;
+    // v1.72.0: the bar's home is Quotex's header, centred in the gap between "WEB TRADING PLATFORM" and
+    // "Alerts", 5 px from the top (1 px above where it used to sit). Both are found by their words, not by a
+    // class, and kept until they leave the page; the look is repeated twice a second so the bar follows a
+    // window resize or its own width changing. A spot the user drags to wins, as before. Either word not
+    // found - Quotex renamed it, or hid it in a closed component - leaves the bar where it was, and the
+    // diagnostics line says which.
+    const HEADER_WORDS = {
+      logo: "//text()[contains(translate(normalize-space(.),'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ'),'WEB TRADING PLATFORM')]",
+      alerts: "//text()[translate(normalize-space(.),'abcdefghijklmnopqrstuvwxyz','ABCDEFGHIJKLMNOPQRSTUVWXYZ')='ALERTS']",
+    };
+    const headerFound = {};
+    let headerLookAt = 0;
+    function findHeaderWord(key) {
+      const kept = headerFound[key];
+      if (kept && kept.isConnected) {
+        return kept;
+      }
+      let best = null,
+        bestTop = Infinity;
+      try {
+        const x = document.evaluate(HEADER_WORDS[key], document.body, null, 7, null);
+        for (let i = 0; i < x.snapshotLength; i++) {
+          const el = x.snapshotItem(i).parentElement;
+          if (!el || isOurElement(el)) {
+            continue;
+          }
+          const r = el.getBoundingClientRect();
+          // The header: on screen, near the top. The same words lower down (a menu, a settings page) are not it.
+          if (r.width > 0 && r.height > 0 && r.top >= 0 && r.top < 150 && r.top < bestTop) {
+            best = el;
+            bestTop = r.top;
+          }
+        }
+      } catch (e) {}
+      headerFound[key] = best;
+      return best;
+    }
+    function placeBarInHeader() {
+      if (prefGet("tc_pos")) {
+        barInHeader = false;
+        barAnchor = "your own spot (dragged there)";
+        return;
+      }
+      if (document.hidden || isDragging || isMobileWidth() || panel.style.display === "none") {
+        return;
+      }
+      const now = Date.now(),
+        kept = headerFound.logo && headerFound.logo.isConnected && headerFound.alerts && headerFound.alerts.isConnected;
+      // A fresh search walks the page, so while either word is missing it is only repeated every 2 s.
+      if (!kept && now - headerLookAt < 2000) {
+        return;
+      }
+      if (!kept) {
+        headerLookAt = now;
+      }
+      const logo = findHeaderWord("logo"),
+        alerts = findHeaderWord("alerts");
+      if (!logo || !alerts) {
+        barInHeader = false;
+        barAnchor = (!logo ? "WEB TRADING PLATFORM" : "Alerts") + " not found";
+        return;
+      }
+      const a = logo.getBoundingClientRect(),
+        b = alerts.getBoundingClientRect(),
+        w = panel.getBoundingClientRect().width;
+      if (!(b.left > a.right)) {
+        barInHeader = false;
+        barAnchor = "no gap between WEB TRADING PLATFORM and Alerts";
+        return;
+      }
+      let left = Math.round((a.right + b.left) / 2 - w / 2);
+      left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+      const x = left - getPanelOrigin().left,
+        y = 0; // the stylesheet's own 5 px from the top
+      barInHeader = true;
+      barAnchor =
+        "in the header \u00b7 gap " + Math.round(a.right) + "-" + Math.round(b.left) + " \u00b7 bar " + Math.round(w) +
+        (w > b.left - a.right ? " (wider than the gap)" : "");
+      if (panelPos.x !== x || panelPos.y !== y) {
+        panelPos.x = panelPos.tx = x;
+        panelPos.y = panelPos.ty = y;
+        panel.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+      }
+    }
+    every(500, placeBarInHeader);
     panel.onpointerdown = (t) => {
       if (t.target.closest("#__tcSecTargets") && !t.target.closest("input, button, select, textarea")) {
         isDragging = true;
@@ -7906,6 +8001,7 @@
             // v1.59.1: whether the account label was found and rewritten. Every conclusion about this so
             // far came from an automated tab whose page never finished loading, which is no evidence at
             // all about the tab actually in front of someone.
+            bar: barAnchor,
             relabel: (() => {
               const ours = document.querySelectorAll("[data-tc-relabel]").length;
               return ours ? "rewritten \u00b7 " + ours : "nothing matched";

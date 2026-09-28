@@ -5,6 +5,24 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.72.0] - 2026-09-28
+
+### Changed
+- **The bar's home is Quotex's header**, centred in the gap between "WEB TRADING PLATFORM" and "Alerts", 5 px
+  from the top - 1 px above where it sat. Both are found by their words, not by a class, and the look is
+  repeated twice a second, so the bar stays centred when the window is resized or the bar changes width.
+  It is not pushed below the pair tabs there. Dragging still works: a spot you drag to is kept, as before.
+- Your old saved spot is cleared once, so the bar can move there; `__tradeCalc_pos_home` records that it
+  was done.
+- The diagnostics line has a `bar` field: `in the header · gap 150-950 · bar 700`, `your own spot (dragged
+  there)`, or which word was not found. If Quotex renames either word or hides it in a closed component,
+  the bar stays where it would have been before, and this field says which one is missing.
+
+### Tests
+- Three specs, all failing on 1.71.0: the bar is centred in the gap and not pushed below the tabs; an old
+  saved spot is cleared once and a spot dragged to afterwards is kept; and with a word missing the bar keeps
+  its old place and the line says which. Not yet seen on the live page - the `bar` field settles it in one read.
+
 ## [1.71.0] - 2026-09-28
 
 ### Changed

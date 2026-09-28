@@ -131,7 +131,11 @@ test("the bar comes back where it was when the toolbar icon shows it again (v1.7
       return rect.call(this);
     };
   };
-  const storage = { ...slStorage(10000), [prefKey("tc_pos")]: JSON.stringify({ tx: 0, ty: 1, x: 676, y: 6 }) };
+  const storage = {
+    ...slStorage(10000),
+    [prefKey("tc_pos")]: JSON.stringify({ tx: 0, ty: 1, x: 676, y: 6 }),
+    [prefKey("__tradeCalc_pos_home")]: "header", // dragged there after v1.72.0, so it is kept
+  };
   const qx = await boot({ storage, setup });
   try {
     const y = () => {
@@ -155,6 +159,90 @@ test("the bar comes back where it was when the toolbar icon shows it again (v1.7
     assert.equal(parseFloat(m[1]), 38, "moved 38 px down: 3 px under the 40 px tab strip, from its 5 px start");
   } finally {
     fresh.close();
+  }
+});
+
+// ── v1.72.0: the bar's home is Quotex's header ───────────────────────────────────────────────────
+// jsdom has no layout, so the page gets real-looking boxes: the header's two words, a strip of pair tabs
+// under them, and the bar itself (its stylesheet puts it 5 px from the top, moved by its transform).
+function headerPage({ logo = true, alerts = true } = {}) {
+  return (w) => {
+    const bar = w.document.createElement("div");
+    bar.innerHTML =
+      (logo ? '<span class="tLogoSub">Web Trading Platform</span>' : "") + (alerts ? '<button class="tAlerts"> Alerts </button>' : "");
+    w.document.body.prepend(bar);
+    const rect = w.Element.prototype.getBoundingClientRect;
+    const box = (left, top, width, height) => ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top });
+    w.Element.prototype.getBoundingClientRect = function () {
+      if (this.classList && this.classList.contains("tLogoSub")) return box(20, 30, 130, 12); // right edge 150
+      if (this.classList && this.classList.contains("tAlerts")) return box(950, 14, 50, 24); // left edge 950
+      if (this.classList && this.classList.contains("dJ15T")) return box(0, 0, 2000, 40);
+      if (this.id === "__tradeCalc") {
+        const m = /translate3d\((-?[\d.]+)px,\s*(-?[\d.]+)px/.exec(this.style.transform) || [0, 0, 0];
+        return box(300 + parseFloat(m[1]), 5 + parseFloat(m[2]), 700, 50);
+      }
+      return rect.call(this);
+    };
+  };
+}
+const barAt = (qx) => {
+  const m = /translate3d\((-?[\d.]+)px,\s*(-?[\d.]+)px/.exec(qx.panelRoot().getElementById("__tradeCalc").style.transform);
+  return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : null;
+};
+const diagBar = (qx) => JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").bar;
+
+test("the bar sits in the header, centred between WEB TRADING PLATFORM and Alerts (v1.72.0)", async () => {
+  const qx = await boot({ setup: headerPage() });
+  try {
+    await sleep(700);
+    // The gap is 150-950, so its middle is 550; the bar is 700 wide, so its left edge goes to 200. The
+    // stylesheet's own spot has its left edge at 300, hence -100. y 0 is 5 px from the top - 1 px above the
+    // 6 px it used to sit at - and it is not pushed below the pair tabs underneath.
+    assert.deepEqual(barAt(qx), { x: -100, y: 0 });
+    await sleep(2100);
+    assert.match(String(diagBar(qx)), /in the header · gap 150-950 · bar 700/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("a spot saved before 1.72.0 is cleared once, so the bar moves to the header (v1.72.0)", async () => {
+  const old = { ...slStorage(10000), [prefKey("tc_pos")]: JSON.stringify({ tx: 0, ty: 1, x: 676, y: 6 }) };
+  const first = await boot({ storage: old, setup: headerPage() });
+  try {
+    await sleep(700);
+    assert.deepEqual(barAt(first), { x: -100, y: 0 }, "in the header");
+    assert.equal(pref(first, "tc_pos"), null, "the old spot is gone");
+    assert.equal(pref(first, "__tradeCalc_pos_home"), "header", "and it is done once");
+  } finally {
+    first.close();
+  }
+  // A spot dragged to after that is the user's, and stays.
+  const dragged = {
+    ...slStorage(10000),
+    [prefKey("tc_pos")]: JSON.stringify({ tx: 40, ty: 60, x: 0, y: 0 }),
+    [prefKey("__tradeCalc_pos_home")]: "header",
+  };
+  const second = await boot({ storage: dragged, setup: headerPage() });
+  try {
+    await sleep(700);
+    assert.deepEqual(barAt(second), { x: 40, y: 60 }, "where it was dragged");
+    await sleep(2100);
+    assert.match(String(diagBar(second)), /your own spot/);
+  } finally {
+    second.close();
+  }
+});
+
+test("either header word missing: the bar keeps its old place and the line says which (v1.72.0)", async () => {
+  const qx = await boot({ setup: headerPage({ alerts: false }) });
+  try {
+    await sleep(700);
+    assert.equal(barAt(qx).y, 38, "kept off the pair tabs, as a bar with no home always was");
+    await sleep(2100);
+    assert.equal(diagBar(qx), "Alerts not found");
+  } finally {
+    qx.close();
   }
 });
 
