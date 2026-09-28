@@ -92,6 +92,9 @@ Three things exist because of this:
   finder must demand what only the real thing has (the list's search box, the "+" nearest the tabs), and a
   remembered name that can be wrong gets an entry in `LEARNED_CHECKS`. `tests/scramble.test.mjs` renames the
   whole page at once; a new finder gets a case there.
+- **Quotex's data is read by name, and by shape only where the data proves itself** (v1.81.0,
+  `chart_reader.js`): deal times, deal pair, deal lists. Balance, payouts and amounts are never guessed; a missing
+  one shows in ⚙ → Check as "Quotex data fields · missing: …". Read that row before hunting for a renamed field.
 - **Say what was not verified.** "Covered by tests, not seen live" is a useful sentence.
 
 ## Commands

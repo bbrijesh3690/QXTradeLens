@@ -212,6 +212,8 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
       store: { getState: () => store },
     };
     store.__plot = plot; // tests can swap candles/pair through this
+    // Quotex's server clock, as the live chart has it: level with this computer's unless a spec moves it.
+    Object.defineProperty(plot.pointsManager, "targetTime", { get: () => window.Date.now() / 1000, configurable: true });
     canvas["__reactFiber$test"] = { stateNode: null, return: { stateNode: { plot }, return: null } };
     window.eval(CHART_READER);
   }

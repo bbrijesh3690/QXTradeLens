@@ -5,6 +5,26 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.81.0] - 2026-09-29
+
+Self-healing: Quotex's data.
+
+### Added
+- **The bridge survives a rename of Quotex's deal data.** Everything the panel reads from Quotex's own state was
+  known by field name only. Where the data itself can say which value is which, it is now also found by shape:
+  - a deal's open and close times are its only two epoch-second numbers (the smaller is the open);
+  - its pair is the text value that names a known asset;
+  - the deal lists are the id-keyed maps of such deals anywhere in the store, split into open and settled by the
+    close time against Quotex's own clock.
+  These drive the trade countdowns, MAX, the open-trade count and the win projection.
+- **Everything else stays by name and is reported, never guessed.** The balance, payouts and amounts cannot be
+  told apart by shape without risking a wrong number, so ⚙ → Check has a new row, **Quotex data fields**: "all
+  found", or which were found by shape, or which are missing ("missing: global.balance").
+
+### Tests
+- The fake chart in the test harness now has Quotex's server clock (level with the computer's), as the live one
+  does; the new Check row would otherwise report it missing on every spec.
+
 ## [1.80.4] - 2026-09-29
 
 Self-healing: the Entry tags, step 1 of 2.

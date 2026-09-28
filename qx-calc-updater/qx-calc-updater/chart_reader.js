@@ -161,11 +161,49 @@
 
   function num(v) { var n = Number(v); return isFinite(n) ? n : null; }
 
+  // ── v1.81.0 (self-healing): Quotex's data after a field is renamed ─────────────────────────────
+  // Known names first. Something is found by its shape only where the data itself says which value is which:
+  // a deal's open and close times are its only two epoch-second numbers (the smaller is the open), its pair is
+  // the text value that names a known asset, and the deal lists are id-keyed maps of such deals, split into
+  // open and settled by their close time against Quotex's own clock. Everything else - balance, payouts,
+  // amounts - stays by name, and a missing one is reported in `fields`, never guessed.
+  var fieldNotes = {};
+  function isEpochSec(v) { return typeof v === 'number' && v > 1.5e9 && v < 2.5e9; }
+  function epochKeys(d) {
+    var out = [];
+    for (var k in d) if (Object.prototype.hasOwnProperty.call(d, k) && isEpochSec(d[k])) out.push(k);
+    return out;
+  }
+  function pairIn(d, assets) {
+    if (!assets) return null;
+    for (var k in d) if (Object.prototype.hasOwnProperty.call(d, k) && typeof d[k] === 'string' && assets[d[k]]) return d[k];
+    return null;
+  }
+  function looksLikeDeal(d, assets) {
+    return !!d && typeof d === 'object' && !Array.isArray(d) && epochKeys(d).length === 2 && pairIn(d, assets) !== null;
+  }
+
   // command 0 = Up, 1 = Down (checked against 10 settled trades live on 2026-09-18).
-  function dealOut(d) {
+  function dealOut(d, assets) {
+    var open = num(d.openTimestamp), close = num(d.closeTimestamp);
+    if (open === null || close === null) {
+      var ek = epochKeys(d);
+      if (ek.length === 2) {
+        open = Math.min(d[ek[0]], d[ek[1]]);
+        close = Math.max(d[ek[0]], d[ek[1]]);
+        fieldNotes['deal times'] = 'by shape';
+      } else {
+        fieldNotes['deal times'] = 'missing';
+      }
+    }
+    var asset = d.asset != null ? String(d.asset) : null;
+    if (asset === null) {
+      asset = pairIn(d, assets);
+      fieldNotes['deal pair'] = asset === null ? 'missing' : 'by shape';
+    }
     return {
       id: d.id != null ? String(d.id) : null,
-      asset: d.asset != null ? String(d.asset) : null,
+      asset: asset,
       amount: num(d.amount),
       profit: num(d.profit),
       command: num(d.command),
@@ -173,24 +211,58 @@
       openPrice: num(d.openPrice),
       closePrice: num(d.closePrice),
       percentProfit: num(d.percentProfit),
-      openTimestamp: num(d.openTimestamp),
-      closeTimestamp: num(d.closeTimestamp)
+      openTimestamp: open,
+      closeTimestamp: close
     };
   }
 
-  // Newest first by close time (then open time), capped at `limit` when > 0. The order of the store's
-  // id arrays isn't relied on.
-  function dealList(byId, ids, limit) {
-    var out = [];
-    if (!byId || !ids || !ids.length) return out;
-    for (var i = 0; i < ids.length; i++) {
-      var d = byId[ids[i]];
-      if (d && typeof d === 'object') out.push(dealOut(d));
-    }
+  function newestFirst(out, limit) {
     out.sort(function (a, b) {
       return ((b.closeTimestamp || 0) - (a.closeTimestamp || 0)) || ((b.openTimestamp || 0) - (a.openTimestamp || 0));
     });
     return limit > 0 ? out.slice(0, limit) : out;
+  }
+  // Newest first by close time (then open time), capped at `limit` when > 0. The order of the store's
+  // id arrays isn't relied on; without the id array, the map's own keys are used (v1.81.0).
+  function dealList(byId, ids, limit, assets) {
+    var out = [];
+    if (!byId) return out;
+    if (!ids) ids = Object.keys(byId);
+    for (var i = 0; i < ids.length; i++) {
+      var d = byId[ids[i]];
+      if (d && typeof d === 'object') out.push(dealOut(d, assets));
+    }
+    return newestFirst(out, limit);
+  }
+  // v1.81.0: without Quotex's `deals.openedById` / `closedById`, every id-keyed map in the store whose entries
+  // are deals (keys that are not pair symbols, entries shaped as above), split by close time against `nowSec`.
+  function dealsByShape(st, assets, nowSec) {
+    var seen = [], opened = [], closed = [], where = [];
+    var slices = Object.keys(st);
+    for (var i = 0; i < slices.length; i++) {
+      var slice = st[slices[i]];
+      if (!slice || typeof slice !== 'object' || Array.isArray(slice)) continue;
+      var keys = Object.keys(slice);
+      for (var j = 0; j < keys.length; j++) {
+        var m = slice[keys[j]];
+        if (!m || typeof m !== 'object' || Array.isArray(m)) continue;
+        var ids = Object.keys(m);
+        if (!ids.length || assets[ids[0]]) continue;
+        var ok = true;
+        for (var k = 0; k < ids.length && k < 5 && ok; k++) ok = looksLikeDeal(m[ids[k]], assets);
+        if (!ok) continue;
+        where.push(slices[i] + '.' + keys[j]);
+        for (var n = 0; n < ids.length; n++) {
+          var d = m[ids[n]];
+          if (seen.indexOf(d) >= 0 || !looksLikeDeal(d, assets)) continue;
+          seen.push(d);
+          var o = dealOut(d, assets);
+          (o.closeTimestamp > nowSec ? opened : closed).push(o);
+        }
+      }
+    }
+    fieldNotes['deal lists'] = where.length ? 'by shape: ' + where.join(', ') : 'missing';
+    return { opened: newestFirst(opened, 0), closed: newestFirst(closed, MAX_CLOSED_DEALS) };
   }
 
   // Live price per symbol: { SYMBOL: price }. Lets the panel tell a winning trade from a losing one
@@ -219,6 +291,23 @@
     var asset = symbol && bySymbol ? bySymbol[symbol] : null;
     var g = st.global || {};
     var deals = st.deals || {};
+    fieldNotes = {};
+    var serverTime = plot.pointsManager ? num(plot.pointsManager.targetTime) : null;
+    var dealSets = deals.openedById
+      ? { opened: dealList(deals.openedById, deals.openedIds, 0, bySymbol), closed: dealList(deals.closedById, deals.closedIds, MAX_CLOSED_DEALS, bySymbol) }
+      : bySymbol
+        ? dealsByShape(st, bySymbol, serverTime || Date.now() / 1000)
+        : { opened: [], closed: [] };
+    if (!deals.openedById && !bySymbol) fieldNotes['deal lists'] = 'missing';
+    // Names read with no fallback: reported when absent, so Check says which one Quotex renamed.
+    if (!st.global) fieldNotes['global'] = 'missing';
+    else {
+      var gNames = ['balance', 'currency', 'timeZone'];
+      for (var gi = 0; gi < gNames.length; gi++) if (!(gNames[gi] in g)) fieldNotes['global.' + gNames[gi]] = 'missing';
+    }
+    if (!bySymbol) fieldNotes['assets.assetBySymbol'] = 'missing';
+    if (!symbol) fieldNotes['chart pair'] = 'missing';
+    if (serverTime === null) fieldNotes['server clock'] = 'missing';
     var out = {
       v: 1,
       symbol: symbol,
@@ -238,14 +327,16 @@
       balanceVisible: g.isBalanceVisible == null ? null : !!g.isBalanceVisible,
       timeZone: num(g.timeZone),
       tabs: st.navigationSymbols && st.navigationSymbols.list ? st.navigationSymbols.list.map(String) : [],
-      openedDeals: dealList(deals.openedById, deals.openedIds, 0),
+      openedDeals: dealSets.opened,
       quotes: quoteMap(st.quotes),
-      closedDeals: dealList(deals.closedById, deals.closedIds, MAX_CLOSED_DEALS),
+      closedDeals: dealSets.closed,
       // v1.74.4: Quotex's own clock - the chart's `targetTime`, server time in seconds - and this
       // computer's clock at the same moment, so the panel can tell how far apart they are. Trade
       // countdowns are measured against the server; a plain value read, nothing is called.
-      serverTime: plot.pointsManager ? num(plot.pointsManager.targetTime) : null,
+      serverTime: serverTime,
       readAt: Date.now(),
+      // v1.81.0: which values were not where Quotex's names say - found by shape, or missing.
+      fields: fieldNotes,
       assets: null
     };
     if (withAssets && bySymbol) {

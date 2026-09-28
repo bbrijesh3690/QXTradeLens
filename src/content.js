@@ -9471,6 +9471,19 @@
       const add = (name, status, via, value) => rows.push({ name, status, via, value: value == null ? "" : tidy(value) });
       const state = requestQuotexState(false);
       add("Store bridge (chart_reader.js)", state ? "ok" : "missing", state ? "store" : "none", state ? state.symbol : "chart not found");
+      // v1.81.0: Quotex's data fields - all where their names say, or which were found by shape, or which are
+      // missing (read by name only, so a rename there shows here rather than as a wrong number).
+      if (state && state.fields) {
+        const notes = Object.entries(state.fields);
+        const missing = notes.filter(([, how]) => how === "missing").map(([k]) => k),
+          shaped = notes.filter(([, how]) => how !== "missing").map(([k, how]) => k + " " + how);
+        add(
+          "Quotex data fields",
+          missing.length ? "missing" : shaped.length ? "fallback" : "ok",
+          missing.length ? "renamed by Quotex?" : shaped.length ? "by shape" : "by name",
+          [missing.length ? "missing: " + missing.join(", ") : "", shaped.join(" · ")].filter(Boolean).join(" · ") || "all found",
+        );
+      }
       const elementTargets = [
         ["balance", "Balance"],
         ["returnPct", "Payout % element"],

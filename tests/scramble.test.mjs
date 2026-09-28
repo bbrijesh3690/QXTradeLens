@@ -120,6 +120,62 @@ test("renamed page: the chips stand on the chart and the balance comes through (
   }
 });
 
+// ── v1.81.0: Quotex's data renamed ──────────────────────────────────────────────────────────────────
+// The deal lists moved and their fields renamed. The open and close times are found as the deal's only two
+// epoch-second numbers, the pair as the value naming a known asset, the lists as id-keyed maps of such deals.
+function renamedDeals(store) {
+  const rename = (d) => ({ id: d.id, symbolCode: d.asset, amount: d.amount, profit: d.profit, isDemo: d.isDemo, command: d.command, openPrice: d.openPrice, percentProfit: d.percentProfit, openedAt: d.openTimestamp, closesAt: d.closeTimestamp });
+  const map = (byId) => Object.fromEntries(Object.entries(byId).map(([k, d]) => [k, rename(d)]));
+  store.trades = { activeById: map(store.deals.openedById), historyById: map(store.deals.closedById) };
+  delete store.deals;
+  return store;
+}
+const healthOf = (qx, name) => qx.askPanel({ type: "GET_HEALTH" }).rows.find((r) => r.name === name);
+
+test("renamed data: MAX still counts the open trades when Quotex renames its deal lists and fields (v1.81.0)", async () => {
+  const qx = await boot({ store: renamedDeals(quotexStore({ opened: [running("a"), running("b")] })) });
+  try {
+    await sleep(300);
+    assert.equal(clickUp(qx), false, "two open, MAX 2: stopped");
+  } finally {
+    qx.close();
+  }
+});
+
+test("renamed data: the countdown chip still counts down, and Check says what was found by shape (v1.81.0)", async () => {
+  const qx = await boot({ store: renamedDeals(quotexStore({ opened: [running("a")], closed: [deal("z")] })) });
+  try {
+    await sleep(900);
+    const canvas = qx.window.document.querySelector("canvas");
+    const chip = [...canvas.parentElement.children].find((d) => /[⏱]/.test(d.textContent || "") && d.style.display === "block");
+    assert.ok(chip, "the countdown chip is up");
+    assert.match(chip.textContent, /00:(4\d|50)/, "about 50 s left: " + chip.textContent);
+    const row = healthOf(qx, "Quotex data fields");
+    assert.match(row.value, /deal lists by shape: trades\.activeById, trades\.historyById/, row.value);
+    assert.match(row.value, /deal times by shape/, row.value);
+    assert.match(row.value, /deal pair by shape/, row.value);
+    const open = healthOf(qx, "Open trades list");
+    assert.match(String(open.value), /^1 open/, "the settled deal is not counted as open: " + JSON.stringify(open));
+  } finally {
+    qx.close();
+  }
+});
+
+test("renamed data: a renamed balance is reported by name, not guessed (v1.81.0)", async () => {
+  const store = quotexStore({ balance: 43662.07 });
+  store.global.money = store.global.balance;
+  delete store.global.balance;
+  const qx = await boot({ store });
+  try {
+    await sleep(900);
+    const row = healthOf(qx, "Quotex data fields");
+    assert.equal(row.status, "missing");
+    assert.match(row.value, /missing: .*global\.balance/, row.value);
+  } finally {
+    qx.close();
+  }
+});
+
 test("renamed page: the pair tab and its name are found from Quotex's data (v1.80.0)", async () => {
   const qx = await boot({ html: PAGE, store: quotexStore({}) });
   try {
