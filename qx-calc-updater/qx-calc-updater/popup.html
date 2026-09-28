@@ -103,6 +103,7 @@
       }
       .cta-btn:hover  { filter: brightness(1.1); transform: translateY(-1px); }
       .cta-btn:active { transform: translateY(0); filter: brightness(0.94); }
+      .popup-note { margin: 8px 14px 0; font-size: 11px; line-height: 1.4; color: var(--text-mut); }
 
       /* ── Sections ── */
       .section {
@@ -450,99 +451,12 @@
         <path d="M2 9h3.5L7 5l3 9 2.5-7 1.5 2H16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <span class="popup-title">QXTradeLens</span>
-      <div class="popup-header-actions">
-        <button id="themeToggle" class="icon-btn" title="Toggle panel theme">
-          <svg id="sunIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
-            <circle cx="12" cy="12" r="5"/>
-            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-          </svg>
-          <svg id="moonIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-          </svg>
-        </button>
-      </div>
     </div>
 
     <!-- ── Primary CTA ── -->
     <button id="panelToggleBtn" class="cta-btn">Show / Hide Panel</button>
 
-    <!-- ── DISPLAY ── -->
-    <div class="section">
-      <div class="section-hdr">Display</div>
-
-      <div class="slider-block" style="border-top:none;">
-        <div class="slider-header">
-          <span class="ctrl-label">Panel Scale</span>
-          <span id="sizeVal" class="ctrl-val">16px</span>
-        </div>
-        <input type="range" id="sizeSlider" min="10" max="32" step="1" value="16">
-      </div>
-
-
-      <div class="ctrl-row">
-        <span class="ctrl-label" title="Show every 'Live Account' label as 'Demo Account' (cover for screen sharing). Turning this off leaves Quotex's own page untouched.">Show Live as Demo</span>
-        <label class="switch">
-          <input type="checkbox" id="relabelDemoToggle" checked>
-          <span class="sw-track"></span>
-        </label>
-      </div>
-
-
-      <div class="ctrl-row">
-        <span class="ctrl-label">Chip Position</span>
-        <select id="chipPosSelect" title="Where trade timer and projected-balance chips appear on the chart">
-          <option value="cursor">Follow cursor</option>
-          <option value="center">Chart center</option>
-          <option value="anchored">Anchored</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- ── RISK ── -->
-    <div class="section">
-      <div class="section-hdr">Risk</div>
-
-
-
-
-      <div class="ctrl-row" style="padding-bottom: 6px;">
-        <span class="ctrl-label" title="Max concurrent open trades. 1 = single-trade mode — no new trade until active one settles.">Max Concurrent Trades</span>
-        <select id="maxTradesSelect">
-          <option value="1">1 — single</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- ── HOTKEYS ── -->
-    <div class="section">
-      <div class="section-hdr">Hotkeys</div>
-
-      <div class="ctrl-row">
-        <span class="ctrl-label" title="ArrowUp / ArrowDown place Up / Down trades">↑↓ → Trade</span>
-        <label class="switch">
-          <input type="checkbox" id="hkUpDownToggle">
-          <span class="sw-track"></span>
-        </label>
-      </div>
-
-      <div class="ctrl-row" style="padding-bottom: 6px;">
-        <span class="ctrl-label" title="ArrowLeft / ArrowRight step investment amount up / down">←→ → Investment</span>
-        <label class="switch">
-          <input type="checkbox" id="hkLeftRightToggle">
-          <span class="sw-track"></span>
-        </label>
-      </div>
-    </div>
-      <div class="ctrl-row">
-        <span class="ctrl-label" title="↑/↓ select the Up/Down button and ←/→ select the amount −/+ button; your own Enter (or Space) then presses it, so the click comes from the browser itself. Focus stays put, so repeats are one key each. Off: the keys act straight away.">Hotkey Focus Mode</span>
-        <label class="switch">
-          <input type="checkbox" id="hkFocusModeToggle">
-          <span class="sw-track"></span>
-        </label>
-      </div>
+    <p class="popup-note">Theme, size, hotkeys, the compatibility check and the deposit scan are in the panel&#39;s &#9881; menu.</p>
 
     <!-- ── MULTI-TIMEFRAME CHARTS ── -->
     <div class="section">
@@ -576,27 +490,6 @@
         <span class="ctrl-label" title="How long a pair has to stay on screen before its charts are filled. 0 fills the moment you open it. Raise it if you would rather it held off while you look through pairs. 0 to 120 seconds.">Wait Before Filling</span>
         <span><input type="number" id="mtfSettleInput" class="text-input" style="width:52px;text-align:right;" min="0" max="120" step="1" value="0"> s</span>
       </div>
-    </div>
-
-    <!-- ── HEALTH ── -->
-    <div class="section" id="healthCard">
-      <div class="section-hdr">
-        Health
-        <span id="healthStatus" class="chip unset">Not checked</span>
-      </div>
-      <button id="healthCheckBtn" class="btn-scan" title="Checks what the panel can read on the open Quotex trade tab, and how: ✅ works directly · 🔁 works through a fallback (Quotex changed something) · ❌ missing">Check Quotex compatibility</button>
-      <div id="healthResult"></div>
-    </div>
-
-    <!-- ── DEPOSITS ── -->
-    <div class="section" id="depositCard">
-      <div class="section-hdr">
-        Deposits
-        <span id="depositStatus" class="chip unset">Idle</span>
-      </div>
-      <button id="depositCalcBtn" class="btn-scan" title="Totals every successful deposit (any payment method) across all Balance pages, with a per-method breakdown. Open the Balance page first.">Scan Deposits</button>
-      <button id="depositCancelBtn" class="btn-stop">Stop scan</button>
-      <div id="depositResult"></div>
     </div>
 
     <script src="popup.js"></script>

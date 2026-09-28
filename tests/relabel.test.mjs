@@ -62,7 +62,9 @@ test("relabel: with nothing matching, the line says none rather than claiming su
   }
 });
 
-test("relabel: switched off, nothing is touched and the line says why (v1.59.2)", async () => {
+test("relabel: always on - a switch-off stored by an older build no longer stops it (v1.69.0)", async () => {
+  // The popup switch is gone. Anyone who had turned it off still has "0" stored; it must not keep the
+  // relabel off with no way left to turn it back on.
   const qx = await boot({
     path: "/en/trade",
     html: live(FIXTURE),
@@ -71,8 +73,9 @@ test("relabel: switched off, nothing is touched and the line says why (v1.59.2)"
   });
   try {
     await sleep(2600);
-    assert.equal(label(qx, ".v2KPX").textContent, "Live Account", "their own label is left alone");
-    assert.equal(diag(qx).relabel, "switched off");
+    assert.equal(label(qx, ".v2KPX").textContent, "Demo Account", "relabelled anyway");
+    assert.match(String(diag(qx).relabel), /rewritten/);
+    assert.equal(pref(qx, "__tradeCalc_relabel_demo"), null, "and the old setting is cleared");
   } finally {
     qx.close();
   }

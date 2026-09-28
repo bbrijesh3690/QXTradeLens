@@ -5,6 +5,52 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.69.0] - 2026-09-28
+
+The first step of the redesign: one panel, the top bar, instead of a bar, a floating box and a popup. The
+chart panel is the last step; its settings stay in the popup until then, and then the popup goes.
+
+### Changed
+- **A ⚙ button on the bar opens a small menu** holding what the popup held: Dark / Light, the panel size
+  (− / +), the ↑↓ trade-key switch, Focus Mode, the Quotex compatibility check, and the deposit scan. The
+  ↑↓ switch stays a switch, because a key that places trades must be something you turned on. The menu
+  closes on ⚙, Escape, or a press anywhere outside it.
+- **MAX on the bar, next to PAYOUT**: the most trades open at once, 1 to 4, typed and saved with Enter. It
+  was a select in the popup.
+- **MULT is now FAST**, and its hover text says what it does. It never scaled anything: switched on, a quick
+  second click on Up/Down goes through; switched off, a second click within 1.5 s is ignored.
+- **← and → are always on**, with no switch: → doubles the amount and ← halves it. The step is 2, always.
+  They do nothing while you are typing in a box.
+- **The compatibility check says when the tab is out of date.** After an extension reload the old script
+  keeps running in the tab but loses its link to the extension; the check now spots that and says to refresh.
+- **The deposit scan starts from the trade page.** It opens the Balance page in the same tab, reads every
+  page, and comes back to where you were; a small pill on the Balance page shows which page it is on and
+  has a Stop button. The menu opens on the result by itself, and keeps the last result for next time. The
+  scan code moved from the popup to the service worker (`deposit_scan.js`) - the panel cannot drive it,
+  because it does not run on the Balance page. Same reading as before: Quotex's store first, the page as
+  the fallback, one total per currency.
+- **The popup holds only Show / Hide Panel and the chart settings**, with a line saying where the rest went.
+- The settings clean-up that ran when the popup was opened now runs in the service worker on every start.
+
+### Removed
+- **The floating Invest ×÷ box** and its button on the bar. The arrows do its job; its 1.5 and 1.3 steps are
+  gone.
+- **The arrows' other path**, where a stored factor of 1 made them press Quotex's own −/+ buttons (and, in
+  Focus Mode, select them). Unreachable from the screen since v1.63.0.
+- **Chip Position**: the chips always follow the cursor, and rest at the anchored spot when the cursor is off
+  the chart. (A new chip layout around Quotex's own candle timer is planned after the redesign.)
+- **The Show Live as Demo switch**: always on now. A stored "off" from an older build is cleared, not obeyed.
+- Their stored settings are cleared on load: `im_shown`, `step_mult`, `hk_leftright`, `chip_pos`,
+  `relabel_demo` (and the last three, plus `hk_focus_mode`, from sync).
+
+### Tests
+- New `menu.test.mjs` (FAST, MAX, every menu item, the deposit result, the Balance-page pill) and
+  `deposits.test.mjs` (the scanner, moved from the popup specs, plus the full walk: pages, Stop, a failed
+  page, and the return to the trade page). All 15 panel specs and six changed specs in `privacy` /
+  `relabel` fail on 1.68.0; one more - arrows do nothing while typing in a box - passes on both, as a guard.
+  Removed with their features: the two −/+ arrow specs, the Invest-box visibility spec, and the relabel
+  switch specs.
+
 ## [1.68.0] - 2026-09-28
 
 ### Restored

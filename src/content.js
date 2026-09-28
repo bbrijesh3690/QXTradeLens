@@ -156,9 +156,9 @@
       if (p) {
         p.remove();
       }
-      const m = byId("__tcInvestMult");
-      if (m) {
-        m.remove();
+      if (window.__tcMenuOutside) {
+        document.removeEventListener("pointerdown", window.__tcMenuOutside, true);
+        delete window.__tcMenuOutside;
       }
       const h = byId("__tcMTF");
       if (h) {
@@ -384,6 +384,12 @@
         "__tradeCalc_sl_ls_trail",
         "__tradeCalc_sl_ls_tp_lock",
         "__tradeCalc_sl_ls_tp_lock_date",
+        // v1.69.0: the x/÷ box, its factor, and the popup switches that became permanent.
+        "__tradeCalc_im_shown",
+        "__tradeCalc_step_mult",
+        "__tradeCalc_hk_leftright",
+        "__tradeCalc_chip_pos",
+        "__tradeCalc_relabel_demo",
       ]) {
         prefRemove(name);
       }
@@ -1414,20 +1420,6 @@
         return false;
       }
     })();
-    const KEY_CHIP_POS = "__tradeCalc_chip_pos",
-      normChipPos = (t) => (t === "center" || t === "anchored" ? t : "cursor"),
-      setChipPosStored = (t) => {
-        try {
-          prefSet(KEY_CHIP_POS, normChipPos(t));
-        } catch (t) {}
-      };
-    let chipPos = (() => {
-      try {
-        return normChipPos(prefGet(KEY_CHIP_POS));
-      } catch (t) {
-        return "cursor";
-      }
-    })();
     const KEY_TIMER_X = "__tradeCalc_timer_x",
       KEY_TIMER_Y = "__tradeCalc_timer_y",
       clampPercent = (t, e) => {
@@ -1459,31 +1451,18 @@
         }
       })();
     const KEY_HK_UPDOWN = "__tradeCalc_hk_updown",
-      KEY_HK_LEFTRIGHT = "__tradeCalc_hk_leftright",
       setHkUpDownStored = (t) => {
         try {
           prefSet(KEY_HK_UPDOWN, t ? "true" : "false");
         } catch (t) {}
-      },
-      setHkLeftRightStored = (t) => {
-        try {
-          prefSet(KEY_HK_LEFTRIGHT, t ? "true" : "false");
-        } catch (t) {}
       };
     let hkUpDown = (() => {
-        try {
-          return prefGet(KEY_HK_UPDOWN) === "true";
-        } catch (t) {
-          return false;
-        }
-      })(),
-      hkLeftRight = (() => {
-        try {
-          return prefGet(KEY_HK_LEFTRIGHT) === "true";
-        } catch (t) {
-          return false;
-        }
-      })();
+      try {
+        return prefGet(KEY_HK_UPDOWN) === "true";
+      } catch (t) {
+        return false;
+      }
+    })();
     const KEY_MAX_TWO = "__tradeCalc_max_two",
       KEY_MAX_TRADES = "__tradeCalc_max_trades",
       clampMaxTrades = (t) => {
@@ -1504,42 +1483,10 @@
       }
     })();
     const KEY_BAL_LOGGED_DATE = "__tradeCalc_bal_logged_date",
-      KEY_NATIVE_LIMIT_LOCK_DATE = "__tradeCalc_native_limit_lock_date",
-      KEY_STEP_MULT = "__tradeCalc_step_mult",
-      // v1.63.0: whether the floating x/÷ widget is shown. The toggle used to set style.display only, so it
-      // reappeared on every reload. Hiding it does not affect the arrows - they read the factor from
-      // storage, not from the widget.
-      KEY_IM_SHOWN = "__tradeCalc_im_shown",
-      getImShown = () => {
-        try {
-          return prefGet(KEY_IM_SHOWN) !== "0";
-        } catch (t) {
-          return true;
-        }
-      },
-      setImShown = (t) => {
-        try {
-          prefSet(KEY_IM_SHOWN, t ? "1" : "0");
-        } catch (e) {}
-      },
-      // v1.63.0: 2 by default, so ArrowRight doubles the stake and ArrowLeft halves it out of the box. A
-      // stored 1 still means "step with Quotex's own -/+ buttons instead", which is the other arrow path.
-      getStepMult = () => {
-        try {
-          return parseFloat(prefGet(KEY_STEP_MULT) || "2") || 2;
-        } catch (t) {
-          return 2;
-        }
-      },
-      setStepMult = (t) => {
-        try {
-          prefSet(KEY_STEP_MULT, String(t));
-        } catch (t) {}
-      };
+      KEY_NATIVE_LIMIT_LOCK_DATE = "__tradeCalc_native_limit_lock_date";
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Account label spoof: rewrites "Live Account" as "Demo Account" everywhere
     // ────────────────────────────────────────────────────────────────────────────────────────────────
-    const KEY_RELABEL_DEMO = "__tradeCalc_relabel_demo";
     const KEY_HK_FOCUS_MODE = "__tradeCalc_hk_focus_mode";
     // Off by default: ↑/↓ keep placing the trade directly.
     let hkFocusMode = readFlag(KEY_HK_FOCUS_MODE, false);
@@ -1589,23 +1536,12 @@
         prefSet(KEY_MTF_FLIP, mtfFlipOn ? "1" : "0");
       } catch (t) {}
     }
-    let relabelDemo = readFlag(KEY_RELABEL_DEMO, true);
-    // Restores the platform's own label when the switch is turned off.
-    function undoRelabel() {
-      document.querySelectorAll("[data-tc-relabel]").forEach((el) => {
-        el.textContent = "Live Account";
-        el.style.color = "";
-        el.removeAttribute("data-tc-relabel");
-      });
-    }
     // The label, exactly as frozen in v1.54.4: a DIV whose own text node reads "Live Account". v1.59.1
     // tried matching on the words wherever they appeared and had to be reverted - it renamed the account
     // switcher's own row for the live account, leaving two entries both reading "Demo Account". Being
     // unable to tell two accounts apart is a worse failure than the relabel being quiet.
+    // v1.69.0: always on - the popup switch is gone.
     function spoofLiveAccountLabel() {
-      if (!relabelDemo) {
-        return;
-      }
       const found = [];
       try {
         const x = document.evaluate("//div[text()='Live Account']", document, null, 7, null);
@@ -1698,7 +1634,7 @@
       const t = document.createElement("style");
       t.id = "__tcStyles";
       t.innerHTML =
-        " #__tradeCalc { position: fixed; top: 5px; right: 375px; width: max-content; min-height: 3.5em; max-width: 90em; border-radius: 999px; z-index: 2147483647; font-size: 13px; font-family: 'DM Sans', system-ui, sans-serif; background: var(--tc-bg); box-shadow: var(--tc-panel-shadow); display: flex; align-items: center; padding: 0.3em 1.5em; gap: 0; cursor: default; user-select: none; overflow: visible; transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); } #__tradeCalc.dragging { transition: none; cursor: grabbing; } .tcGrip { display: flex; align-items: center; flex-shrink: 0; pointer-events: none; width: 0.7em; height: 1.1em; color: var(--m3-on-surface-var); opacity: 0.4; } .tcGrip svg { width: 100%; height: 100%; } .tcGripLeft { margin-right: 0.7em; } .tcVer { align-self: center; font-size: max(9px, 0.58em); font-weight: 800; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; color: var(--tc-text-mut); opacity: 0.65; cursor: default; } .tcGripRight { margin-left: 0.7em; } #__tcContent { display: flex; align-items: stretch; flex: 1; gap: 0.75em; scrollbar-width: none; } #__tcContent::-webkit-scrollbar { display: none; } .tcSec { display: flex; flex-direction: row; align-items: stretch; background: transparent; border: none; flex:1; padding: 0; gap: 0; position: relative; flex-shrink: 0; } #__tcSecTargets { cursor: grab; } #__tcSecProtections { margin-left: auto; margin-right: auto; } #__tcSecProjections { } .tcSec:has([data-tc-tip]:hover) { z-index: 100; } [data-tc-tip] { position: relative; } [data-tc-tip]::after { content: attr(data-tc-tip); position: absolute; top: calc(100% + 0.46em); left: 50%; white-space: nowrap; pointer-events: none; background: oklch(16% 0.02 257 / 0.98); color: oklch(96% 0.01 240); font-size: max(11px, 0.72em); font-weight: 600; letter-spacing: 0.04em; text-transform: none; padding: 0.4em 0.7em; border-radius: 0.42em; border: 1px solid oklch(100% 0 0 / 0.14); box-shadow: 0 4px 12px oklch(0% 0 0 / 0.45); opacity: 0; transition: opacity 0.18s, transform 0.18s; transform: translateX(-50%) translateY(-0.31em); z-index: 2147483647; } [data-tc-tip]::before { content: ''; position: absolute; top: calc(100% + 0.15em); left: 50%; transform: translateX(-50%); border: 0.31em solid transparent; border-bottom-color: oklch(16% 0.02 257 / 0.98); pointer-events: none; opacity: 0; transition: opacity 0.18s; z-index: 2147483647; } [data-tc-tip]:hover, [data-tc-tip]:focus-visible { z-index: 2147483646; } [data-tc-tip]:hover::after, [data-tc-tip]:focus-visible::after { opacity: 1; transform: translateX(-50%) translateY(0); } [data-tc-tip]:hover::before, [data-tc-tip]:focus-visible::before { opacity: 1; } #__tcSecTargets [data-tc-tip]::after { left: 0; transform: translateY(-0.31em); } #__tcSecTargets [data-tc-tip]:hover::after, #__tcSecTargets [data-tc-tip]:focus-visible::after { transform: translateY(0); } #__tcSecTargets [data-tc-tip]::before { left: 0.7em; transform: none; } .tcSecFields { display: flex; align-items: stretch; gap: 0.6em; flex: 1; position: relative; } .tcFld { display: flex; flex-direction: column; gap: 0.25em; position: relative; flex:1;} .tcFld > .tcLbl { min-height: 0; display: flex; align-items: center; padding-bottom: 0; font-weight: bold; flex: 0 0 auto; } .tcFld > *:not(.tcLbl) { margin-top: auto; margin-bottom: auto; } .tcLbl { font-size: var(--fz-label); text-transform: uppercase; color: var(--tc-text-mut); font-weight: 500; letter-spacing: 0.16em; line-height: 1; white-space: nowrap; display: flex; align-items: center; gap: 0.3em; } .tcLbl svg { opacity: 0.75; } .tcLbl .tcDot { display: none; } .tcVal { font-family: 'DM Mono', monospace; font-size: var(--fz-value); color: var(--tc-text-pri); font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; transition: color 0.3s, text-shadow 0.3s; letter-spacing: 0.031em; white-space: nowrap; } .tcValLg { font-family: 'DM Mono', monospace; font-size: var(--fz-value-lg); font-weight: 400; color: var(--tc-text-pri); letter-spacing: 0.015em; line-height: 1; font-variant-numeric: tabular-nums; transition: text-shadow 0.3s; } .tcValLg .tcDec { color: var(--tc-text-mut); font-weight: 400; font-size: var(--fz-decimal); letter-spacing: 0.015em; margin-left: 0.05em; } .tcValLg[style*=\"--tc-grn\"] { text-shadow: 0 0 18px oklch(76% 0.16 145 / 0.4); } .tcValLg[style*=\"--tc-red\"] { text-shadow: 0 0 18px oklch(64% 0.18 25 / 0.4); } .tcProjMarks { display: none; } .tcProjMark { width: 1.077em; height: 0.154em; border-radius: 0.231em; background: oklch(76% 0.16 145 / 0.18); } .tcProjMark.tcProjMarkFill { background: var(--tc-grn); box-shadow: 0 0 6px oklch(76% 0.16 145 / 0.5); } .tcControlGroup { display: inline-flex; align-items: center; gap: 0.18em; background: var(--m3-surface-3); box-shadow: none; border: 1px solid var(--m3-outline-var); border-radius: var(--m3-shape-full); padding: 0.25em 0.8em; min-height: 1.3em; box-sizing: border-box; transition: border-color 0.2s, border-width 0.1s; overflow: visible; } .tcControlGroup:hover:not(:focus-within) { border-color: var(--m3-outline); } .tcControlGroup:focus-within { border: 1px solid var(--tc-accent); padding: calc(0.25em - 1px) calc(0.6em - 1px); } #__tcSLInputWrap, #__tcSLInputWrap:hover, #__tcSLInputWrap:focus-within { border-color: var(--m3-outline-var); padding: 0.25em 0.8em; } #__tcSLInput { cursor: default; } .tcInput { font-family: 'DM Mono', monospace; font-size: 1em; color: var(--m3-on-surface); background: transparent; border: none; outline: none; padding: 0; font-weight: 400; font-variant-numeric: tabular-nums; min-width: 0; letter-spacing: 0.031em; -moz-appearance: textfield; } .tcInput::-webkit-outer-spin-button, .tcInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; } .tcInput::placeholder { color: var(--m3-on-surface-var); opacity: 0.7; } .tcInput:-webkit-autofill, .tcInput:-webkit-autofill:hover, .tcInput:-webkit-autofill:focus, .tcInput:-webkit-autofill:active { -webkit-box-shadow: 0 0 0 100px transparent inset !important; box-shadow: 0 0 0 100px transparent inset !important; -webkit-text-fill-color: var(--m3-on-surface) !important; background-color: transparent !important; transition: background-color 99999s ease-in-out 0s; } .tcInput.tcUnsaved { border-bottom-color: var(--tc-ylw) !important; color: var(--tc-ylw) !important; } .tcControlGroup:has(.tcUnsaved)::after { content: \"↵ Enter\"; position: absolute; bottom: -1.35em; left: 0; font-size: max(8px, 0.5em); font-weight: 700; letter-spacing: 0.08em; color: var(--tc-ylw); white-space: nowrap; pointer-events: none; opacity: 0.9; } .tcPill { width: 2.308em; height: 2.308em; border-radius: 50%; background: transparent; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; min-width: 0; color: var(--m3-on-surface-var); transition: background 0.14s, color 0.15s, border-color 0.2s, box-shadow 0.2s; } .tcPill svg { width: 1.15em; height: 1.15em; } .tcPill:hover { background: oklch(from var(--tc-accent) l c h / 0.08); color: var(--m3-on-surface); } .tcPill:active { background: oklch(from var(--tc-accent) l c h / 0.12); transform: scale(0.94); } .tcPill:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcPill.on, #__tcMultiStatus.on { color: var(--tc-grn); border-color: oklch(from var(--tc-grn) l c h / 0.4); box-shadow: 0 0 10px oklch(from var(--tc-grn) l c h / 0.35); } .tcPill.tcPillSnap { animation: __tcPillSnap 0.22s cubic-bezier(0.16, 1, 0.3, 1); } .tcPillCircle::after { content: none !important; } .tcPillCircle, .tcLogBtn { border-radius: 50%; background: transparent; box-shadow: none; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--m3-on-surface-var); transition: background 0.14s, color 0.15s; } .tcPillCircle:hover, .tcLogBtn:hover { transform: none; background: oklch(from var(--tc-accent) l c h / 0.08); color: var(--m3-on-surface); } .tcPillCircle:active, .tcLogBtn:active { background: oklch(from var(--tc-accent) l c h / 0.12); box-shadow: none; } .tcPillCircle:focus-visible, .tcLogBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcPillCircle { width: 1.733em; height: 1.733em; min-width: 0; padding: 0; align-self: center; font-weight: 500; font-size: var(--fz-value); line-height: 1; font-family: 'DM Sans', system-ui, sans-serif; } .tcLogBtn { width: 2.308em; height: 2.308em; padding: 0; font-size: 1em; } .tcLogBtn svg { width: 1.077em; height: 1.077em; } .tcCloseBtn { position: absolute; right: -0.4em; top: 50%; transform: translateY(-50%); width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--m3-surface-3); border: 1px solid var(--m3-outline-var); color: var(--m3-on-surface-var); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; box-shadow: none; transition: color 0.2s, opacity 0.2s, background 0.2s; opacity: 0; } .tcCloseBtn::before { content: \"\"; position: absolute; inset: 50% 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); border-radius: 50%; } #__tradeCalc:hover .tcCloseBtn, .tcCloseBtn:focus-visible { opacity: 1; } .tcCloseBtn:hover { background: var(--tc-red); color: oklch(98% 0 0); border-color: transparent; box-shadow: 0 3px 10px oklch(64% 0.18 25 / 0.4); transform: translateY(-50%); } .tcCloseBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; opacity: 1; } .tcCloseBtn:focus-visible:hover { transform: translateY(-50%) rotate(90deg); transition: background 0.25s, color 0.25s, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1); } .tcSparklineBg { position: absolute; inset: 0; opacity: 0.22; pointer-events: none; border-radius: inherit; overflow: hidden; z-index: 0; mask-image: linear-gradient(to bottom, black 20%, transparent); -webkit-mask-image: linear-gradient(to bottom, black 20%, transparent); } @keyframes __tcDataFlash { 0% { color: var(--tc-accent); transform: translateY(-1px); } 100% { color: inherit; transform: translateY(0); } } .tcFlashData { animation: __tcDataFlash 0.55s cubic-bezier(0.16, 1, 0.3, 1); display: inline-block; } @keyframes tcSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes __tcEntrance { 0% { opacity: 0; transform: scale(0.92) translateY(16px); filter: blur(8px); } 100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); } } #__tradeCalc.tcLightMode { --tc-grn: #146c2e; --tc-red: oklch(44% 0.18 25); --tc-amb: oklch(44% 0.16 60); --tc-ylw: oklch(52% 0.17 70); --tc-pur: oklch(42% 0.16 285); --tc-cyn: oklch(40% 0.13 210); --tc-accent: #6750a4; --m3-surface: #fef7ff; --m3-surface-2: #f4eefa; --m3-surface-3: #ece6f0; --m3-on-surface: #1d1b20; --m3-on-surface-var: #49454f; --m3-outline: #79747e; --m3-outline-var: #cac4d0; --m3-primary: #6750a4; --m3-on-primary: #ffffff; --tc-text-pri: var(--m3-on-surface); --tc-text-dim: var(--m3-on-surface-var); --tc-text-mut: oklch(from var(--m3-on-surface-var) l c h / 0.78); --tc-input-bg: var(--m3-surface-3); --tc-input-border: var(--m3-outline-var); --tc-bg: var(--m3-surface-2); --tc-panel-shadow: var(--m3-elev-2); background: var(--tc-bg); } #__tradeCalc.tcLightMode .tcControlGroup { background: var(--m3-surface-3); border-color: var(--m3-outline-var); } #__tradeCalc.tcLightMode .tcPillCircle, #__tradeCalc.tcLightMode .tcLogBtn, #__tradeCalc.tcLightMode .tcPill { background: transparent; border-color: transparent; } #__tcDangerOverlay { position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; background: radial-gradient(circle at center, transparent 0%, oklch(0% 0 0 / 0.88) 100%); opacity: 0; transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1); } .tcLockContent { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; padding: var(--s-6); border-radius: 1.4em; background: var(--tc-bg); border: 1px solid var(--tc-sec-border); box-shadow: 0 48px 120px oklch(0% 0 0 / 0.8), inset 0 1px 1px oklch(100% 0 0 / 0.2); } .tcLockLabel { display: block; font-size: 0.78em; font-weight: 900; text-transform: uppercase; letter-spacing: 0.28em; color: var(--tc-text-mut); margin-bottom: var(--s-5); opacity: 1; } .tcLockTimer { display: block; font-family: 'DM Mono', monospace; font-size: 7.5em; font-weight: 800; color: var(--tc-text-pri); letter-spacing: -0.04em; line-height: 1; } .tcLockMeta { display: block; font-size: 0.85em; font-weight: 600; color: var(--tc-text-dim); margin-top: var(--s-5); letter-spacing: 0.05em; } #__tradeCalc.tcDangerMode { box-shadow: var(--tc-panel-shadow), 0 0 0 2px oklch(64% 0.18 25 / 0.55); } #__tradeCalc.tcDangerMode.tcActive { box-shadow: var(--tc-panel-shadow), 0 0 0 2px oklch(64% 0.18 25 / 0.5); } #__tcDangerOverlay.tcPercentVisible { opacity: 1; background: radial-gradient(circle at center, transparent 0%, oklch(64% 0.18 25 / 0.15) 100%); } #__tcDangerOverlay.tcPercentVisible .tcLockCard { display: block; } #__tcDangerOverlay.tcPercentVisible .tcLockContent { box-shadow: 0 0 0 1px oklch(64% 0.18 25 / 0.5), 0 32px 100px -16px oklch(0% 0 0 / 0.9); background: radial-gradient(circle at top, oklch(64% 0.18 25 / 0.15) 0%, transparent 100%), var(--tc-bg); }      #__tcRestoreBtn { position: fixed; bottom: 24px; right: 24px; z-index: 2147483647; background: oklch(from var(--tc-bg) l c h / 0.85); color: var(--tc-text-pri); border: 1px solid oklch(from var(--tc-accent) l c h / 0.3); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: 0.6em 1.2em; border-radius: 99px; font-family: 'DM Sans', system-ui, sans-serif; font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 16px oklch(0% 0 0 / 0.28); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s, border-color 0.2s; display: flex; align-items: center; gap: 8px; transform-origin: center; } #__tcRestoreBtn svg { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); color: var(--tc-accent); width: 14px; height: 14px; } #__tcRestoreBtn:hover { transform: translateY(-3px) scale(1.02); background: oklch(from var(--tc-bg) l c h / 0.95); box-shadow: 0 8px 24px oklch(from var(--tc-accent) l c h / 0.2); border-color: var(--tc-accent); } #__tcRestoreBtn:hover svg { transform: rotate(90deg) scale(1.1); } #__tcRestoreBtn:active { transform: translateY(1px) scale(0.97); box-shadow: 0 2px 8px oklch(0% 0 0 / 0.2); transition: transform 0.1s; } #__tcRestoreBtn.tcLightMode { background: oklch(96% 0.02 88 / 0.92); box-shadow: 0 8px 24px -14px oklch(37% 0.06 78 / 0.45); } #__tcRestoreBtn.tcLightMode:hover { background: oklch(99% 0.016 88 / 0.98); box-shadow: 0 8px 24px oklch(48% 0.18 245 / 0.15); } #__tcImToggle.tcImToggleOff { opacity: 0.5; color: var(--m3-on-surface-var); } @keyframes __tcPillSnap { 0% { transform: scale(1); } 40% { transform: scale(0.88); } 100% { transform: scale(1); } } .tcPill.tcPillSnap { animation: __tcPillSnap 0.22s cubic-bezier(0.16, 1, 0.3, 1); } @keyframes __tcInputCommit { 0% { border-color: oklch(76% 0.16 145 / 0.9); box-shadow: 0 0 0 2px oklch(76% 0.16 145 / 0.18), inset 0 1px 2px oklch(0% 0 0 / 0.18); } 100% { border-color: var(--tc-input-border); box-shadow: inset 0 1px 2px oklch(0% 0 0 / 0.18); } } .tcControlGroup.tcCommit { animation: __tcInputCommit 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; } .tcReqWrap { display: flex; align-items: baseline; gap: 0.12em; } .tcReqFrom { font-size: 0.78em; font-weight: 600; color: var(--tc-text-dim); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; } .tcValLg.tcTradeCritical { color: var(--tc-ylw) !important; text-shadow: 0 0 24px oklch(90% 0.17 95 / 0.6), 0 0 48px oklch(90% 0.17 95 / 0.25); } .tcSecHdr .tcDot.tcDotLive { opacity: 1; box-shadow: 0 0 5px currentColor; } @keyframes __tcBtnReveal { 0% { transform: scale(0.96); box-shadow: 0 0 0 0 oklch(76% 0.16 145 / 0.5); } 55% { transform: scale(1.02); box-shadow: 0 0 0 8px oklch(76% 0.16 145 / 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 oklch(76% 0.16 145 / 0); } } .tcSLBtnReveal { animation: __tcBtnReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; } @keyframes __tcWarnIn { 0% { opacity: 0; transform: translateY(4px); } 100% { opacity: 1; transform: translateY(0); } } #__tcWarn.tcWarnVisible { animation: __tcWarnIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; } @keyframes __tcLiveResolve { 0% { opacity: 0.72; transform: scale(1); } 45% { opacity: 1; transform: scale(1.06); } 100% { opacity: 0; transform: scale(0.96) translateY(2px); } } .tcLiveResolving { animation: __tcLiveResolve 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; } @keyframes __tcValPop { 0% { transform: scale(1); } 45% { transform: scale(1.12) translateY(-1px); } 100% { transform: scale(1) translateY(0); } } .tcValLg.tcValPop { animation: __tcValPop 0.28s cubic-bezier(0.16, 1, 0.3, 1); } @media (prefers-reduced-motion: reduce) { #__tradeCalc, #__tradeCalc *, #__tcRestoreBtn, #__tcDangerOverlay { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } #__tradeCalc.tcDangerMode.tcActive { animation: none !important; } .tcFlashData { animation: none !important; } .tcCloseBtn:focus-visible:hover { transform: none; } .tcLogBtn:hover { transform: none; } #__tcRestoreBtn:hover { transform: none; } #__tcRestoreBtn:hover svg { transform: none; } .tcPill.tcPillSnap { animation: none !important; } .tcControlGroup.tcCommit { animation: none !important; } .tcSecHdr .tcDot.tcDotLive { animation: none !important; } .tcSLBtnReveal { animation: none !important; } #__tcWarn.tcWarnVisible { animation: none !important; } .tcLiveResolving { animation: none !important; opacity: 0 !important; } .tcValLg.tcValPop { animation: none !important; } .tcPill { transition: none !important; } } .tcControlGroup.tcTPGroup { gap:0.05em; background:transparent; border-color:transparent; box-shadow:none; align-items:baseline; } .tcControlGroup.tcTPGroup:hover, .tcControlGroup.tcTPGroup:focus-within { background: var(--m3-surface-3); border-color: var(--m3-outline-var); box-shadow: none; } .tcTPCur { font-size:var(--fz-currency); font-weight:700; color:var(--tc-text-dim); font-family:'DM Mono',monospace; letter-spacing:0.015em; } .tcTPInput { font-size:var(--fz-hero) !important; font-weight:700 !important; letter-spacing:0.02em !important; } @keyframes __tcTimerIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } } @keyframes __tcEdgeFlash { 0% { opacity:0; } 25% { opacity:1; } 100% { opacity:0; } } @media (prefers-reduced-motion: reduce) { #__tcEdgeFlash { animation: none !important; opacity: 0 !important; } }  #__tcInvestMult { position: fixed; top: 220px; right: 220px; z-index: 2147483000; display: flex; flex-direction: column; gap: 5px; width: 64px; padding: 6px; border-radius: var(--m3-shape-lg); background: var(--tc-bg); box-shadow: var(--m3-elev-2); border: 1px solid var(--m3-outline-var); font-family: 'DM Mono', monospace; user-select: none; } #__tcInvestMult .tcImBtn { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; height: 32px; border-radius: var(--m3-shape-sm); cursor: pointer; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--tc-text-pri); background: transparent; transition: background 0.12s; } #__tcInvestMult .tcImBtn:hover { background: oklch(from var(--tc-accent) l c h / 0.12); } #__tcInvestMult .tcImBtn:active { background: oklch(from var(--tc-accent) l c h / 0.18); } #__tcInvestMult .tcImUp { color: var(--tc-grn); } #__tcInvestMult .tcImDown { color: var(--tc-red); } #__tcInvestMult .tcImFactor { height: 26px; font-size: 12px; letter-spacing: 0.02em; color: var(--tc-text-dim); background: var(--m3-surface-3); border-radius: var(--m3-shape-sm); } #__tcInvestMult .tcImFactor:hover { background: oklch(from var(--tc-accent) l c h / 0.1); color: var(--tc-accent); } #__tcMTF { position: fixed; top: 96px; right: 220px; z-index: 2147483000; display: flex; flex-direction: column; gap: 10px; width: 268px; padding: 10px; box-sizing: border-box; border-radius: var(--m3-shape-lg); background: var(--tc-bg); box-shadow: var(--m3-elev-2); border: 1px solid var(--m3-outline-var); font-family: 'DM Mono', monospace; user-select: none; -webkit-user-select: none; touch-action: none; } #__tcMTF .tcMtfBar { display: flex; align-items: center; gap: 6px; cursor: grab; padding-bottom: 2px; } #__tcMTF .tcMtfBar:active { cursor: grabbing; } #__tcMTF .tcMtfPair { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: var(--tc-text-pri); } #__tcMTF .tcMtfSync { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: var(--m3-shape-full); cursor: pointer; color: var(--tc-text-dim); transition: background 0.12s, color 0.12s; } #__tcMTF .tcMtfSync:hover { background: oklch(from var(--tc-accent) l c h / 0.12); color: var(--tc-accent); } #__tcMTF .tcMtfSync:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 1px; } #__tcMTF .tcMtfGrip { width: 16px; height: 3px; border-radius: 2px; background: var(--m3-outline-var); } #__tcMTF .tcMtfCell { display: flex; flex-direction: column; gap: 1px; } #__tcMTF .tcMtfHd { display: flex; align-items: center; justify-content: space-between; } #__tcMTF .tcMtfViews { display: flex; gap: 3px; flex-shrink: 0; } #__tcMTF .tcMtfViewBtn { all: unset; box-sizing: border-box; font-family: inherit; font-size: 9px; font-weight: 800; letter-spacing: 0.04em; padding: 0 6px; line-height: 15px; border-radius: 4px; border: 1px solid var(--tc-sec-border); color: var(--tc-text-mut); cursor: pointer; } #__tcMTF .tcMtfViewBtn:hover { color: var(--tc-text-pri); } #__tcMTF .tcMtfViewBtn.tcOn { color: #0b1020; background: var(--tc-accent); border-color: transparent; } #__tcMTF .tcMtfScan { display: none; } #__tcMTF.tcMtfScanOn .tcMtfCell { display: none; } #__tcMTF.tcMtfScanOn .tcMtfScan { display: flex; flex-direction: column; gap: 3px; } #__tcMTF .tcMtfScanHdr { font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: var(--tc-text-mut); padding: 0 2px 2px; } #__tcMTF .tcMtfScanList { display: flex; flex-direction: column; gap: 1px; max-height: min(240px, 40vh); overflow-y: auto; scrollbar-width: thin; } #__tcMTF .tcScanAge { font-size: 8px; font-weight: 700; color: var(--tc-text-mut); opacity: 0.8; flex-shrink: 0; font-variant-numeric: tabular-nums; } #__tcMTF .tcMtfScanRow { display: flex; align-items: center; gap: 6px; font-size: 10px; line-height: 17px; padding: 0 4px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; } #__tcMTF .tcMtfScanRow:hover { background: oklch(100% 0 0 / 0.08); } #__tcMTF .tcMtfScanRow.tcScanHot { background: oklch(100% 0 0 / 0.06); border-color: var(--tc-sec-border); } #__tcMTF .tcMtfScanRow.tcScanOpen .tcScanPair { color: var(--tc-text-pri); } #__tcMTF .tcScanPair { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: var(--tc-text-dim); } #__tcMTF .tcScanPay { font-variant-numeric: tabular-nums; color: var(--tc-text-mut); flex-shrink: 0; } #__tcMTF .tcScanTr { display: flex; gap: 1px; flex-shrink: 0; font-size: 9px; } #__tcMTF .tcScanNear { font-variant-numeric: tabular-nums; font-weight: 800; flex-shrink: 0; min-width: 54px; text-align: right; } #__tcMTF .tcScanNear.tcScanNone { color: var(--tc-text-mut); font-weight: 600; } #__tcMTF .tcScanEmpty { font-size: 10px; color: var(--tc-text-mut); padding: 6px 4px; } #__tcMTF .tcMtfScanFoot { display: flex; align-items: center; gap: 6px; padding-top: 4px; border-top: 1px solid var(--tc-sec-border); } #__tcMTF.tcMtfSweeping .tcMtfSync { color: var(--tc-accent); animation: tcSpin 1.4s linear infinite; } #__tcMTF .tcScanFootMsg { font-size: 9px; color: var(--tc-text-mut); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } #__tcMTF .tcMtfTf { color: var(--tc-text-pri); font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; padding: 0 5px; border-radius: 4px; margin-right: 5px; border: 1px solid transparent; line-height: 15px; } .tcMtfTf:hover { filter: brightness(1.3); } #__tcMTF .tcMtfPct { font-size: 10px; font-variant-numeric: tabular-nums; color: var(--tc-text-dim); } .tcMtfSr { font-size: 9px; font-weight: 800; letter-spacing: 0.04em; cursor: pointer; padding: 0 5px; border-radius: 4px; margin-right: 5px; border: 1px solid transparent; line-height: 15px; } .tcMtfCd { font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--tc-text-mut); margin-left: auto; margin-right: 6px; } .tcMtfCd.tcMtfCdSoon { color: var(--tc-accent); } .tcMtfFlip { display: none; font-size: 9px; font-weight: 800; line-height: 15px; padding: 0 5px; border-radius: 4px; margin-right: 5px; border: 1px solid transparent; color: #0b1020; } .tcMtfFlip.tcFlipOn { display: inline-block; } #__tcMTF .tcMtfCv { display: block; width: 100%; height: var(--tc-mtf-cvh, 88px); cursor: grab; touch-action: none; border-radius: var(--m3-shape-xs); background: var(--m3-surface-3); } #__tcMTF .tcMtfRz { position: absolute; z-index: 2; background: transparent; touch-action: none; } #__tcMTF .tcMtfRz[data-rz=\"e\"] { top: 8px; bottom: 8px; right: -3px; width: 8px; cursor: ew-resize; } #__tcMTF .tcMtfRz[data-rz=\"w\"] { top: 8px; bottom: 8px; left: -3px; width: 8px; cursor: ew-resize; } #__tcMTF .tcMtfRz[data-rz=\"s\"] { left: 8px; right: 8px; bottom: -3px; height: 8px; cursor: ns-resize; } #__tcMTF .tcMtfRz[data-rz=\"n\"] { left: 8px; right: 8px; top: -3px; height: 8px; cursor: ns-resize; } #__tcMTF .tcMtfRz[data-rz=\"se\"] { right: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nwse-resize; } #__tcMTF .tcMtfRz[data-rz=\"sw\"] { left: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nesw-resize; } #__tcMTF .tcMtfRz[data-rz=\"ne\"] { right: -3px; top: -3px; width: 14px; height: 14px; cursor: nesw-resize; } #__tcMTF .tcMtfRz[data-rz=\"nw\"] { left: -3px; top: -3px; width: 14px; height: 14px; cursor: nwse-resize; } #__tcMTF .tcMtfRz[data-rz=\"se\"]::after { content: ''; position: absolute; right: 4px; bottom: 4px; width: 6px; height: 6px; border-right: 2px solid var(--m3-outline-var); border-bottom: 2px solid var(--m3-outline-var); } #__tcMTF.tcMtfResizing { user-select: none; } #__tcMTF .tcMtfCv:active { cursor: grabbing; } #__tcMTF .tcMtfPanned .tcMtfCv { box-shadow: inset 0 0 0 1px oklch(from var(--tc-accent) l c h / 0.55); } #__tcMTF .tcMtfPanned .tcMtfCap { color: var(--tc-accent); } #__tcMTF .tcMtfCap { font-size: 10px; letter-spacing: 0.03em; color: var(--tc-text-dim); text-align: right; } #__tcMTF .tcMtfStale .tcMtfCv { opacity: 0.45; } #__tcMTF .tcMtfStale .tcMtfCap { color: var(--tc-amb); } #__tcMTF .tcMtfEmpty .tcMtfCv { background: transparent; border: 1px dashed var(--m3-outline-var); } #__tcMTF .tcMtfEmpty .tcMtfCap { color: var(--tc-accent); } #__tcMTF.tcMtfBusy { opacity: 0.7; } #__tcMTF.tcMtfBusy .tcMtfSync { color: var(--tc-accent); } #__tcMobileBar { position: fixed; bottom: 210px; right: 3px; left: auto; top: auto; transform: none; z-index: 2147483600; display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 6px 5px; width: 92px; max-height: calc(100vh - 16px); background: color-mix(in oklab, var(--tc-bg) 94%, transparent); border: 1px solid var(--m3-outline-var); border-radius: 14px; box-shadow: var(--m3-elev-2); font-family: 'DM Sans', system-ui, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; animation: __tcMbIn 0.22s cubic-bezier(0.16, 1, 0.3, 1); } @keyframes __tcMbIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } } #__tcMobileBar .tcMbHandle { display: flex; flex-direction: row; justify-content: center; align-items: center; padding: 0 0 2px; cursor: grab; width: 100%; } #__tcMobileBar .tcMbHandle:active { cursor: grabbing; } #__tcMobileBar .tcMbGrip { display: block; width: 17px; height: 3px; border-radius: 999px; background: var(--m3-on-surface-var); opacity: 0.4; } #__tcMobileBar .tcMbRow { display: flex; flex-direction: column; gap: 3px; width: 100%; } #__tcMobileBar .tcMbLbl { font-size: 8px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: oklch(from var(--tc-text-pri) l c h / 0.85); text-align: center; white-space: nowrap; } #__tcMobileBar .tcMbCtl { display: flex; align-items: stretch; gap: 3px; width: 100%; } #__tcMobileBar .tcMbBtn, #__tcMobileBar .tcMbVal { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; height: 22px; cursor: pointer; color: #ffffff; background: var(--m3-surface-3); border-radius: 9px; transition: background 0.12s cubic-bezier(0.16, 1, 0.3, 1); } #__tcMobileBar .tcMbBtn { flex: 0 0 auto; min-width: 22px; padding: 0 3px; font-size: 11px; font-weight: 700; line-height: 1; } #__tcMobileBar .tcMbBtn svg { width: 10px; height: 10px; stroke: currentColor; fill: none; } #__tcMobileBar .tcMbVal { flex: 1; min-width: 0; padding: 0 4px; } #__tcMobileBar .tcMbVal b { font-size: 9px; font-weight: 800; color: #ffffff; font-variant-numeric: tabular-nums; white-space: nowrap; } #__tcMobileBar .tcMbValGrn b { color: var(--tc-grn); } #__tcMobileBar.tcMbRpLow .tcMbValGrn b { color: var(--tc-red); } #__tcMobileBar.tcMbRpLow .tcMbValGrn { background: oklch(from var(--tc-red) l c h / 0.16); } #__tcMobileBar.tcMbRpLow #__tcMbRpLbl { color: var(--tc-red); } #__tcMobileBar .tcMbQuick { display: flex; justify-content: space-between; gap: 3px; width: 100%; } #__tcMobileBar .tcMbQuickBtn { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex: 0 0 16px; cursor: pointer; background: var(--m3-surface-3); border-radius: 6px; font-size: 8px; font-weight: 800; line-height: 1; color: #ffffff; font-variant-numeric: tabular-nums; transition: background 0.12s cubic-bezier(0.16, 1, 0.3, 1); } #__tcMobileBar .tcMbQuickBtn.tcMbQuickOn { background: var(--tc-accent); color: var(--tc-bg); } #__tcMobileBar .tcMbQuickBtn:active { background: oklch(from var(--tc-accent) l c h / 0.35); } #__tcMobileBar .tcMbQuickBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } #__tcMobileBar .tcMbBtn:active, #__tcMobileBar .tcMbVal:active { background: oklch(from var(--tc-accent) l c h / 0.2); } #__tcMobileBar .tcMbBtn:focus-visible, #__tcMobileBar .tcMbVal:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } @media (hover: hover) { #__tcMobileBar .tcMbBtn:hover, #__tcMobileBar .tcMbVal:hover { background: oklch(from var(--tc-accent) l c h / 0.1); } } @media (prefers-reduced-motion: reduce) { #__tcMobileBar { animation: none; } #__tcMobileBar .tcMbBtn, #__tcMobileBar .tcMbVal { transition: none; } } @media (max-width: 900px) { #__tradeCalc input { font-size: 16px !important; } } ";
+        " #__tradeCalc { position: fixed; top: 5px; right: 375px; width: max-content; min-height: 3.5em; max-width: 90em; border-radius: 999px; z-index: 2147483647; font-size: 13px; font-family: 'DM Sans', system-ui, sans-serif; background: var(--tc-bg); box-shadow: var(--tc-panel-shadow); display: flex; align-items: center; padding: 0.3em 1.5em; gap: 0; cursor: default; user-select: none; overflow: visible; transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); } #__tradeCalc.dragging { transition: none; cursor: grabbing; } .tcGrip { display: flex; align-items: center; flex-shrink: 0; pointer-events: none; width: 0.7em; height: 1.1em; color: var(--m3-on-surface-var); opacity: 0.4; } .tcGrip svg { width: 100%; height: 100%; } .tcGripLeft { margin-right: 0.7em; } .tcVer { align-self: center; font-size: max(9px, 0.58em); font-weight: 800; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; color: var(--tc-text-mut); opacity: 0.65; cursor: default; } .tcGripRight { margin-left: 0.7em; } #__tcContent { display: flex; align-items: stretch; flex: 1; gap: 0.75em; scrollbar-width: none; } #__tcContent::-webkit-scrollbar { display: none; } .tcSec { display: flex; flex-direction: row; align-items: stretch; background: transparent; border: none; flex:1; padding: 0; gap: 0; position: relative; flex-shrink: 0; } #__tcSecTargets { cursor: grab; } #__tcSecProtections { margin-left: auto; margin-right: auto; } #__tcSecProjections { } .tcSec:has([data-tc-tip]:hover) { z-index: 100; } [data-tc-tip] { position: relative; } [data-tc-tip]::after { content: attr(data-tc-tip); position: absolute; top: calc(100% + 0.46em); left: 50%; white-space: nowrap; pointer-events: none; background: oklch(16% 0.02 257 / 0.98); color: oklch(96% 0.01 240); font-size: max(11px, 0.72em); font-weight: 600; letter-spacing: 0.04em; text-transform: none; padding: 0.4em 0.7em; border-radius: 0.42em; border: 1px solid oklch(100% 0 0 / 0.14); box-shadow: 0 4px 12px oklch(0% 0 0 / 0.45); opacity: 0; transition: opacity 0.18s, transform 0.18s; transform: translateX(-50%) translateY(-0.31em); z-index: 2147483647; } [data-tc-tip]::before { content: ''; position: absolute; top: calc(100% + 0.15em); left: 50%; transform: translateX(-50%); border: 0.31em solid transparent; border-bottom-color: oklch(16% 0.02 257 / 0.98); pointer-events: none; opacity: 0; transition: opacity 0.18s; z-index: 2147483647; } [data-tc-tip]:hover, [data-tc-tip]:focus-visible { z-index: 2147483646; } [data-tc-tip]:hover::after, [data-tc-tip]:focus-visible::after { opacity: 1; transform: translateX(-50%) translateY(0); } [data-tc-tip]:hover::before, [data-tc-tip]:focus-visible::before { opacity: 1; } #__tcSecTargets [data-tc-tip]::after { left: 0; transform: translateY(-0.31em); } #__tcSecTargets [data-tc-tip]:hover::after, #__tcSecTargets [data-tc-tip]:focus-visible::after { transform: translateY(0); } #__tcSecTargets [data-tc-tip]::before { left: 0.7em; transform: none; } .tcSecFields { display: flex; align-items: stretch; gap: 0.6em; flex: 1; position: relative; } .tcFld { display: flex; flex-direction: column; gap: 0.25em; position: relative; flex:1;} .tcFld > .tcLbl { min-height: 0; display: flex; align-items: center; padding-bottom: 0; font-weight: bold; flex: 0 0 auto; } .tcFld > *:not(.tcLbl) { margin-top: auto; margin-bottom: auto; } .tcLbl { font-size: var(--fz-label); text-transform: uppercase; color: var(--tc-text-mut); font-weight: 500; letter-spacing: 0.16em; line-height: 1; white-space: nowrap; display: flex; align-items: center; gap: 0.3em; } .tcLbl svg { opacity: 0.75; } .tcLbl .tcDot { display: none; } .tcVal { font-family: 'DM Mono', monospace; font-size: var(--fz-value); color: var(--tc-text-pri); font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; transition: color 0.3s, text-shadow 0.3s; letter-spacing: 0.031em; white-space: nowrap; } .tcValLg { font-family: 'DM Mono', monospace; font-size: var(--fz-value-lg); font-weight: 400; color: var(--tc-text-pri); letter-spacing: 0.015em; line-height: 1; font-variant-numeric: tabular-nums; transition: text-shadow 0.3s; } .tcValLg .tcDec { color: var(--tc-text-mut); font-weight: 400; font-size: var(--fz-decimal); letter-spacing: 0.015em; margin-left: 0.05em; } .tcValLg[style*=\"--tc-grn\"] { text-shadow: 0 0 18px oklch(76% 0.16 145 / 0.4); } .tcValLg[style*=\"--tc-red\"] { text-shadow: 0 0 18px oklch(64% 0.18 25 / 0.4); } .tcProjMarks { display: none; } .tcProjMark { width: 1.077em; height: 0.154em; border-radius: 0.231em; background: oklch(76% 0.16 145 / 0.18); } .tcProjMark.tcProjMarkFill { background: var(--tc-grn); box-shadow: 0 0 6px oklch(76% 0.16 145 / 0.5); } .tcControlGroup { display: inline-flex; align-items: center; gap: 0.18em; background: var(--m3-surface-3); box-shadow: none; border: 1px solid var(--m3-outline-var); border-radius: var(--m3-shape-full); padding: 0.25em 0.8em; min-height: 1.3em; box-sizing: border-box; transition: border-color 0.2s, border-width 0.1s; overflow: visible; } .tcControlGroup:hover:not(:focus-within) { border-color: var(--m3-outline); } .tcControlGroup:focus-within { border: 1px solid var(--tc-accent); padding: calc(0.25em - 1px) calc(0.6em - 1px); } #__tcSLInputWrap, #__tcSLInputWrap:hover, #__tcSLInputWrap:focus-within { border-color: var(--m3-outline-var); padding: 0.25em 0.8em; } #__tcSLInput { cursor: default; } .tcInput { font-family: 'DM Mono', monospace; font-size: 1em; color: var(--m3-on-surface); background: transparent; border: none; outline: none; padding: 0; font-weight: 400; font-variant-numeric: tabular-nums; min-width: 0; letter-spacing: 0.031em; -moz-appearance: textfield; } .tcInput::-webkit-outer-spin-button, .tcInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; } .tcInput::placeholder { color: var(--m3-on-surface-var); opacity: 0.7; } .tcInput:-webkit-autofill, .tcInput:-webkit-autofill:hover, .tcInput:-webkit-autofill:focus, .tcInput:-webkit-autofill:active { -webkit-box-shadow: 0 0 0 100px transparent inset !important; box-shadow: 0 0 0 100px transparent inset !important; -webkit-text-fill-color: var(--m3-on-surface) !important; background-color: transparent !important; transition: background-color 99999s ease-in-out 0s; } .tcInput.tcUnsaved { border-bottom-color: var(--tc-ylw) !important; color: var(--tc-ylw) !important; } .tcControlGroup:has(.tcUnsaved)::after { content: \"↵ Enter\"; position: absolute; bottom: -1.35em; left: 0; font-size: max(8px, 0.5em); font-weight: 700; letter-spacing: 0.08em; color: var(--tc-ylw); white-space: nowrap; pointer-events: none; opacity: 0.9; } .tcPill { width: 2.308em; height: 2.308em; border-radius: 50%; background: transparent; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; flex-shrink: 0; min-width: 0; color: var(--m3-on-surface-var); transition: background 0.14s, color 0.15s, border-color 0.2s, box-shadow 0.2s; } .tcPill svg { width: 1.15em; height: 1.15em; } .tcPill:hover { background: oklch(from var(--tc-accent) l c h / 0.08); color: var(--m3-on-surface); } .tcPill:active { background: oklch(from var(--tc-accent) l c h / 0.12); transform: scale(0.94); } .tcPill:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcPill.on, #__tcMultiStatus.on { color: var(--tc-grn); border-color: oklch(from var(--tc-grn) l c h / 0.4); box-shadow: 0 0 10px oklch(from var(--tc-grn) l c h / 0.35); } .tcPill.tcPillSnap { animation: __tcPillSnap 0.22s cubic-bezier(0.16, 1, 0.3, 1); } .tcPillCircle::after { content: none !important; } .tcPillCircle, .tcLogBtn { border-radius: 50%; background: transparent; box-shadow: none; border: 1px solid transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--m3-on-surface-var); transition: background 0.14s, color 0.15s; } .tcPillCircle:hover, .tcLogBtn:hover { transform: none; background: oklch(from var(--tc-accent) l c h / 0.08); color: var(--m3-on-surface); } .tcPillCircle:active, .tcLogBtn:active { background: oklch(from var(--tc-accent) l c h / 0.12); box-shadow: none; } .tcPillCircle:focus-visible, .tcLogBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcPillCircle { width: 1.733em; height: 1.733em; min-width: 0; padding: 0; align-self: center; font-weight: 500; font-size: var(--fz-value); line-height: 1; font-family: 'DM Sans', system-ui, sans-serif; } .tcLogBtn { width: 2.308em; height: 2.308em; padding: 0; font-size: 1em; } .tcLogBtn svg { width: 1.077em; height: 1.077em; } .tcCloseBtn { position: absolute; right: -0.4em; top: 50%; transform: translateY(-50%); width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--m3-surface-3); border: 1px solid var(--m3-outline-var); color: var(--m3-on-surface-var); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 10; box-shadow: none; transition: color 0.2s, opacity 0.2s, background 0.2s; opacity: 0; } .tcCloseBtn::before { content: \"\"; position: absolute; inset: 50% 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); border-radius: 50%; } #__tradeCalc:hover .tcCloseBtn, .tcCloseBtn:focus-visible { opacity: 1; } .tcCloseBtn:hover { background: var(--tc-red); color: oklch(98% 0 0); border-color: transparent; box-shadow: 0 3px 10px oklch(64% 0.18 25 / 0.4); transform: translateY(-50%); } .tcCloseBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; opacity: 1; } .tcCloseBtn:focus-visible:hover { transform: translateY(-50%) rotate(90deg); transition: background 0.25s, color 0.25s, transform 0.35s cubic-bezier(0.16, 1, 0.3, 1); } .tcSparklineBg { position: absolute; inset: 0; opacity: 0.22; pointer-events: none; border-radius: inherit; overflow: hidden; z-index: 0; mask-image: linear-gradient(to bottom, black 20%, transparent); -webkit-mask-image: linear-gradient(to bottom, black 20%, transparent); } @keyframes __tcDataFlash { 0% { color: var(--tc-accent); transform: translateY(-1px); } 100% { color: inherit; transform: translateY(0); } } .tcFlashData { animation: __tcDataFlash 0.55s cubic-bezier(0.16, 1, 0.3, 1); display: inline-block; } @keyframes tcSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } @keyframes __tcEntrance { 0% { opacity: 0; transform: scale(0.92) translateY(16px); filter: blur(8px); } 100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); } } #__tradeCalc.tcLightMode { --tc-grn: #146c2e; --tc-red: oklch(44% 0.18 25); --tc-amb: oklch(44% 0.16 60); --tc-ylw: oklch(52% 0.17 70); --tc-pur: oklch(42% 0.16 285); --tc-cyn: oklch(40% 0.13 210); --tc-accent: #6750a4; --m3-surface: #fef7ff; --m3-surface-2: #f4eefa; --m3-surface-3: #ece6f0; --m3-on-surface: #1d1b20; --m3-on-surface-var: #49454f; --m3-outline: #79747e; --m3-outline-var: #cac4d0; --m3-primary: #6750a4; --m3-on-primary: #ffffff; --tc-text-pri: var(--m3-on-surface); --tc-text-dim: var(--m3-on-surface-var); --tc-text-mut: oklch(from var(--m3-on-surface-var) l c h / 0.78); --tc-input-bg: var(--m3-surface-3); --tc-input-border: var(--m3-outline-var); --tc-bg: var(--m3-surface-2); --tc-panel-shadow: var(--m3-elev-2); background: var(--tc-bg); } #__tradeCalc.tcLightMode .tcControlGroup { background: var(--m3-surface-3); border-color: var(--m3-outline-var); } #__tradeCalc.tcLightMode .tcPillCircle, #__tradeCalc.tcLightMode .tcLogBtn, #__tradeCalc.tcLightMode .tcPill { background: transparent; border-color: transparent; } #__tcDangerOverlay { position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; background: radial-gradient(circle at center, transparent 0%, oklch(0% 0 0 / 0.88) 100%); opacity: 0; transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1); } .tcLockContent { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; padding: var(--s-6); border-radius: 1.4em; background: var(--tc-bg); border: 1px solid var(--tc-sec-border); box-shadow: 0 48px 120px oklch(0% 0 0 / 0.8), inset 0 1px 1px oklch(100% 0 0 / 0.2); } .tcLockLabel { display: block; font-size: 0.78em; font-weight: 900; text-transform: uppercase; letter-spacing: 0.28em; color: var(--tc-text-mut); margin-bottom: var(--s-5); opacity: 1; } .tcLockTimer { display: block; font-family: 'DM Mono', monospace; font-size: 7.5em; font-weight: 800; color: var(--tc-text-pri); letter-spacing: -0.04em; line-height: 1; } .tcLockMeta { display: block; font-size: 0.85em; font-weight: 600; color: var(--tc-text-dim); margin-top: var(--s-5); letter-spacing: 0.05em; } #__tradeCalc.tcDangerMode { box-shadow: var(--tc-panel-shadow), 0 0 0 2px oklch(64% 0.18 25 / 0.55); } #__tradeCalc.tcDangerMode.tcActive { box-shadow: var(--tc-panel-shadow), 0 0 0 2px oklch(64% 0.18 25 / 0.5); } #__tcDangerOverlay.tcPercentVisible { opacity: 1; background: radial-gradient(circle at center, transparent 0%, oklch(64% 0.18 25 / 0.15) 100%); } #__tcDangerOverlay.tcPercentVisible .tcLockCard { display: block; } #__tcDangerOverlay.tcPercentVisible .tcLockContent { box-shadow: 0 0 0 1px oklch(64% 0.18 25 / 0.5), 0 32px 100px -16px oklch(0% 0 0 / 0.9); background: radial-gradient(circle at top, oklch(64% 0.18 25 / 0.15) 0%, transparent 100%), var(--tc-bg); }      #__tcRestoreBtn { position: fixed; bottom: 24px; right: 24px; z-index: 2147483647; background: oklch(from var(--tc-bg) l c h / 0.85); color: var(--tc-text-pri); border: 1px solid oklch(from var(--tc-accent) l c h / 0.3); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); padding: 0.6em 1.2em; border-radius: 99px; font-family: 'DM Sans', system-ui, sans-serif; font-weight: 600; font-size: 13px; cursor: pointer; box-shadow: 0 4px 16px oklch(0% 0 0 / 0.28); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s, border-color 0.2s; display: flex; align-items: center; gap: 8px; transform-origin: center; } #__tcRestoreBtn svg { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); color: var(--tc-accent); width: 14px; height: 14px; } #__tcRestoreBtn:hover { transform: translateY(-3px) scale(1.02); background: oklch(from var(--tc-bg) l c h / 0.95); box-shadow: 0 8px 24px oklch(from var(--tc-accent) l c h / 0.2); border-color: var(--tc-accent); } #__tcRestoreBtn:hover svg { transform: rotate(90deg) scale(1.1); } #__tcRestoreBtn:active { transform: translateY(1px) scale(0.97); box-shadow: 0 2px 8px oklch(0% 0 0 / 0.2); transition: transform 0.1s; } #__tcRestoreBtn.tcLightMode { background: oklch(96% 0.02 88 / 0.92); box-shadow: 0 8px 24px -14px oklch(37% 0.06 78 / 0.45); } #__tcRestoreBtn.tcLightMode:hover { background: oklch(99% 0.016 88 / 0.98); box-shadow: 0 8px 24px oklch(48% 0.18 245 / 0.15); } @keyframes __tcPillSnap { 0% { transform: scale(1); } 40% { transform: scale(0.88); } 100% { transform: scale(1); } } .tcPill.tcPillSnap { animation: __tcPillSnap 0.22s cubic-bezier(0.16, 1, 0.3, 1); } @keyframes __tcInputCommit { 0% { border-color: oklch(76% 0.16 145 / 0.9); box-shadow: 0 0 0 2px oklch(76% 0.16 145 / 0.18), inset 0 1px 2px oklch(0% 0 0 / 0.18); } 100% { border-color: var(--tc-input-border); box-shadow: inset 0 1px 2px oklch(0% 0 0 / 0.18); } } .tcControlGroup.tcCommit { animation: __tcInputCommit 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; } .tcReqWrap { display: flex; align-items: baseline; gap: 0.12em; } .tcReqFrom { font-size: 0.78em; font-weight: 600; color: var(--tc-text-dim); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; } .tcValLg.tcTradeCritical { color: var(--tc-ylw) !important; text-shadow: 0 0 24px oklch(90% 0.17 95 / 0.6), 0 0 48px oklch(90% 0.17 95 / 0.25); } .tcSecHdr .tcDot.tcDotLive { opacity: 1; box-shadow: 0 0 5px currentColor; } @keyframes __tcBtnReveal { 0% { transform: scale(0.96); box-shadow: 0 0 0 0 oklch(76% 0.16 145 / 0.5); } 55% { transform: scale(1.02); box-shadow: 0 0 0 8px oklch(76% 0.16 145 / 0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 oklch(76% 0.16 145 / 0); } } .tcSLBtnReveal { animation: __tcBtnReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; } @keyframes __tcWarnIn { 0% { opacity: 0; transform: translateY(4px); } 100% { opacity: 1; transform: translateY(0); } } #__tcWarn.tcWarnVisible { animation: __tcWarnIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; } @keyframes __tcLiveResolve { 0% { opacity: 0.72; transform: scale(1); } 45% { opacity: 1; transform: scale(1.06); } 100% { opacity: 0; transform: scale(0.96) translateY(2px); } } .tcLiveResolving { animation: __tcLiveResolve 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards !important; } @keyframes __tcValPop { 0% { transform: scale(1); } 45% { transform: scale(1.12) translateY(-1px); } 100% { transform: scale(1) translateY(0); } } .tcValLg.tcValPop { animation: __tcValPop 0.28s cubic-bezier(0.16, 1, 0.3, 1); } @media (prefers-reduced-motion: reduce) { #__tradeCalc, #__tradeCalc *, #__tcRestoreBtn, #__tcDangerOverlay { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } #__tradeCalc.tcDangerMode.tcActive { animation: none !important; } .tcFlashData { animation: none !important; } .tcCloseBtn:focus-visible:hover { transform: none; } .tcLogBtn:hover { transform: none; } #__tcRestoreBtn:hover { transform: none; } #__tcRestoreBtn:hover svg { transform: none; } .tcPill.tcPillSnap { animation: none !important; } .tcControlGroup.tcCommit { animation: none !important; } .tcSecHdr .tcDot.tcDotLive { animation: none !important; } .tcSLBtnReveal { animation: none !important; } #__tcWarn.tcWarnVisible { animation: none !important; } .tcLiveResolving { animation: none !important; opacity: 0 !important; } .tcValLg.tcValPop { animation: none !important; } .tcPill { transition: none !important; } } .tcControlGroup.tcTPGroup { gap:0.05em; background:transparent; border-color:transparent; box-shadow:none; align-items:baseline; } .tcControlGroup.tcTPGroup:hover, .tcControlGroup.tcTPGroup:focus-within { background: var(--m3-surface-3); border-color: var(--m3-outline-var); box-shadow: none; } .tcTPCur { font-size:var(--fz-currency); font-weight:700; color:var(--tc-text-dim); font-family:'DM Mono',monospace; letter-spacing:0.015em; } .tcTPInput { font-size:var(--fz-hero) !important; font-weight:700 !important; letter-spacing:0.02em !important; } @keyframes __tcTimerIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } } @keyframes __tcEdgeFlash { 0% { opacity:0; } 25% { opacity:1; } 100% { opacity:0; } } @media (prefers-reduced-motion: reduce) { #__tcEdgeFlash { animation: none !important; opacity: 0 !important; } }  .tcMenu { position: absolute; top: calc(100% + 0.6em); right: 0.6em; z-index: 200; width: 23em; max-height: min(70vh, 42em); overflow-y: auto; scrollbar-width: thin; box-sizing: border-box; display: flex; flex-direction: column; gap: 0.1em; padding: 0.6em; background: var(--tc-bg); color: var(--tc-text-pri); border: 1px solid var(--m3-outline-var); border-radius: var(--m3-shape-md); box-shadow: var(--m3-elev-3); cursor: default; } .tcMenu[hidden] { display: none; } .tcMenuHd { font-size: var(--fz-label); font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--tc-text-mut); padding: 0.2em 0.3em 0.4em; } .tcMenuRow { display: flex; align-items: center; justify-content: space-between; gap: 0.8em; padding: 0.35em 0.3em; } .tcMenuLbl { display: block; font-weight: 600; } .tcMenuSub { display: block; font-size: 0.82em; color: var(--tc-text-mut); margin-top: 0.15em; } .tcMenuSep { height: 1px; background: var(--m3-outline-var); margin: 0.3em 0; flex-shrink: 0; } .tcSeg { display: inline-flex; align-items: center; gap: 0.3em; flex-shrink: 0; } .tcMenuVal { min-width: 3em; text-align: center; font-family: 'DM Mono', monospace; font-variant-numeric: tabular-nums; } .tcMenuBtn { all: unset; box-sizing: border-box; cursor: pointer; flex-shrink: 0; padding: 0.25em 0.8em; border-radius: var(--m3-shape-full); border: 1px solid var(--m3-outline-var); font-weight: 600; font-size: 0.9em; color: var(--tc-text-pri); transition: border-color 0.15s, background 0.15s; } .tcMenuBtn:hover { border-color: var(--tc-accent); } .tcMenuBtn.tcOn { background: var(--tc-accent); color: var(--m3-on-primary); border-color: transparent; } .tcMenuBtn:disabled { opacity: 0.5; cursor: default; } .tcMenuBtn:focus-visible, .tcSwitch:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } .tcSwitch { all: unset; box-sizing: border-box; position: relative; flex-shrink: 0; width: 2.4em; height: 1.35em; border-radius: 999px; cursor: pointer; background: var(--m3-surface-3); border: 1px solid var(--m3-outline); transition: background 0.15s, border-color 0.15s; } .tcSwitch::after { content: ''; position: absolute; top: 50%; left: 0.2em; width: 0.85em; height: 0.85em; border-radius: 50%; background: var(--m3-outline); transform: translateY(-50%); transition: left 0.15s, background 0.15s; } .tcSwitch[aria-checked=\"true\"] { background: var(--tc-accent); border-color: var(--tc-accent); } .tcSwitch[aria-checked=\"true\"]::after { left: 1.3em; background: var(--m3-on-primary); } .tcMenuOut { display: flex; flex-direction: column; gap: 0.2em; padding: 0 0.3em 0.3em; font-size: 0.85em; } .tcMenuOut:empty { display: none; } .tcMenuNote { color: var(--tc-text-mut); } .tcMenuWarn { color: var(--tc-amb); font-weight: 600; } .tcMenuBig { font-family: 'DM Mono', monospace; font-size: 1.35em; font-weight: 700; color: var(--tc-grn); line-height: 1.3; } .tcMenuLine { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6em; } .tcMenuLine > :last-child { font-family: 'DM Mono', monospace; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 11em; } .tcMenuList { display: flex; flex-direction: column; gap: 0.15em; padding: 0.3em 0; border-top: 1px solid var(--m3-outline-var); margin-top: 0.2em; } #__tcMTF { position: fixed; top: 96px; right: 220px; z-index: 2147483000; display: flex; flex-direction: column; gap: 10px; width: 268px; padding: 10px; box-sizing: border-box; border-radius: var(--m3-shape-lg); background: var(--tc-bg); box-shadow: var(--m3-elev-2); border: 1px solid var(--m3-outline-var); font-family: 'DM Mono', monospace; user-select: none; -webkit-user-select: none; touch-action: none; } #__tcMTF .tcMtfBar { display: flex; align-items: center; gap: 6px; cursor: grab; padding-bottom: 2px; } #__tcMTF .tcMtfBar:active { cursor: grabbing; } #__tcMTF .tcMtfPair { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: var(--tc-text-pri); } #__tcMTF .tcMtfSync { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: var(--m3-shape-full); cursor: pointer; color: var(--tc-text-dim); transition: background 0.12s, color 0.12s; } #__tcMTF .tcMtfSync:hover { background: oklch(from var(--tc-accent) l c h / 0.12); color: var(--tc-accent); } #__tcMTF .tcMtfSync:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 1px; } #__tcMTF .tcMtfGrip { width: 16px; height: 3px; border-radius: 2px; background: var(--m3-outline-var); } #__tcMTF .tcMtfCell { display: flex; flex-direction: column; gap: 1px; } #__tcMTF .tcMtfHd { display: flex; align-items: center; justify-content: space-between; } #__tcMTF .tcMtfViews { display: flex; gap: 3px; flex-shrink: 0; } #__tcMTF .tcMtfViewBtn { all: unset; box-sizing: border-box; font-family: inherit; font-size: 9px; font-weight: 800; letter-spacing: 0.04em; padding: 0 6px; line-height: 15px; border-radius: 4px; border: 1px solid var(--tc-sec-border); color: var(--tc-text-mut); cursor: pointer; } #__tcMTF .tcMtfViewBtn:hover { color: var(--tc-text-pri); } #__tcMTF .tcMtfViewBtn.tcOn { color: #0b1020; background: var(--tc-accent); border-color: transparent; } #__tcMTF .tcMtfScan { display: none; } #__tcMTF.tcMtfScanOn .tcMtfCell { display: none; } #__tcMTF.tcMtfScanOn .tcMtfScan { display: flex; flex-direction: column; gap: 3px; } #__tcMTF .tcMtfScanHdr { font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: var(--tc-text-mut); padding: 0 2px 2px; } #__tcMTF .tcMtfScanList { display: flex; flex-direction: column; gap: 1px; max-height: min(240px, 40vh); overflow-y: auto; scrollbar-width: thin; } #__tcMTF .tcScanAge { font-size: 8px; font-weight: 700; color: var(--tc-text-mut); opacity: 0.8; flex-shrink: 0; font-variant-numeric: tabular-nums; } #__tcMTF .tcMtfScanRow { display: flex; align-items: center; gap: 6px; font-size: 10px; line-height: 17px; padding: 0 4px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; } #__tcMTF .tcMtfScanRow:hover { background: oklch(100% 0 0 / 0.08); } #__tcMTF .tcMtfScanRow.tcScanHot { background: oklch(100% 0 0 / 0.06); border-color: var(--tc-sec-border); } #__tcMTF .tcMtfScanRow.tcScanOpen .tcScanPair { color: var(--tc-text-pri); } #__tcMTF .tcScanPair { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; color: var(--tc-text-dim); } #__tcMTF .tcScanPay { font-variant-numeric: tabular-nums; color: var(--tc-text-mut); flex-shrink: 0; } #__tcMTF .tcScanTr { display: flex; gap: 1px; flex-shrink: 0; font-size: 9px; } #__tcMTF .tcScanNear { font-variant-numeric: tabular-nums; font-weight: 800; flex-shrink: 0; min-width: 54px; text-align: right; } #__tcMTF .tcScanNear.tcScanNone { color: var(--tc-text-mut); font-weight: 600; } #__tcMTF .tcScanEmpty { font-size: 10px; color: var(--tc-text-mut); padding: 6px 4px; } #__tcMTF .tcMtfScanFoot { display: flex; align-items: center; gap: 6px; padding-top: 4px; border-top: 1px solid var(--tc-sec-border); } #__tcMTF.tcMtfSweeping .tcMtfSync { color: var(--tc-accent); animation: tcSpin 1.4s linear infinite; } #__tcMTF .tcScanFootMsg { font-size: 9px; color: var(--tc-text-mut); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } #__tcMTF .tcMtfTf { color: var(--tc-text-pri); font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; padding: 0 5px; border-radius: 4px; margin-right: 5px; border: 1px solid transparent; line-height: 15px; } .tcMtfTf:hover { filter: brightness(1.3); } #__tcMTF .tcMtfPct { font-size: 10px; font-variant-numeric: tabular-nums; color: var(--tc-text-dim); } .tcMtfSr { font-size: 9px; font-weight: 800; letter-spacing: 0.04em; cursor: pointer; padding: 0 5px; border-radius: 4px; margin-right: 5px; border: 1px solid transparent; line-height: 15px; } .tcMtfCd { font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--tc-text-mut); margin-left: auto; margin-right: 6px; } .tcMtfCd.tcMtfCdSoon { color: var(--tc-accent); } .tcMtfFlip { display: none; font-size: 9px; font-weight: 800; line-height: 15px; padding: 0 5px; border-radius: 4px; margin-right: 5px; border: 1px solid transparent; color: #0b1020; } .tcMtfFlip.tcFlipOn { display: inline-block; } #__tcMTF .tcMtfCv { display: block; width: 100%; height: var(--tc-mtf-cvh, 88px); cursor: grab; touch-action: none; border-radius: var(--m3-shape-xs); background: var(--m3-surface-3); } #__tcMTF .tcMtfRz { position: absolute; z-index: 2; background: transparent; touch-action: none; } #__tcMTF .tcMtfRz[data-rz=\"e\"] { top: 8px; bottom: 8px; right: -3px; width: 8px; cursor: ew-resize; } #__tcMTF .tcMtfRz[data-rz=\"w\"] { top: 8px; bottom: 8px; left: -3px; width: 8px; cursor: ew-resize; } #__tcMTF .tcMtfRz[data-rz=\"s\"] { left: 8px; right: 8px; bottom: -3px; height: 8px; cursor: ns-resize; } #__tcMTF .tcMtfRz[data-rz=\"n\"] { left: 8px; right: 8px; top: -3px; height: 8px; cursor: ns-resize; } #__tcMTF .tcMtfRz[data-rz=\"se\"] { right: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nwse-resize; } #__tcMTF .tcMtfRz[data-rz=\"sw\"] { left: -3px; bottom: -3px; width: 14px; height: 14px; cursor: nesw-resize; } #__tcMTF .tcMtfRz[data-rz=\"ne\"] { right: -3px; top: -3px; width: 14px; height: 14px; cursor: nesw-resize; } #__tcMTF .tcMtfRz[data-rz=\"nw\"] { left: -3px; top: -3px; width: 14px; height: 14px; cursor: nwse-resize; } #__tcMTF .tcMtfRz[data-rz=\"se\"]::after { content: ''; position: absolute; right: 4px; bottom: 4px; width: 6px; height: 6px; border-right: 2px solid var(--m3-outline-var); border-bottom: 2px solid var(--m3-outline-var); } #__tcMTF.tcMtfResizing { user-select: none; } #__tcMTF .tcMtfCv:active { cursor: grabbing; } #__tcMTF .tcMtfPanned .tcMtfCv { box-shadow: inset 0 0 0 1px oklch(from var(--tc-accent) l c h / 0.55); } #__tcMTF .tcMtfPanned .tcMtfCap { color: var(--tc-accent); } #__tcMTF .tcMtfCap { font-size: 10px; letter-spacing: 0.03em; color: var(--tc-text-dim); text-align: right; } #__tcMTF .tcMtfStale .tcMtfCv { opacity: 0.45; } #__tcMTF .tcMtfStale .tcMtfCap { color: var(--tc-amb); } #__tcMTF .tcMtfEmpty .tcMtfCv { background: transparent; border: 1px dashed var(--m3-outline-var); } #__tcMTF .tcMtfEmpty .tcMtfCap { color: var(--tc-accent); } #__tcMTF.tcMtfBusy { opacity: 0.7; } #__tcMTF.tcMtfBusy .tcMtfSync { color: var(--tc-accent); } #__tcMobileBar { position: fixed; bottom: 210px; right: 3px; left: auto; top: auto; transform: none; z-index: 2147483600; display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 6px 5px; width: 92px; max-height: calc(100vh - 16px); background: color-mix(in oklab, var(--tc-bg) 94%, transparent); border: 1px solid var(--m3-outline-var); border-radius: 14px; box-shadow: var(--m3-elev-2); font-family: 'DM Sans', system-ui, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; animation: __tcMbIn 0.22s cubic-bezier(0.16, 1, 0.3, 1); } @keyframes __tcMbIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } } #__tcMobileBar .tcMbHandle { display: flex; flex-direction: row; justify-content: center; align-items: center; padding: 0 0 2px; cursor: grab; width: 100%; } #__tcMobileBar .tcMbHandle:active { cursor: grabbing; } #__tcMobileBar .tcMbGrip { display: block; width: 17px; height: 3px; border-radius: 999px; background: var(--m3-on-surface-var); opacity: 0.4; } #__tcMobileBar .tcMbRow { display: flex; flex-direction: column; gap: 3px; width: 100%; } #__tcMobileBar .tcMbLbl { font-size: 8px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: oklch(from var(--tc-text-pri) l c h / 0.85); text-align: center; white-space: nowrap; } #__tcMobileBar .tcMbCtl { display: flex; align-items: stretch; gap: 3px; width: 100%; } #__tcMobileBar .tcMbBtn, #__tcMobileBar .tcMbVal { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; height: 22px; cursor: pointer; color: #ffffff; background: var(--m3-surface-3); border-radius: 9px; transition: background 0.12s cubic-bezier(0.16, 1, 0.3, 1); } #__tcMobileBar .tcMbBtn { flex: 0 0 auto; min-width: 22px; padding: 0 3px; font-size: 11px; font-weight: 700; line-height: 1; } #__tcMobileBar .tcMbBtn svg { width: 10px; height: 10px; stroke: currentColor; fill: none; } #__tcMobileBar .tcMbVal { flex: 1; min-width: 0; padding: 0 4px; } #__tcMobileBar .tcMbVal b { font-size: 9px; font-weight: 800; color: #ffffff; font-variant-numeric: tabular-nums; white-space: nowrap; } #__tcMobileBar .tcMbValGrn b { color: var(--tc-grn); } #__tcMobileBar.tcMbRpLow .tcMbValGrn b { color: var(--tc-red); } #__tcMobileBar.tcMbRpLow .tcMbValGrn { background: oklch(from var(--tc-red) l c h / 0.16); } #__tcMobileBar.tcMbRpLow #__tcMbRpLbl { color: var(--tc-red); } #__tcMobileBar .tcMbQuick { display: flex; justify-content: space-between; gap: 3px; width: 100%; } #__tcMobileBar .tcMbQuickBtn { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex: 0 0 16px; cursor: pointer; background: var(--m3-surface-3); border-radius: 6px; font-size: 8px; font-weight: 800; line-height: 1; color: #ffffff; font-variant-numeric: tabular-nums; transition: background 0.12s cubic-bezier(0.16, 1, 0.3, 1); } #__tcMobileBar .tcMbQuickBtn.tcMbQuickOn { background: var(--tc-accent); color: var(--tc-bg); } #__tcMobileBar .tcMbQuickBtn:active { background: oklch(from var(--tc-accent) l c h / 0.35); } #__tcMobileBar .tcMbQuickBtn:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } #__tcMobileBar .tcMbBtn:active, #__tcMobileBar .tcMbVal:active { background: oklch(from var(--tc-accent) l c h / 0.2); } #__tcMobileBar .tcMbBtn:focus-visible, #__tcMobileBar .tcMbVal:focus-visible { outline: 2px solid var(--tc-accent); outline-offset: 2px; } @media (hover: hover) { #__tcMobileBar .tcMbBtn:hover, #__tcMobileBar .tcMbVal:hover { background: oklch(from var(--tc-accent) l c h / 0.1); } } @media (prefers-reduced-motion: reduce) { #__tcMobileBar { animation: none; } #__tcMobileBar .tcMbBtn, #__tcMobileBar .tcMbVal { transition: none; } } @media (max-width: 900px) { #__tradeCalc input { font-size: 16px !important; } } ";
       shadow.appendChild(t);
     }
     // v1.27.0: the old <style> here listed Quotex's own hashed classes (".UI2Kh, .bvdd_ { … }"), which only
@@ -1817,7 +1753,7 @@
     const panel = document.createElement("div");
     panel.id = "__tradeCalc";
     panel.innerHTML =
-      ' <span class="tcGrip tcGripLeft" aria-hidden="true"><svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2" r="1.3"/><circle cx="7.5" cy="2" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="14" r="1.3"/><circle cx="7.5" cy="14" r="1.3"/></svg></span> <div id="__tcLoader" role="status" aria-live="polite" style="color:var(--tc-text-mut); font-size:0.72em; display:flex; align-items:center; justify-content:center; gap:var(--s-3); padding:var(--s-5) var(--s-6); width:22em; min-height:4.46em; font-weight:800; letter-spacing:0.14em;"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--tc-accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:tcSpin 1s linear infinite; opacity:0.8;" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg> <span id="__tcLoaderText"></span> </div> <div id="__tcContent" style="display:none;"> \x3c!-- Section 1: TARGETS (drag zone) --\x3e <div id="__tcSecTargets" class="tcSec"> <div class="tcSecFields" style="cursor:default; gap:0.615em;"> \x3c!-- TP --\x3e <div class="tcFld tcTPFld"> <span class="tcLbl" data-tc-tip="Day\'s take-profit target — hover the value to edit, Enter to save"><span class="tcDot"></span>TP</span> <div class="tcControlGroup tcTPGroup"> <span class="tcTPCur">₹</span> <input id="__tcTBInput" class="tcInput tcTPInput" type="text" placeholder="0" aria-label="Take profit balance target" autocomplete="off" readonly /> </div> </div> \x3c!-- SL (always shown; stays until changed) --\x3e <div class="tcFld" id="__tcSLFld"> <span class="tcLbl" data-tc-tip="Your stop loss — type a number and press Enter. It stays until you change it">SL</span> <div class="tcControlGroup" id="__tcSLInputWrap"> <input id="__tcSLInput" class="tcInput" type="text" placeholder="—" aria-label="Stop loss" autocomplete="off" /> </div> </div> </div> </div> \x3c!-- Section 2: LIMITS — centred via margin:auto in CSS --\x3e <div id="__tcSecProtections" class="tcSec"> <div class="tcSecHdr"><span class="tcDot"></span></div> <div class="tcSecFields" style="gap:0.75em;"> \x3c!-- LOCK + TIME removed 2026-07-06: browser locking is GONE (user runs a system-level lock). Do NOT re-add #__tcArmLimits / #__tcBlockMinInput. --\x3e \x3c!-- FLOOR % --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Block trades and close tabs below this payout %">PAYOUT</span> <div class="tcControlGroup"> <input id="__tcMinRpInput" class="tcInput" type="text" aria-label="Minimum payout floor %" autocomplete="off" style="width:calc(3ch + 0.55em);" /> </div> </div> \x3c!-- STEP× moved OUT of the panel 2026-07-07 (user request): the investment multiplier now lives in the floating #__tcInvestMult panel (× N / N / ÷ N) beside the native trade controls. The factor still persists in __tradeCalc_step_mult and still drives ←/→ arrows. Do NOT re-add #__tcStepMultInput / #__tcStepMinus / #__tcStepPlus here. --\x3e \x3c!-- MULT --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Scale each trade by STEP× across consecutive trades">MULT</span> <button id="__tcMultiStatus" class="tcPill" aria-pressed="false" aria-label="Toggle multiplier mode" data-tc-tip="Scale each trade by STEP× across consecutive trades"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg> </button> </div> </div> </div> \x3c!-- Section 3: PROJECTION --\x3e <div id="__tcSecProjections" class="tcSec"> <div class="tcSecFields" style="gap:0.75em; flex-wrap:nowrap; align-items:stretch;"> <div class="tcFld"> <span class="tcLbl" data-tc-tip="Trades needed to reach your TP from current balance"><span class="tcDot"></span>REQ</span> <div style="display:flex; flex-direction:column; align-items:flex-start; gap:0.231em; margin-top:auto; margin-bottom:auto;"> <span class="tcReqWrap"><span id="__tcResultFrom" class="tcReqFrom"></span><span id="__tcResult" class="tcValLg">—</span></span> <div class="tcProjMarks" aria-hidden="true"> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark"></span> <span class="tcProjMark"></span> </div> </div> </div> <div class="tcFld"> <span class="tcLbl" data-tc-tip="Amount at risk per trade">RISK</span> <span id="__tcRisk" class="tcVal" style="font-weight:400; font-size:var(--fz-value-lg);">—</span> </div> <button id="__tcImToggle" class="tcLogBtn" style="align-self:center;" aria-label="Toggle investment multiplier panel" data-tc-tip="Show/hide the Invest ×÷ panel"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg> </button> <button id="__tcMtfToggle" class="tcLogBtn tcImToggleOff" style="align-self:center;" aria-label="Toggle multi-timeframe chart panel" data-tc-tip="Show/hide the multi-timeframe charts (C)"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="4" x2="6" y2="20"/><rect x="3.5" y="8" width="5" height="7" rx="1"/><line x1="18" y1="4" x2="18" y2="20"/><rect x="15.5" y="6" width="5" height="9" rx="1"/></svg> </button> </div> </div> <span id="__tcVer" class="tcVer">—</span> </div> <span class="tcGrip tcGripRight" aria-hidden="true"><svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2" r="1.3"/><circle cx="7.5" cy="2" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="14" r="1.3"/><circle cx="7.5" cy="14" r="1.3"/></svg></span> <button id="__tcClose" class="tcCloseBtn" aria-label="Close panel"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" style="width:0.62em; height:0.62em;" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> </button> <span id="__tcWarn" role="alert" aria-live="assertive" style="display:none; position:absolute; bottom:-2.3em; left:0; width:100%; text-align:center; font-size:0.92em; font-weight:900; color:var(--tc-red); text-transform:uppercase; letter-spacing:0.14em; filter:drop-shadow(0 2px 6px oklch(64% 0.18 25 / 0.4));"></span>';
+      ' <span class="tcGrip tcGripLeft" aria-hidden="true"><svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2" r="1.3"/><circle cx="7.5" cy="2" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="14" r="1.3"/><circle cx="7.5" cy="14" r="1.3"/></svg></span> <div id="__tcLoader" role="status" aria-live="polite" style="color:var(--tc-text-mut); font-size:0.72em; display:flex; align-items:center; justify-content:center; gap:var(--s-3); padding:var(--s-5) var(--s-6); width:22em; min-height:4.46em; font-weight:800; letter-spacing:0.14em;"> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--tc-accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation:tcSpin 1s linear infinite; opacity:0.8;" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg> <span id="__tcLoaderText"></span> </div> <div id="__tcContent" style="display:none;"> \x3c!-- Section 1: TARGETS (drag zone) --\x3e <div id="__tcSecTargets" class="tcSec"> <div class="tcSecFields" style="cursor:default; gap:0.615em;"> \x3c!-- TP --\x3e <div class="tcFld tcTPFld"> <span class="tcLbl" data-tc-tip="Day\'s take-profit target — hover the value to edit, Enter to save"><span class="tcDot"></span>TP</span> <div class="tcControlGroup tcTPGroup"> <span class="tcTPCur">₹</span> <input id="__tcTBInput" class="tcInput tcTPInput" type="text" placeholder="0" aria-label="Take profit balance target" autocomplete="off" readonly /> </div> </div> \x3c!-- SL (always shown; stays until changed) --\x3e <div class="tcFld" id="__tcSLFld"> <span class="tcLbl" data-tc-tip="Your stop loss — type a number and press Enter. It stays until you change it">SL</span> <div class="tcControlGroup" id="__tcSLInputWrap"> <input id="__tcSLInput" class="tcInput" type="text" placeholder="—" aria-label="Stop loss" autocomplete="off" /> </div> </div> </div> </div> \x3c!-- Section 2: LIMITS — centred via margin:auto in CSS --\x3e <div id="__tcSecProtections" class="tcSec"> <div class="tcSecHdr"><span class="tcDot"></span></div> <div class="tcSecFields" style="gap:0.75em;"> \x3c!-- LOCK + TIME removed 2026-07-06: browser locking is GONE (user runs a system-level lock). Do NOT re-add #__tcArmLimits / #__tcBlockMinInput. --\x3e \x3c!-- FLOOR % --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Block trades and close tabs below this payout %">PAYOUT</span> <div class="tcControlGroup"> <input id="__tcMinRpInput" class="tcInput" type="text" aria-label="Minimum payout floor %" autocomplete="off" style="width:calc(3ch + 0.55em);" /> </div> </div> \x3c!-- MAX (v1.69.0, was Max Concurrent Trades in the popup) --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="Most trades open at once, 1 to 4 - Enter to save">MAX</span> <div class="tcControlGroup"> <input id="__tcMaxTradesInput" class="tcInput" type="text" inputmode="numeric" aria-label="Most trades open at once" autocomplete="off" style="width:calc(1ch + 0.55em);" /> </div> </div> \x3c!-- FAST (v1.69.0, was MULT: it lets a quick second trade click through; it never scaled anything) --\x3e <div class="tcFld"> <span class="tcLbl" data-tc-tip="On: a quick second click on Up/Down goes through. Off: it is ignored for 1.5 s">FAST</span> <button id="__tcMultiStatus" class="tcPill" aria-pressed="false" aria-label="Allow a quick second trade click" data-tc-tip="On: a quick second click on Up/Down goes through. Off: it is ignored for 1.5 s"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v6"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></svg> </button> </div> </div> </div> \x3c!-- Section 3: PROJECTION --\x3e <div id="__tcSecProjections" class="tcSec"> <div class="tcSecFields" style="gap:0.75em; flex-wrap:nowrap; align-items:stretch;"> <div class="tcFld"> <span class="tcLbl" data-tc-tip="Trades needed to reach your TP from current balance"><span class="tcDot"></span>REQ</span> <div style="display:flex; flex-direction:column; align-items:flex-start; gap:0.231em; margin-top:auto; margin-bottom:auto;"> <span class="tcReqWrap"><span id="__tcResultFrom" class="tcReqFrom"></span><span id="__tcResult" class="tcValLg">—</span></span> <div class="tcProjMarks" aria-hidden="true"> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark tcProjMarkFill"></span> <span class="tcProjMark"></span> <span class="tcProjMark"></span> </div> </div> </div> <div class="tcFld"> <span class="tcLbl" data-tc-tip="Amount at risk per trade">RISK</span> <span id="__tcRisk" class="tcVal" style="font-weight:400; font-size:var(--fz-value-lg);">—</span> </div> <button id="__tcMtfToggle" class="tcLogBtn tcImToggleOff" style="align-self:center;" aria-label="Toggle multi-timeframe chart panel" data-tc-tip="Show/hide the multi-timeframe charts (C)"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="4" x2="6" y2="20"/><rect x="3.5" y="8" width="5" height="7" rx="1"/><line x1="18" y1="4" x2="18" y2="20"/><rect x="15.5" y="6" width="5" height="9" rx="1"/></svg> </button> <button id="__tcMenuBtn" class="tcLogBtn" style="align-self:center;" aria-label="Settings" aria-haspopup="true" aria-expanded="false"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> </button> </div> </div> <span id="__tcVer" class="tcVer">—</span> </div> <span class="tcGrip tcGripRight" aria-hidden="true"><svg viewBox="0 0 10 16" fill="currentColor"><circle cx="2.5" cy="2" r="1.3"/><circle cx="7.5" cy="2" r="1.3"/><circle cx="2.5" cy="8" r="1.3"/><circle cx="7.5" cy="8" r="1.3"/><circle cx="2.5" cy="14" r="1.3"/><circle cx="7.5" cy="14" r="1.3"/></svg></span> <button id="__tcClose" class="tcCloseBtn" aria-label="Close panel"> <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" style="width:0.62em; height:0.62em;" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> </button> <span id="__tcWarn" role="alert" aria-live="assertive" style="display:none; position:absolute; bottom:-2.3em; left:0; width:100%; text-align:center; font-size:0.92em; font-weight:900; color:var(--tc-red); text-transform:uppercase; letter-spacing:0.14em; filter:drop-shadow(0 2px 6px oklch(64% 0.18 25 / 0.4));"></span> <div id="__tcMenu" class="tcMenu" role="dialog" aria-label="Settings" hidden></div>';
     if (!isMobileWidth()) {
       panel.style.fontSize = panelFontSize + "px";
     }
@@ -2283,22 +2219,299 @@
         restoreBtn.style.display = "flex";
       });
     }
-    const investMultToggleBtn = byId("__tcImToggle");
-    if (investMultToggleBtn) {
-      const t = () => {
-        const t = byId("__tcInvestMult");
-        investMultToggleBtn.classList.toggle("tcImToggleOff", !!t && t.style.display === "none");
-      };
-      investMultToggleBtn.addEventListener("click", () => {
-        const e = byId("__tcInvestMult");
-        if (e) {
-          const show = e.style.display === "none";
-          e.style.display = show ? "" : "none";
-          setImShown(show);
+    // Settings the popup used to write go to chrome.storage.sync as well as the page's storage: the loader
+    // further down copies sync over the local value on every start, so a local-only write would be undone.
+    function syncSet(obj) {
+      try {
+        if (typeof chrome != "undefined" && chrome.storage && chrome.storage.sync) {
+          const r = chrome.storage.sync.set(obj);
+          if (r && typeof r.catch === "function") {
+            r.catch(() => {});
+          }
         }
-        t();
+      } catch (e) {}
+    }
+    // v1.69.0: MAX - the most trades open at once, typed on the bar (it was a select in the popup). Saved on
+    // Enter or when the box is left, like PAYOUT.
+    const maxTradesInput = byId("__tcMaxTradesInput");
+    function renderMaxTradesField() {
+      if (maxTradesInput && activeEl() !== maxTradesInput) {
+        maxTradesInput.value = String(maxTrades);
+      }
+    }
+    if (maxTradesInput) {
+      renderMaxTradesField();
+      const commit = () => {
+        const n = parseInt(maxTradesInput.value.replace(/[^0-9]/g, ""), 10);
+        if (!isNaN(n) && clampMaxTrades(n) !== maxTrades) {
+          maxTrades = clampMaxTrades(n);
+          setMaxTradesStored(maxTrades);
+          syncSet({ [KEY_MAX_TRADES]: maxTrades });
+          scheduleRecalc();
+        }
+        maxTradesInput.value = String(maxTrades);
+      };
+      maxTradesInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          commit();
+          maxTradesInput.blur();
+        }
       });
-      t();
+      maxTradesInput.addEventListener("blur", commit);
+    }
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // ⚙ menu (v1.69.0): everything the popup held apart from the chart settings - theme, size, the ↑↓
+    // hotkey and Focus Mode, the compatibility check, and the deposit scan.
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    const menuBtn = byId("__tcMenuBtn"),
+      menuEl = byId("__tcMenu"),
+      MENU_SIZE_MIN = 10,
+      MENU_SIZE_MAX = 32,
+      DEPOSIT_RESULT_KEY = "__qxDepositScan",
+      DEPOSIT_SHOW_KEY = "__qxDepositShow";
+    // After an extension reload the old script keeps running in the tab, but its link to the extension is
+    // cut and chrome.runtime.id goes away - the "reloaded but not refreshed" case the popup's health check
+    // used to find by comparing versions.
+    const extensionGone = () => !(typeof chrome != "undefined" && chrome.runtime && chrome.runtime.id);
+    const menuPart = (tag, cls, text) => {
+      const el = document.createElement(tag);
+      if (cls) {
+        el.className = cls;
+      }
+      if (text != null) {
+        el.textContent = text;
+      }
+      return el;
+    };
+    function applyTheme(theme) {
+      const light = theme === "light";
+      setThemeStored(light ? "light" : "dark");
+      panel.classList.toggle("tcLightMode", light);
+      restoreBtn.classList.toggle("tcLightMode", light);
+    }
+    if (menuEl) {
+      menuEl.innerHTML =
+        '<div class="tcMenuHd">Settings</div>' +
+        '<div class="tcMenuRow"><span class="tcMenuLbl">Theme</span><span class="tcSeg"><button type="button" class="tcMenuBtn" data-mn="dark">Dark</button><button type="button" class="tcMenuBtn" data-mn="light">Light</button></span></div>' +
+        '<div class="tcMenuRow"><span class="tcMenuLbl">Size</span><span class="tcSeg"><button type="button" class="tcMenuBtn" data-mn="smaller" aria-label="Smaller">\u2212</button><span class="tcMenuVal" id="__tcMnSize"></span><button type="button" class="tcMenuBtn" data-mn="bigger" aria-label="Bigger">+</button></span></div>' +
+        '<div class="tcMenuRow"><span><span class="tcMenuLbl">\u2191\u2193 places trades</span><span class="tcMenuSub">\u2191 is Up, \u2193 is Down. \u2190 \u2192 always halve / double the amount</span></span><button type="button" class="tcSwitch" role="switch" data-mn="updown" aria-label="Arrow keys place trades"></button></div>' +
+        '<div class="tcMenuRow"><span><span class="tcMenuLbl">Focus Mode</span><span class="tcMenuSub">\u2191\u2193 only select Up / Down - your Enter presses it</span></span><button type="button" class="tcSwitch" role="switch" data-mn="focus" aria-label="Focus mode"></button></div>' +
+        '<div class="tcMenuSep"></div>' +
+        '<div class="tcMenuRow"><span class="tcMenuLbl">Quotex compatibility</span><button type="button" class="tcMenuBtn" data-mn="health">Check</button></div>' +
+        '<div class="tcMenuOut" id="__tcMnHealth"></div>' +
+        '<div class="tcMenuSep"></div>' +
+        '<div class="tcMenuRow"><span><span class="tcMenuLbl">Deposits</span><span class="tcMenuSub">Opens your Balance page, reads every page, then brings you back here</span></span><button type="button" class="tcMenuBtn" data-mn="deposits">Scan</button></div>' +
+        '<div class="tcMenuOut" id="__tcMnDeposits"></div>';
+    }
+    function renderHealth() {
+      const out = byId("__tcMnHealth");
+      if (!out) {
+        return;
+      }
+      out.textContent = "";
+      if (extensionGone()) {
+        out.appendChild(menuPart("div", "tcMenuWarn", "The extension was updated - refresh this tab to use the new version."));
+      }
+      const report = safeHealthReport();
+      if (report.error) {
+        out.appendChild(menuPart("div", "tcMenuWarn", "Check failed: " + report.error));
+        return;
+      }
+      const missing = report.rows.filter((r) => r.status === "missing").length,
+        fallback = report.rows.filter((r) => r.status === "fallback").length;
+      out.appendChild(
+        menuPart(
+          "div",
+          missing ? "tcMenuWarn" : "",
+          missing ? missing + " missing" + (fallback ? " \u00b7 " + fallback + " fallback" : "") : fallback ? "Working \u00b7 " + fallback + " through a fallback" : "All OK",
+        ),
+      );
+      const icon = { ok: "\u2705", fallback: "\ud83d\udd01", missing: "\u274c", idle: "\u2013" },
+        list = menuPart("div", "tcMenuList");
+      for (const r of report.rows) {
+        const line = menuPart("div", "tcMenuLine"),
+          name = menuPart("span", "", (icon[r.status] || "\u2022") + " " + r.name),
+          val = menuPart("span", "tcMenuNote", r.value);
+        name.title = r.via;
+        val.title = r.value;
+        line.append(name, val);
+        list.appendChild(line);
+      }
+      out.appendChild(list);
+      out.appendChild(menuPart("div", "tcMenuNote", "Panel " + (/^[0-9]/.test(BUILD_VERSION) ? "v" + BUILD_VERSION : "dev")));
+    }
+    const fmtDeposit = (n, symbol) =>
+      (symbol || "") +
+      Number(n || 0).toLocaleString(symbol === "\u20b9" ? "en-IN" : "en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    let depositNote = "";
+    // The scan itself runs in the service worker (deposit_scan.js): it has to walk the Balance page, where
+    // the panel does not run. Its result waits in chrome.storage.local and is drawn here.
+    function drawDeposits(res) {
+      const out = byId("__tcMnDeposits");
+      if (!out) {
+        return;
+      }
+      out.textContent = "";
+      if (depositNote) {
+        out.appendChild(menuPart("div", "tcMenuWarn", depositNote));
+      }
+      if (!res) {
+        return;
+      }
+      if (res.error) {
+        out.appendChild(menuPart("div", "tcMenuWarn", "Scan failed: " + res.error + ". Make sure you are logged in and try again."));
+        return;
+      }
+      const count = res.count || 0;
+      out.appendChild(
+        menuPart(
+          "div",
+          "tcMenuBig",
+          res.totals && res.totals.length ? res.totals.map((g) => fmtDeposit(g.total, g.symbol)).join(" + ") : fmtDeposit(0, ""),
+        ),
+      );
+      const when = new Date(res.at || Date.now()).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+      out.appendChild(
+        menuPart(
+          "div",
+          "tcMenuNote",
+          count + " successful deposit" + (count === 1 ? "" : "s") + " \u00b7 " + res.pages + " page" + (res.pages === 1 ? "" : "s") +
+            " \u00b7 " + when + (res.cancelled ? " \u00b7 stopped early" : ""),
+        ),
+      );
+      if (!count) {
+        out.appendChild(menuPart("div", "tcMenuNote", "No successful deposits found."));
+        return;
+      }
+      const methods = menuPart("div", "tcMenuList");
+      for (const g of res.methods || []) {
+        const line = menuPart("div", "tcMenuLine");
+        line.append(menuPart("span", "", g.method + " \u00d7 " + g.count), menuPart("span", "", fmtDeposit(g.total, g.symbol)));
+        methods.appendChild(line);
+      }
+      out.appendChild(methods);
+      const recent = menuPart("div", "tcMenuList");
+      for (const tx of res.recent || []) {
+        const line = menuPart("div", "tcMenuLine");
+        line.append(menuPart("span", "tcMenuNote", tx.id + " " + (tx.payment || "")), menuPart("span", "", fmtDeposit(tx.amount, tx.symbol)));
+        recent.appendChild(line);
+      }
+      if (count > (res.recent || []).length) {
+        recent.appendChild(menuPart("div", "tcMenuNote", "\u2026and " + (count - (res.recent || []).length) + " more"));
+      }
+      out.appendChild(recent);
+    }
+    function renderDeposits() {
+      try {
+        if (!extensionGone() && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.get(DEPOSIT_RESULT_KEY, (d) => drawDeposits(d && d[DEPOSIT_RESULT_KEY]));
+          return;
+        }
+      } catch (e) {}
+      drawDeposits(null);
+    }
+    function startDepositScan() {
+      if (extensionGone()) {
+        depositNote = "The extension was updated - refresh this tab first.";
+        return;
+      }
+      try {
+        const r = chrome.runtime.sendMessage({ type: "DEPOSIT_SCAN_START" });
+        if (r && typeof r.catch === "function") {
+          r.catch(() => {});
+        }
+        depositNote = "Opening your Balance page\u2026";
+      } catch (e) {
+        depositNote = "Could not start - refresh this tab and try again.";
+      }
+    }
+    function renderMenu() {
+      if (!menuEl) {
+        return;
+      }
+      const light = getTheme() === "light",
+        mark = (what, on) => {
+          const el = menuEl.querySelector('[data-mn="' + what + '"]');
+          if (el) {
+            el.setAttribute("aria-checked", on ? "true" : "false");
+          }
+        };
+      menuEl.querySelector('[data-mn="dark"]').classList.toggle("tcOn", !light);
+      menuEl.querySelector('[data-mn="light"]').classList.toggle("tcOn", light);
+      const size = byId("__tcMnSize");
+      if (size) {
+        size.textContent = panelFontSize + "px";
+      }
+      mark("updown", hkUpDown);
+      mark("focus", hkFocusMode);
+      renderDeposits();
+    }
+    function setMenuOpen(open) {
+      if (!menuEl || !menuBtn) {
+        return;
+      }
+      menuEl.hidden = !open;
+      menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) {
+        renderMenu();
+      } else {
+        depositNote = "";
+      }
+    }
+    if (menuEl && menuBtn) {
+      menuBtn.addEventListener("click", () => setMenuOpen(menuEl.hidden));
+      menuEl.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          setMenuOpen(false);
+          menuBtn.focus();
+        }
+      });
+      menuEl.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-mn]");
+        if (!b) {
+          return;
+        }
+        const what = b.getAttribute("data-mn");
+        if (what === "dark" || what === "light") {
+          applyTheme(what);
+        } else if (what === "smaller" || what === "bigger") {
+          setPanelFontSize(Math.min(MENU_SIZE_MAX, Math.max(MENU_SIZE_MIN, panelFontSize + (what === "bigger" ? 1 : -1))));
+        } else if (what === "updown") {
+          hkUpDown = !hkUpDown;
+          setHkUpDownStored(hkUpDown);
+          syncSet({ [KEY_HK_UPDOWN]: hkUpDown });
+        } else if (what === "focus") {
+          hkFocusMode = !hkFocusMode;
+          prefSet(KEY_HK_FOCUS_MODE, hkFocusMode ? "1" : "0");
+        } else if (what === "health") {
+          renderHealth();
+        } else if (what === "deposits") {
+          startDepositScan();
+        }
+        renderMenu();
+      });
+      // A press anywhere outside our own elements closes it. Our elements all sit under one host, which is
+      // what a listener on the page's document sees of them.
+      window.__tcMenuOutside = (e) => {
+        if (!menuEl.hidden && !e.composedPath().includes(shadowHost)) {
+          setMenuOpen(false);
+        }
+      };
+      document.addEventListener("pointerdown", window.__tcMenuOutside, true);
+      // Coming back from a deposit scan: open the menu once, so the result is the first thing seen.
+      try {
+        if (!extensionGone() && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.get(DEPOSIT_SHOW_KEY, (d) => {
+            if (d && d[DEPOSIT_SHOW_KEY]) {
+              chrome.storage.local.remove(DEPOSIT_SHOW_KEY);
+              setMenuOpen(true);
+            }
+          });
+        }
+      } catch (e) {}
     }
     const mtfToggleBtn = byId("__tcMtfToggle");
     if (mtfToggleBtn) {
@@ -3542,58 +3755,10 @@
         return;
       }
       if (t.code === "ArrowLeft" || t.code === "ArrowRight") {
-        if (!hkLeftRight) {
-          return;
-        }
-        const e = getStepMult() > 1 ? getStepFactor() : 1;
-        if (e > 1) {
-          if (!(stakeInputEl && stakeInputEl.isConnected)) {
-            stakeInputEl =
-              document.querySelector(".deal-amount-input input.input-control__input") ||
-              document.querySelector("input.input-control__input");
-          }
-          const n = stakeInputEl;
-          if (n) {
-            t.preventDefault();
-            const o = n.value.includes("%");
-            let r = parseMoney(n.value);
-            if (isNaN(r) || r <= 0) {
-              r = 1;
-            }
-            let a = t.code === "ArrowRight" ? r * e : r / e;
-            a = o ? Math.round(a) : Math.round(100 * a) / 100;
-            if (a < 1) {
-              a = 1;
-            }
-            if (o && a > 100) {
-              a = 100;
-            }
-            typeInto(n, String(a));
-          }
-        } else {
-          let e = document.querySelectorAll(".deal-amount-input .VK9Nw");
-          if (e.length < 2) {
-            e = document.querySelectorAll(".deal-amount-input .YqVwL");
-          }
-          if (e.length >= 2) {
-            t.preventDefault();
-            const stepBtn = t.code === "ArrowLeft" ? e[0] : e[1];
-            if (hkFocusMode) {
-              // Focus mode (v1.29.0): select the platform's own -/+ button and let the next Enter or
-              // Space activate it. Focus stays on it, so a run of steps costs one key each after the
-              // first, and every click is generated by the browser.
-              try {
-                stepBtn.focus({ preventScroll: true });
-              } catch (n) {}
-              if (warnEl) {
-                setText(warnEl, (t.code === "ArrowLeft" ? "Amount −" : "Amount +") + " selected — press Enter to step");
-                setDisplay(warnEl, "block");
-                warnEl.classList.add("tcWarnVisible");
-              }
-              return;
-            }
-            synthClick(stepBtn);
-          }
+        // v1.69.0: always on, with no switch - → doubles the amount and ← halves it. It only changes the
+        // amount, never places a trade, and a key pressed while typing in a box never reaches here.
+        if (multiplyStake(t.code === "ArrowRight" ? STEP_FACTOR : 1 / STEP_FACTOR)) {
+          t.preventDefault();
         }
       } else if (t.code === "ArrowUp" || t.code === "ArrowDown") {
         if (!hkUpDown) {
@@ -4552,13 +4717,11 @@
       chrome.storage.sync.get(
         [
           KEY_OTC_AUTO,
-          KEY_CHIP_POS,
           KEY_MAX_TRADES,
           KEY_MAX_TWO,
           KEY_TIMER_X,
           KEY_TIMER_Y,
           KEY_HK_UPDOWN,
-          KEY_HK_LEFTRIGHT,
           KEY_MTF_TFS,
           KEY_MTF_AUTOFILL,
           KEY_MTF_SETTLE,
@@ -4569,10 +4732,6 @@
           if (!t) {
             return;
           }
-          if (KEY_CHIP_POS in t && t[KEY_CHIP_POS]) {
-            chipPos = normChipPos(t[KEY_CHIP_POS]);
-            setChipPosStored(chipPos);
-          }
           if (KEY_MAX_TRADES in t && t[KEY_MAX_TRADES] != null) {
             maxTrades = clampMaxTrades(t[KEY_MAX_TRADES]);
             setMaxTradesStored(maxTrades);
@@ -4580,6 +4739,7 @@
             maxTrades = t[KEY_MAX_TWO] ? 2 : 4;
             setMaxTradesStored(maxTrades);
           }
+          renderMaxTradesField();
           if (KEY_OTC_AUTO in t) {
             otcAuto = t[KEY_OTC_AUTO] === true;
             setOtcAutoStored(otcAuto);
@@ -4595,10 +4755,6 @@
           if (KEY_HK_UPDOWN in t) {
             hkUpDown = t[KEY_HK_UPDOWN] === true;
             setHkUpDownStored(hkUpDown);
-          }
-          if (KEY_HK_LEFTRIGHT in t) {
-            hkLeftRight = t[KEY_HK_LEFTRIGHT] === true;
-            setHkLeftRightStored(hkLeftRight);
           }
           const e = getMtfTfs().join(",") + "|" + getMtfCount();
           if (KEY_MTF_TFS in t && t[KEY_MTF_TFS]) {
@@ -4698,7 +4854,9 @@
           t.style.right = "auto";
           t.style.bottom = "auto";
         }
-        if (chipPos === "cursor" && cursorInGraph && cursorPos && e) {
+        // v1.69.0: the chips always follow the cursor (the popup choice of centre / anchored is gone). Away
+        // from the chart they rest at the anchored spot.
+        if (cursorInGraph && cursorPos && e) {
           const o = e.getBoundingClientRect();
           let r = cursorPos.x - o.left,
             a = cursorPos.y - o.top + (n ? -30 : 30);
@@ -4716,14 +4874,8 @@
           t.style.transform = n ? "translate(-50%, -100%)" : "translate(-50%, 0)";
           t._tcPosX = t._tcPosY = null;
         } else {
-          let e, o;
-          if (chipPos === "center") {
-            e = 50;
-            o = n ? 56 : 44;
-          } else {
-            e = n ? 50 : timerX;
+          const e = n ? 50 : timerX,
             o = n ? 10 : timerY;
-          }
           if (t._tcPosX !== e) {
             t._tcPosX = e;
             t.style.left = e + "%";
@@ -5121,19 +5273,12 @@
       }
     }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
-    // Investment multiplier widget
+    // Investment step: → doubles the amount, ← halves it
     // ────────────────────────────────────────────────────────────────────────────────────────────────
-    // v1.63.0: doubling is the default, which is what ArrowRight/ArrowLeft are for - 1.3 and 1.5 stay on
-    // the cycle for anyone who wants a gentler step.
-    const STEP_FACTORS = [2, 1.5, 1.3];
-    function getStepFactor() {
-      const t = Math.round(10 * getStepMult()) / 10;
-      return t > 1
-        ? -1 !== STEP_FACTORS.indexOf(t)
-          ? t
-          : STEP_FACTORS.reduce((e, n) => (Math.abs(n - t) < Math.abs(e - t) ? n : e), STEP_FACTORS[0])
-        : 2;
-    }
+    // v1.69.0: the step is 2, always. The floating x/÷ box and its 2 / 1.5 / 1.3 cycle are gone, and so is
+    // the stored "1" that made the arrows press Quotex's own -/+ buttons instead.
+    const STEP_FACTOR = 2;
+    // True when the amount field was found, so the caller knows the key was used.
     function multiplyStake(t) {
       if (!(stakeInputEl && stakeInputEl.isConnected)) {
         stakeInputEl =
@@ -5142,7 +5287,7 @@
       }
       const e = stakeInputEl;
       if (!e) {
-        return;
+        return false;
       }
       const n = e.value.includes("%");
       let o = parseMoney(e.value);
@@ -5158,22 +5303,7 @@
         r = 100;
       }
       typeInto(e, String(r));
-    }
-    function renderInvestMultLabels(t) {
-      const e = getStepFactor(),
-        n = e === Math.round(e) ? String(e) : e.toFixed(1),
-        o = t.querySelector('[data-im="up"]'),
-        r = t.querySelector('[data-im="cycle"]'),
-        a = t.querySelector('[data-im="down"]');
-      if (o) {
-        o.textContent = "×" + n;
-      }
-      if (r) {
-        r.textContent = n + "×";
-      }
-      if (a) {
-        a.textContent = "÷" + n;
-      }
+      return true;
     }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Multi-timeframe (MTF) mini charts: candle resampling and windowing
@@ -7691,9 +7821,6 @@
             // far came from an automated tab whose page never finished loading, which is no evidence at
             // all about the tab actually in front of someone.
             relabel: (() => {
-              if (!relabelDemo) {
-                return "switched off";
-              }
               const ours = document.querySelectorAll("[data-tc-relabel]").length;
               return ours ? "rewritten \u00b7 " + ours : "nothing matched";
             })(),
@@ -7883,7 +8010,7 @@
         t = document.createElement("div");
         t.id = "__tcMobileBar";
         t.innerHTML =
-          '<div class="tcMbHandle" data-mb="drag" aria-hidden="true"><span class="tcMbGrip"></span></div><div class="tcMbRow"><span class="tcMbLbl">Timeframe</span><div class="tcMbCtl"><button class="tcMbBtn" data-mb="tfprev" aria-label="Previous timeframe">‹</button><button class="tcMbVal" data-mb="tfopen" aria-label="Change chart timeframe"><b id="__tcMbTF">—</b></button><button class="tcMbBtn" data-mb="tfnext" aria-label="Next timeframe">›</button></div></div><div class="tcMbRow"><span class="tcMbLbl">Time</span><div class="tcMbCtl"><button class="tcMbBtn" data-mb="time" aria-label="Toggle trade time timer/clock"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg></button><button class="tcMbVal" data-mb="time" aria-label="Toggle trade time timer/clock"><b id="__tcMbTime">—</b></button><button class="tcMbBtn" data-mb="time" aria-label="Toggle trade time timer/clock"><svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></div></div><div class="tcMbRow"><span class="tcMbLbl">Multiplier</span><div class="tcMbCtl"><button class="tcMbBtn" data-mb="invdown" aria-label="Divide investment">−</button><button class="tcMbVal" data-mb="invfactor" aria-label="Change multiplier factor"><b id="__tcMbFactor">×2</b></button><button class="tcMbBtn" data-mb="invup" aria-label="Multiply investment">+</button></div></div><div class="tcMbRow" data-mb-row="rp"><span class="tcMbLbl" id="__tcMbRpLbl">Payout (min —)</span><div class="tcMbCtl"><button class="tcMbBtn" data-mb="rpdown" aria-label="Lower minimum payout">−</button><button class="tcMbVal tcMbValGrn" data-mb="rp" aria-label="Live payout vs minimum"><b id="__tcMbRpNow">—</b></button><button class="tcMbBtn" data-mb="rpup" aria-label="Raise minimum payout">+</button></div><div class="tcMbQuick">' +
+          '<div class="tcMbHandle" data-mb="drag" aria-hidden="true"><span class="tcMbGrip"></span></div><div class="tcMbRow"><span class="tcMbLbl">Timeframe</span><div class="tcMbCtl"><button class="tcMbBtn" data-mb="tfprev" aria-label="Previous timeframe">‹</button><button class="tcMbVal" data-mb="tfopen" aria-label="Change chart timeframe"><b id="__tcMbTF">—</b></button><button class="tcMbBtn" data-mb="tfnext" aria-label="Next timeframe">›</button></div></div><div class="tcMbRow"><span class="tcMbLbl">Time</span><div class="tcMbCtl"><button class="tcMbBtn" data-mb="time" aria-label="Toggle trade time timer/clock"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg></button><button class="tcMbVal" data-mb="time" aria-label="Toggle trade time timer/clock"><b id="__tcMbTime">—</b></button><button class="tcMbBtn" data-mb="time" aria-label="Toggle trade time timer/clock"><svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></div></div><div class="tcMbRow"><span class="tcMbLbl">Multiplier</span><div class="tcMbCtl"><button class="tcMbBtn" data-mb="invdown" aria-label="Divide investment">−</button><span class="tcMbVal" aria-label="Multiplier factor"><b>×2</b></span><button class="tcMbBtn" data-mb="invup" aria-label="Multiply investment">+</button></div></div><div class="tcMbRow" data-mb-row="rp"><span class="tcMbLbl" id="__tcMbRpLbl">Payout (min —)</span><div class="tcMbCtl"><button class="tcMbBtn" data-mb="rpdown" aria-label="Lower minimum payout">−</button><button class="tcMbVal tcMbValGrn" data-mb="rp" aria-label="Live payout vs minimum"><b id="__tcMbRpNow">—</b></button><button class="tcMbBtn" data-mb="rpup" aria-label="Raise minimum payout">+</button></div><div class="tcMbQuick">' +
           QUICK_MIN_PAYOUTS.map(
             (t) =>
               '<button class="tcMbQuickBtn" data-mb="rpset" data-rp="' +
@@ -7938,13 +8065,9 @@
               }
             })();
           } else if (n === "invup") {
-            multiplyStake(getStepFactor());
+            multiplyStake(STEP_FACTOR);
           } else if (n === "invdown") {
-            multiplyStake(1 / getStepFactor());
-          } else if (n === "invfactor") {
-            const t = STEP_FACTORS.indexOf(getStepFactor());
-            setStepMult(STEP_FACTORS[(t + 1) % STEP_FACTORS.length]);
-            renderMobileBar();
+            multiplyStake(1 / STEP_FACTOR);
           } else if (n === "rpdown") {
             nudgeMinPayout(-1);
           } else if (n === "rpup") {
@@ -8089,10 +8212,6 @@
           return "clk";
         })();
       }
-      const o = byId("__tcMbFactor");
-      if (o) {
-        o.textContent = "×" + getStepFactor();
-      }
       const r = byId("__tcMbRpNow"),
         a = byId("__tcMbRpLbl"),
         i = readPayoutPct(),
@@ -8118,10 +8237,6 @@
           panel._tcMobHidden = true;
           panel.style.display = "none";
         }
-        const t = byId("__tcInvestMult");
-        if (t) {
-          t.style.display = "none";
-        }
         if (restoreBtn) {
           restoreBtn.style.display = "none";
         }
@@ -8137,13 +8252,6 @@
           panel.style.display = "flex";
           panel._tcMobHidden = false;
         }
-        const e = byId("__tcInvestMult");
-        if (e) {
-          // v1.63.0: coming back to the desktop layout restores it only if it is meant to be shown. This
-          // line used to show it unconditionally, so the toggle was undone by any resize as well as by a
-          // reload - which is most of why hiding it never seemed to stick.
-          e.style.display = getImShown() ? "" : "none";
-        }
         if (readFlag(KEY_MTF_ON, false)) {
           createMtf();
         }
@@ -8152,35 +8260,6 @@
     }
     window.__tcMobileResize = () => applyLayoutMode();
     window.addEventListener("resize", window.__tcMobileResize);
-    (function () {
-      let t = byId("__tcInvestMult");
-      if (!t) {
-        t = document.createElement("div");
-        t.id = "__tcInvestMult";
-        t.innerHTML =
-          '<button type="button" class="tcImBtn tcImUp" data-im="up" aria-label="Multiply investment by factor" title="Multiply investment"></button><button type="button" class="tcImBtn tcImFactor" data-im="cycle" aria-label="Change multiplier factor" title="Tap to change factor"></button><button type="button" class="tcImBtn tcImDown" data-im="down" aria-label="Divide investment by factor" title="Divide investment"></button>';
-        t.addEventListener("click", (e) => {
-          const n = e.target.closest("[data-im]");
-          if (!n) {
-            return;
-          }
-          const o = n.getAttribute("data-im");
-          if (o === "cycle") {
-            const e = STEP_FACTORS.indexOf(getStepFactor());
-            setStepMult(STEP_FACTORS[(e + 1) % STEP_FACTORS.length]);
-            renderInvestMultLabels(t);
-          } else {
-            const t = getStepFactor();
-            multiplyStake(o === "up" ? t : 1 / t);
-          }
-        });
-        shadow.appendChild(t);
-      }
-      if (!getImShown()) {
-        t.style.display = "none";
-      }
-      renderInvestMultLabels(t);
-    })();
     (function () {
       const t = readJson(KEY_MTF_CACHE, null);
       if (!t) {
@@ -8336,55 +8415,27 @@
         typeof chrome != "undefined" && chrome.runtime && chrome.runtime.getManifest ? chrome.runtime.getManifest().version : "";
       return { version, build: BUILD_VERSION, url: location.pathname, rows };
     }
+    function safeHealthReport() {
+      try {
+        return buildHealthReport();
+      } catch (err) {
+        return { error: String(err && err.message ? err.message : err), rows: [] };
+      }
+    }
     if (typeof chrome != "undefined" && chrome.runtime && chrome.runtime.onMessage) {
       // Kept on window so cleanup can remove it (hotfix v1.20.1): otherwise a torn-down panel's
       // listener stays registered and answers the popup's GET_STATE with stale values after a relaunch.
       window.__tcMsgListener = (t, e, n) => {
+        // v1.69.0: the popup keeps only the chart settings, so this is all it asks for. Theme, size, the
+        // trade cap and the hotkeys are set from the panel's own ⚙ menu and the MAX field.
         if (t.type === "GET_STATE") {
           n({
-            theme: getTheme(),
-            fontSize: parseInt(getFontSizeStored(), 10),
-            otcAuto: otcAuto,
-            chipPos: chipPos,
-            maxTrades: maxTrades,
-            timerX: timerX,
-            timerY: timerY,
-            hkUpDown: hkUpDown,
-            hkLeftRight: hkLeftRight,
             mtfTfs: getMtfTfs(),
             mtfAutofill,
             mtfSettle: getMtfSettle(),
             mtfFlip: mtfFlipOn,
             mtfFlipBars: getMtfFlipBars(),
-            relabelDemo,
-            hkFocusMode,
           });
-        } else if (t.type === "SET_THEME") {
-          const e = t.theme === "light";
-          setThemeStored(t.theme);
-          if (e) {
-            panel.classList.add("tcLightMode");
-            if (restoreBtn) {
-              restoreBtn.classList.add("tcLightMode");
-            }
-          } else {
-            panel.classList.remove("tcLightMode");
-            if (restoreBtn) {
-              restoreBtn.classList.remove("tcLightMode");
-            }
-          }
-        } else if (t.type === "SET_SIZE") {
-          setPanelFontSize(t.size);
-        } else if (t.type === "SET_MAX_TRADES") {
-          maxTrades = clampMaxTrades(t.value);
-          setMaxTradesStored(maxTrades);
-          scheduleRecalc();
-        } else if (t.type === "SET_CHIP_POS") {
-          chipPos = normChipPos(t.mode);
-          setChipPosStored(chipPos);
-          const e = document.getElementById("graph");
-          positionChip(byId(ids.tcTradeTimer), e);
-          positionChip(byId(ids.tcProjChip), e);
         } else if (t.type === "SET_OTC_AUTO") {
           otcAuto = !!t.enabled;
           setOtcAutoStored(otcAuto);
@@ -8397,36 +8448,8 @@
             timerY = clampPercent(t.y, 90);
             setTimerYStored(timerY);
           }
-        } else if (t.type === "SET_HOTKEYS") {
-          if ("upDown" in t) {
-            hkUpDown = !!t.upDown;
-            setHkUpDownStored(hkUpDown);
-          }
-          if ("leftRight" in t) {
-            hkLeftRight = !!t.leftRight;
-            setHkLeftRightStored(hkLeftRight);
-          }
         } else if (t.type === "GET_HEALTH") {
-          let report;
-          try {
-            report = buildHealthReport();
-          } catch (err) {
-            report = { error: String(err && err.message ? err.message : err), rows: [] };
-          }
-          n(report);
-        } else if (t.type === "SET_HK_FOCUS_MODE") {
-          hkFocusMode = !!t.enabled;
-          prefSet(KEY_HK_FOCUS_MODE, hkFocusMode ? "1" : "0");
-        } else if (t.type === "SET_PAGE_MARKS") {
-          if ("relabel" in t) {
-            relabelDemo = !!t.relabel;
-            prefSet(KEY_RELABEL_DEMO, relabelDemo ? "1" : "0");
-            if (relabelDemo) {
-              spoofLiveAccountLabel();
-            } else {
-              undoRelabel();
-            }
-          }
+          n(safeHealthReport());
         } else if (t.type === "SET_MTF") {
           if ("tfs" in t) {
             setMtfTfs(t.tfs);
@@ -8495,9 +8518,48 @@
   }
   setInterval(_tcCheckUrl, 250);
   window.addEventListener("popstate", _tcCheckUrl);
+  // v1.69.0: a deposit scan is started from the ⚙ menu but walks the Balance page, where the panel does not
+  // run. The service worker tells each page it lands on, and this pill says where it is and offers Stop.
+  // Same cover as the panel: one plain host, a closed root, inline styles.
+  var _tcScanPill = null;
+  function _tcShowScanPill(page) {
+    if (!document.body) {
+      return;
+    }
+    if (!_tcScanPill || !_tcScanPill.host.isConnected) {
+      var host = document.createElement("div"),
+        root = host.attachShadow({ mode: "closed" }),
+        box = document.createElement("div"),
+        text = document.createElement("span"),
+        stop = document.createElement("button");
+      box.style.cssText =
+        "position:fixed;right:24px;bottom:24px;z-index:2147483647;display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:999px;background:#262529;color:#e6e0e9;border:1px solid #48464c;box-shadow:0 4px 16px rgba(0,0,0,.4);font:600 13px system-ui,sans-serif;";
+      stop.type = "button";
+      stop.textContent = "Stop";
+      stop.style.cssText =
+        "all:unset;cursor:pointer;padding:4px 12px;border-radius:999px;background:#d0bcff;color:#381e72;font:700 12px system-ui,sans-serif;";
+      stop.addEventListener("click", function () {
+        stop.disabled = true;
+        stop.textContent = "Stopping…";
+        try {
+          var r = chrome.runtime.sendMessage({ type: "DEPOSIT_SCAN_STOP" });
+          if (r && typeof r.catch === "function") {
+            r.catch(function () {});
+          }
+        } catch (e) {}
+      });
+      box.append(text, stop);
+      root.appendChild(box);
+      document.body.appendChild(host);
+      _tcScanPill = { host: host, text: text };
+    }
+    _tcScanPill.text.textContent = "Scanning deposits · page " + page;
+  }
   if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener(function (msg) {
-      if (msg.type === "TOGGLE_PANEL") {
+      if (msg.type === "DEPOSIT_SCAN_STATUS") {
+        _tcShowScanPill(msg.page);
+      } else if (msg.type === "TOGGLE_PANEL") {
         if (!_tcIsTradePage() && !_tcIsRunning()) {
           return;
         }

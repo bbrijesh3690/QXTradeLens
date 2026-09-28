@@ -88,17 +88,15 @@ test("privacy: blocked trades never touch the platform's buttons", async () => {
   }
 });
 
-test("privacy: the Live-as-Demo relabel can be switched off and restores the label", async () => {
+test("privacy: the Live-as-Demo relabel is always on (v1.69.0)", async () => {
+  // Its popup switch went in v1.69.0, and with it the message that turned it off.
   const html = FIXTURE.replace(">Demo Account<", ">Live Account<");
   const qx = await boot({ html });
   try {
     const label = () => qx.window.document.querySelector(".v2KPX").textContent;
-    assert.equal(label(), "Demo Account", "relabelled by default");
+    assert.equal(label(), "Demo Account", "relabelled");
     await qx.sendToPanel({ type: "SET_PAGE_MARKS", relabel: false });
-    assert.equal(label(), "Live Account", "platform label restored");
-    await qx.sendToPanel({ type: "SET_PAGE_MARKS", relabel: true });
-    await sleep(300);
-    assert.equal(label(), "Demo Account", "and back again");
+    assert.equal(label(), "Demo Account", "and the old switch-off message does nothing");
   } finally {
     qx.close();
   }
@@ -156,47 +154,66 @@ test("focus mode: guards still stop a trusted click (v1.28.0)", async () => {
   }
 });
 // ── v1.29.0: how the investment change is produced ────────────────────────────────
-// These two cover the arrows' OTHER path - pressing Quotex's own -/+ buttons rather than multiplying. Until
-// v1.63.0 that was what a page with no stored factor did, so the fixture said nothing about it; the factor
-// now defaults to 2, so the precondition has to be stated. `1` is how it is selected.
+// v1.69.0 removed the arrows' other path (pressing Quotex's own -/+ buttons, chosen by a stored factor of
+// 1): the step is 2, always, and the amount is typed.
 
-test("← still steps the amount with a click when focus mode is off (v1.29.0)", async () => {
-  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_step_mult: "1" } });
+test("arrows: a factor of 1 stored by an older build no longer sends them to Quotex's -/+ (v1.69.0)", async () => {
+  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_step_mult: "1", __tradeCalc_hk_focus_mode: "1" } });
   try {
     const minus = qx.window.document.querySelector(".deal-amount-input .VK9Nw");
     let clicks = 0;
     minus.addEventListener("click", () => clicks++);
     pressSideArrow(qx, "ArrowLeft");
-    assert.equal(clicks, 1, "the platform's own − button is pressed");
+    assert.equal(clicks, 0, "the platform's own − button is not pressed");
+    assert.notEqual(qx.window.document.activeElement, minus, "nor selected, even in focus mode");
+    assert.equal(stakeField(qx).value, "1000", "the amount was halved instead");
+    assert.equal(pref(qx, "__tradeCalc_step_mult"), null, "and the old factor is cleared");
   } finally {
     qx.close();
   }
 });
 
-test("focus mode: ← selects the platform's − button and steps nothing until Enter (v1.29.0)", async () => {
-  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_hk_focus_mode: "1", __tradeCalc_step_mult: "1" } });
+test("arrows: ← and → work with no switch turned on (v1.69.0)", async () => {
+  // Their popup switch is gone; the arrows are always on. slStorage alone has no hotkey setting at all.
+  const qx = await boot({ storage: slStorage(10000) });
   try {
-    const [minus, plus] = qx.window.document.querySelectorAll(".deal-amount-input .VK9Nw");
-    let clicks = 0;
-    minus.addEventListener("click", () => clicks++);
-    pressSideArrow(qx, "ArrowLeft");
-    assert.equal(clicks, 0, "nothing is sent to the platform");
-    assert.equal(qx.window.document.activeElement, minus, "the − button is selected");
-    assert.match(qx.panelRoot().getElementById("__tcWarn").textContent, /selected/);
-    // The panel's own Enter shortcut must not swallow the key, or the browser never activates it.
-    const enter = new qx.window.KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true, cancelable: true });
-    qx.window.document.dispatchEvent(enter);
-    assert.equal(enter.defaultPrevented, false, "Enter is left to the browser");
-    assert.equal(qx.window.document.activeElement, minus, "focus stays put, so repeats are one key each");
     pressSideArrow(qx, "ArrowRight");
-    assert.equal(qx.window.document.activeElement, plus, "→ moves the selection to +");
+    assert.equal(stakeField(qx).value, "4000", "→ doubled 2000");
+    pressSideArrow(qx, "ArrowLeft");
+    assert.equal(stakeField(qx).value, "2000", "← halved it back");
+  } finally {
+    qx.close();
+  }
+});
+
+test("arrows: a switch-off stored by an older build does not turn them off (v1.69.0)", async () => {
+  const qx = await boot({ storage: { ...slStorage(10000), __tradeCalc_hk_leftright: "false" } });
+  try {
+    pressSideArrow(qx, "ArrowRight");
+    assert.equal(stakeField(qx).value, "4000", "→ still doubles");
+    assert.equal(pref(qx, "__tradeCalc_hk_leftright"), null, "and the old setting is cleared");
+  } finally {
+    qx.close();
+  }
+});
+
+test("arrows: typing in a box is left alone (v1.69.0)", async () => {
+  // Always on must not mean the arrows stop moving the caret in the panel's own fields.
+  const qx = await boot({ storage: slStorage(10000) });
+  try {
+    const sl = qx.panelRoot().getElementById("__tcSLInput");
+    sl.focus();
+    const ev = new qx.window.KeyboardEvent("keydown", { key: "ArrowRight", code: "ArrowRight", bubbles: true, cancelable: true });
+    sl.dispatchEvent(ev);
+    assert.equal(stakeField(qx).value, "2000", "the amount did not change");
+    assert.equal(ev.defaultPrevented, false, "and the caret still moves");
   } finally {
     qx.close();
   }
 });
 
 test("the amount is typed into the field, not written by script (v1.29.0)", async () => {
-  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_step_mult: "1.5" } });
+  const qx = await boot({ storage: amtStorage });
   try {
     const input = stakeField(qx);
     const calls = [];
@@ -214,8 +231,8 @@ test("the amount is typed into the field, not written by script (v1.29.0)", asyn
     pressSideArrow(qx, "ArrowRight");
     assert.equal(calls.length, 1, "one editing command");
     assert.equal(calls[0].cmd, "insertText");
-    assert.equal(calls[0].text, "3000", "2000 × 1.5");
-    assert.equal(input.value, "3000", "the field holds the new amount");
+    assert.equal(calls[0].text, "4000", "2000 × 2");
+    assert.equal(input.value, "4000", "the field holds the new amount");
     assert.equal(scriptedChanges, 0, "the scripted setter path was not used");
   } finally {
     qx.close();
@@ -223,14 +240,14 @@ test("the amount is typed into the field, not written by script (v1.29.0)", asyn
 });
 
 test("typing falls back to the scripted setter if the browser refuses (v1.29.0)", async () => {
-  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_step_mult: "1.5" } });
+  const qx = await boot({ storage: amtStorage });
   try {
     const input = stakeField(qx);
     qx.window.document.execCommand = () => false;
     let inputs = 0;
     input.addEventListener("input", () => inputs++);
     pressSideArrow(qx, "ArrowRight");
-    assert.equal(input.value, "3000", "the amount still changes");
+    assert.equal(input.value, "4000", "the amount still changes");
     assert.ok(inputs >= 1, "and the platform is still told about it");
   } finally {
     qx.close();
@@ -267,42 +284,17 @@ test("arrows: with no factor chosen, → doubles the amount and ← halves it (v
   }
 });
 
-test("arrows: a stored 1 still means step with Quotex's own buttons (v1.63.0)", async () => {
-  // The other arrow path has to survive the new default, or the platform's own small nudge is unreachable.
-  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_step_mult: "1" } });
+test("the x/÷ box and its toggle are gone (v1.69.0)", async () => {
+  // The arrows do its job: → doubles, ← halves. A factor stored for its 1.5 / 1.3 cycle is ignored.
+  const qx = await boot({ storage: { ...amtStorage, __tradeCalc_im_shown: "1", __tradeCalc_step_mult: "1.5" } });
   try {
-    const input = stakeField(qx);
-    const before = input.value;
+    assert.equal(qx.panelRoot().querySelector("#__tcInvestMult"), null, "no floating box");
+    assert.equal(qx.panelRoot().querySelector("#__tcImToggle"), null, "no button for it on the bar");
     pressSideArrow(qx, "ArrowRight");
-    assert.equal(input.value, before, "the amount was not multiplied: " + input.value);
+    assert.equal(stakeField(qx).value, "4000", "the step is 2, not the stored 1.5");
+    assert.equal(pref(qx, "__tradeCalc_im_shown"), null, "its setting is cleared");
   } finally {
     qx.close();
-  }
-});
-
-test("the x/÷ widget stays hidden once hidden (v1.63.0)", async () => {
-  // It had a toggle, but the toggle only set style.display, so it came back on every reload - which is what
-  // made it feel like a third panel on the page that could not be got rid of.
-  const first = await boot({ storage: amtStorage });
-  try {
-    const widget = () => first.panelRoot().querySelector("#__tcInvestMult");
-    assert.ok(widget(), "it is there to begin with");
-    assert.notEqual(widget().style.display, "none", "and shown");
-    first.panelRoot().querySelector("#__tcImToggle").dispatchEvent(new first.window.Event("click", { bubbles: true }));
-    assert.equal(widget().style.display, "none", "the toggle hides it");
-    // The part that was missing: the choice was never written down.
-    assert.equal(pref(first, "__tradeCalc_im_shown"), "0", "and the choice is remembered");
-  } finally {
-    first.close();
-  }
-  // A fresh page carrying that choice: it must come up hidden.
-  const second = await boot({ storage: { ...amtStorage, __tradeCalc_im_shown: "0" } });
-  try {
-    const w = second.panelRoot().querySelector("#__tcInvestMult");
-    assert.ok(w, "the widget is still built");
-    assert.equal(w.style.display, "none", "and is still hidden after a reload");
-  } finally {
-    second.close();
   }
 });
 

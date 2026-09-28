@@ -1,0 +1,259 @@
+// v1.69.0: the top bar takes over from the popup. MAX and FAST on the bar; theme, size, the ↑↓ hotkey,
+// Focus Mode, the compatibility check and the deposit scan in its ⚙ menu; and the pill a deposit scan
+// shows on the Balance page.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { sleep, pref, quotexStore, deal, boot, tradeReachesPlatform } from "./helpers.mjs";
+
+const $ = (qx, sel) => qx.panelRoot().querySelector(sel);
+const click = (qx, el) => el.dispatchEvent(new qx.window.MouseEvent("click", { bubbles: true, composed: true }));
+const menu = (qx) => $(qx, "#__tcMenu");
+const openMenu = (qx) => click(qx, $(qx, "#__tcMenuBtn"));
+const item = (qx, what) => $(qx, '[data-mn="' + what + '"]');
+const menuText = (qx) => menu(qx).textContent.replace(/\s+/g, " ");
+const press = (qx, el, key) => el.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key, code: key, bubbles: true, cancelable: true }));
+
+// ── The bar ──────────────────────────────────────────────────────────────────────────────────────
+
+test("bar: MULT is called FAST, and its hover text says what it really does (v1.69.0)", async () => {
+  const qx = await boot();
+  try {
+    const labels = [...qx.panelRoot().querySelectorAll(".tcLbl")].map((l) => l.textContent.trim());
+    assert.ok(labels.includes("FAST"), "FAST is on the bar: " + labels.join(" "));
+    assert.ok(!labels.includes("MULT"), "MULT is gone");
+    assert.match($(qx, "#__tcMultiStatus").getAttribute("data-tc-tip"), /second click.*1\.5 s/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("bar: MAX shows the trade cap, and Enter saves a new one that the trade guard uses (v1.69.0)", async () => {
+  const qx = await boot({ sync: {}, store: quotexStore({ opened: [deal("a")] }) });
+  try {
+    const field = $(qx, "#__tcMaxTradesInput");
+    assert.equal(field.value, "2", "the default cap");
+    click(qx, $(qx, "#__tcMultiStatus")); // FAST on, so two clicks in a row are both judged by the cap alone
+    assert.equal(tradeReachesPlatform(qx), true, "one open, cap 2: a second trade goes through");
+    field.focus();
+    field.value = "1";
+    press(qx, field, "Enter");
+    assert.equal(field.value, "1");
+    assert.equal(pref(qx, "__tradeCalc_max_trades"), "1", "saved on the page");
+    assert.equal(qx.window.chrome.storage.sync.data.__tradeCalc_max_trades, 1, "and in sync, which the next start reads");
+    assert.equal(tradeReachesPlatform(qx), false, "one open, cap 1: blocked");
+  } finally {
+    qx.close();
+  }
+});
+
+test("bar: MAX keeps to 1-4 and ignores what is not a number (v1.69.0)", async () => {
+  const qx = await boot({ sync: {} });
+  try {
+    const field = $(qx, "#__tcMaxTradesInput");
+    field.value = "9";
+    press(qx, field, "Enter");
+    assert.equal(field.value, "4", "clamped at the top");
+    field.value = "x";
+    field.dispatchEvent(new qx.window.Event("blur"));
+    assert.equal(field.value, "4", "left as it was");
+  } finally {
+    qx.close();
+  }
+});
+
+// ── The ⚙ menu ─────────────────────────────────────────────────────────────────────────────────
+
+test("⚙ menu: opens from the bar with everything the popup held (v1.69.0)", async () => {
+  const qx = await boot();
+  try {
+    assert.equal(menu(qx).hidden, true, "closed to start with");
+    openMenu(qx);
+    assert.equal(menu(qx).hidden, false, "open");
+    assert.equal($(qx, "#__tcMenuBtn").getAttribute("aria-expanded"), "true");
+    for (const words of [/Theme/, /Size/, /↑↓ places trades/, /Focus Mode/, /Quotex compatibility/, /Deposits/]) {
+      assert.match(menuText(qx), words);
+    }
+    openMenu(qx);
+    assert.equal(menu(qx).hidden, true, "and ⚙ again closes it");
+  } finally {
+    qx.close();
+  }
+});
+
+test("⚙ menu: a press outside closes it, a press inside does not (v1.69.0)", async () => {
+  const qx = await boot();
+  try {
+    openMenu(qx);
+    item(qx, "dark").dispatchEvent(new qx.window.MouseEvent("pointerdown", { bubbles: true, composed: true }));
+    assert.equal(menu(qx).hidden, false, "still open after a press on its own button");
+    qx.window.document.body.dispatchEvent(new qx.window.MouseEvent("pointerdown", { bubbles: true, composed: true }));
+    assert.equal(menu(qx).hidden, true, "closed by a press on the page");
+  } finally {
+    qx.close();
+  }
+});
+
+test("⚙ menu: Light and Dark switch the panel and are remembered (v1.69.0)", async () => {
+  const qx = await boot();
+  try {
+    openMenu(qx);
+    click(qx, item(qx, "light"));
+    assert.ok($(qx, "#__tradeCalc").classList.contains("tcLightMode"), "light panel");
+    assert.equal(pref(qx, "__tradeCalc_theme"), "light");
+    assert.ok(item(qx, "light").classList.contains("tcOn"), "and the menu shows which is on");
+    click(qx, item(qx, "dark"));
+    assert.ok(!$(qx, "#__tradeCalc").classList.contains("tcLightMode"), "dark again");
+    assert.equal(pref(qx, "__tradeCalc_theme"), "dark");
+  } finally {
+    qx.close();
+  }
+});
+
+test("⚙ menu: − and + change the panel size and it is remembered (v1.69.0)", async () => {
+  const qx = await boot();
+  try {
+    openMenu(qx);
+    const start = parseInt($(qx, "#__tcMnSize").textContent, 10);
+    click(qx, item(qx, "bigger"));
+    assert.equal($(qx, "#__tcMnSize").textContent, start + 1 + "px");
+    assert.equal($(qx, "#__tradeCalc").style.fontSize, start + 1 + "px", "the bar itself grew");
+    assert.equal(pref(qx, "__tradeCalc_fz"), String(start + 1));
+    click(qx, item(qx, "smaller"));
+    click(qx, item(qx, "smaller"));
+    assert.equal(pref(qx, "__tradeCalc_fz"), String(start - 1));
+  } finally {
+    qx.close();
+  }
+});
+
+test("⚙ menu: the ↑↓ switch turns the trade keys on, saved where the next start reads it (v1.69.0)", async () => {
+  const qx = await boot({ sync: {} });
+  try {
+    openMenu(qx);
+    assert.equal(item(qx, "updown").getAttribute("aria-checked"), "false", "off unless turned on");
+    click(qx, item(qx, "updown"));
+    assert.equal(item(qx, "updown").getAttribute("aria-checked"), "true");
+    assert.equal(pref(qx, "__tradeCalc_hk_updown"), "true");
+    assert.equal(qx.window.chrome.storage.sync.data.__tradeCalc_hk_updown, true, "sync too, or the next start would undo it");
+  } finally {
+    qx.close();
+  }
+});
+
+test("⚙ menu: the Focus Mode switch (v1.69.0)", async () => {
+  const qx = await boot();
+  try {
+    openMenu(qx);
+    assert.equal(item(qx, "focus").getAttribute("aria-checked"), "false");
+    click(qx, item(qx, "focus"));
+    assert.equal(item(qx, "focus").getAttribute("aria-checked"), "true");
+    assert.equal(pref(qx, "__tradeCalc_hk_focus_mode"), "1");
+  } finally {
+    qx.close();
+  }
+});
+
+test("⚙ menu: Check lists every lookup, and says when the tab is running an old copy (v1.69.0)", async () => {
+  const qx = await boot();
+  try {
+    openMenu(qx);
+    click(qx, item(qx, "health"));
+    const out = $(qx, "#__tcMnHealth");
+    assert.ok(out.querySelectorAll(".tcMenuLine").length >= 10, "one line per lookup");
+    assert.match(out.textContent, /Balance value/);
+    assert.doesNotMatch(out.textContent, /refresh this tab/, "the extension is current");
+    // What an extension reload does to a tab that was not refreshed.
+    delete qx.window.chrome.runtime.id;
+    click(qx, item(qx, "health"));
+    assert.match(out.textContent, /updated - refresh this tab/);
+  } finally {
+    qx.close();
+  }
+});
+
+// ── Deposits ─────────────────────────────────────────────────────────────────────────────────────
+
+const RESULT = {
+  at: Date.now(),
+  cancelled: false,
+  pages: 10,
+  count: 4,
+  sources: ["store"],
+  totals: [
+    { symbol: "₹", count: 2, total: 90000 },
+    { symbol: "$", count: 2, total: 1010 },
+  ],
+  methods: [
+    { method: "UPI", symbol: "₹", count: 2, total: 90000 },
+    { method: "Binance Pay", symbol: "$", count: 2, total: 1010 },
+  ],
+  recent: [{ id: "1", payment: "UPI", symbol: "₹", amount: 50000 }],
+};
+
+test("⚙ menu: Scan asks the extension to start the deposit scan (v1.69.0)", async () => {
+  const qx = await boot();
+  try {
+    openMenu(qx);
+    click(qx, item(qx, "deposits"));
+    assert.ok(qx.sentMessages.some((m) => m.type === "DEPOSIT_SCAN_START"), "the service worker is asked");
+    assert.match($(qx, "#__tcMnDeposits").textContent, /Opening your Balance page/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("⚙ menu: the last deposit result shows one total per currency and the breakdown (v1.69.0)", async () => {
+  const qx = await boot({ local: { __qxDepositScan: RESULT } });
+  try {
+    openMenu(qx);
+    await sleep(20); // chrome.storage.local answers asynchronously
+    const text = $(qx, "#__tcMnDeposits").textContent.replace(/\s+/g, " ");
+    assert.match(text, /₹90,000\.00 \+ \$1,010\.00/, "₹ and $ never added together");
+    assert.match(text, /4 successful deposits · 10 pages/);
+    assert.match(text, /Binance Pay × 2/);
+    assert.match(text, /\$1,010\.00/);
+    assert.match(text, /…and 3 more/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("⚙ menu: coming back from a scan, the menu opens on the result by itself, once (v1.69.0)", async () => {
+  const qx = await boot({ local: { __qxDepositScan: RESULT, __qxDepositShow: true } });
+  try {
+    await sleep(20);
+    assert.equal(menu(qx).hidden, false, "open without a click");
+    assert.equal("__qxDepositShow" in qx.window.chrome.storage.local.data, false, "and only this once");
+  } finally {
+    qx.close();
+  }
+});
+
+test("⚙ menu: a failed scan says so (v1.69.0)", async () => {
+  const qx = await boot({ local: { __qxDepositScan: { at: Date.now(), error: "Couldn't read page 3" } } });
+  try {
+    openMenu(qx);
+    await sleep(20);
+    assert.match($(qx, "#__tcMnDeposits").textContent, /Scan failed: Couldn't read page 3/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("deposit pill: the Balance page shows the page being read, and Stop reaches the extension (v1.69.0)", async () => {
+  const qx = await boot({ path: "/en/balance" });
+  try {
+    await qx.sendToPanel({ type: "DEPOSIT_SCAN_STATUS", page: 3 });
+    const pill = qx.shadowRoots.find((r) => /Scanning deposits/.test(r.textContent));
+    assert.ok(pill, "a pill is shown");
+    assert.match(pill.textContent, /page 3/);
+    await qx.sendToPanel({ type: "DEPOSIT_SCAN_STATUS", page: 4 });
+    assert.equal(qx.shadowRoots.filter((r) => /Scanning deposits/.test(r.textContent)).length, 1, "one pill, updated");
+    assert.match(pill.textContent, /page 4/);
+    click(qx, pill.querySelector("button"));
+    assert.ok(qx.sentMessages.some((m) => m.type === "DEPOSIT_SCAN_STOP"), "Stop is sent");
+  } finally {
+    qx.close();
+  }
+});

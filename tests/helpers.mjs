@@ -84,7 +84,7 @@ const deal = (id, { profit = 0, isDemo = 1, close = 1789464960, command = 1, ope
   openTimestamp: close - 60, closeTimestamp: close,
 });
 
-async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html = FIXTURE, sync = null, store = null, setup = null } = {}) {
+async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html = FIXTURE, sync = null, local = null, store = null, setup = null } = {}) {
   const errors = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on("jsdomError", (e) => {
@@ -157,6 +157,8 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
   const sentMessages = [];
   window.chrome = {
     runtime: {
+      // A live extension context has an id; after an extension reload the old script loses it (v1.69.0).
+      id: "test-extension",
       onMessage: { addListener: (f) => listeners.add(f), removeListener: (f) => listeners.delete(f) },
       sendMessage: (msg) => sentMessages.push(msg),
     },
@@ -176,6 +178,26 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
           Object.assign(this.data, obj);
           if (cb) setTimeout(cb, 0);
         },
+      },
+    };
+  }
+  // Optional chrome.storage.local mock (v1.69.0: the deposit scan result waits here for the ⚙ menu).
+  if (local) {
+    window.chrome.storage = window.chrome.storage || {};
+    window.chrome.storage.local = {
+      data: { ...local },
+      get(keys, cb) {
+        const list = Array.isArray(keys) ? keys : [keys];
+        const out = {};
+        for (const k of list) if (k in this.data) out[k] = this.data[k];
+        setTimeout(() => cb(out), 0);
+      },
+      set(obj, cb) {
+        Object.assign(this.data, obj);
+        if (cb) setTimeout(cb, 0);
+      },
+      remove(keys) {
+        for (const k of Array.isArray(keys) ? keys : [keys]) delete this.data[k];
       },
     };
   }
@@ -206,6 +228,7 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
     intervals,
     ctxCalls,
     isRunning: () => typeof window.__tcCleanup === "function",
+    shadowRoots,
     panelRoot: () => shadowRoots.filter((r) => r.host.isConnected).at(-1),
     async navigate(p) {
       window.history.pushState({}, "", p);

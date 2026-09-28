@@ -9,7 +9,8 @@ A Chrome MV3 extension that adds a trading-discipline panel to `qxbroker.com`. I
 risk and multi-timeframe charts while you trade, and repairs itself when Quotex renames their CSS.
 
 `src/content.js` is the source of the panel (~8,000 lines, one IIFE). Everything else is small:
-`chart_reader.js` (MAIN-world read-only bridge), `popup.*`, `service_worker.js`.
+`chart_reader.js` (MAIN-world read-only bridge), `service_worker.js` + `deposit_scan.js` (the deposit scan),
+`popup.*` (only Show / Hide and the chart settings since v1.69.0 - see the redesign item below).
 
 ## The thumb rule
 
@@ -65,9 +66,10 @@ Three things exist because of this:
   `zoom / have / drawn / pannedTo / atLive` into the site's own storage every 2 s, under the hashed key
   for `__tradeCalc_diag`. Any tab on the
   origin can read it back. This is how a live problem gets diagnosed in one round trip.
-- **The health check** (popup → Check Quotex compatibility) reports every lookup as ok / fallback /
-  missing, plus the build the *tab* is running against the one installed — an extension reload does
-  not update an open tab, and that mismatch looks exactly like "the fix did nothing".
+- **The health check** (panel ⚙ menu → Quotex compatibility → Check; the popup until v1.69.0) reports every
+  lookup as ok / fallback / missing, and says when the tab is running an old copy — an extension reload does
+  not update an open tab, and that mismatch looks exactly like "the fix did nothing". It spots it by
+  `chrome.runtime.id` going away, which is what a reload does to the old script's context.
 - **Geometry tests** — the jsdom canvas stub records `moveTo/lineTo/fillText/fillRect` coordinates,
   so a spec can assert *where* something was drawn, not just that it was.
 
@@ -159,7 +161,7 @@ check will say so if only one happened.
 - **What v1.65.0 removed, so it is not rebuilt by accident:** the Google Sheet journal (journal window, log
   button and Enter-to-log, TP fetch from the sheet, P/L and GOAL fields, the popup's Apps Script URL), the
   TP save button (Enter in the field does the same), the panel's Actions section and its theme button (the
-  popup's theme toggle remains), the marquee, the loss-streak lock and the settled-trade tracker that only fed
+  theme is in the ⚙ menu since v1.69.0), the marquee, the loss-streak lock and the settled-trade tracker that only fed
   it, and the popup's Journal Scale, Post-TP Trail Gap %, Disable System Lock and Candles-per-chart controls.
   Post-TP trailing is fixed at 5%; the SL setup screen and payout overlay are fixed at 20px; a timeframe never
   scrolled still starts at the stored `__tradeCalc_mtf_count`.
@@ -173,6 +175,19 @@ check will say so if only one happened.
   always on the panel; empty + Enter clears it. Do not delete `__tradeCalc_sl` in any clean-up: it is the
   SL. `getDayKey` stays - TP saving dates itself by the trading day, and the account timezone is now
   cached the first time that happens rather than at load.
+- **The redesign (started 2026-09-28): one panel - the top bar - and no popup.** Step 1 is v1.69.0: the ⚙
+  menu (theme, size, ↑↓ switch, Focus Mode, compatibility check, deposit scan), MAX on the bar, MULT renamed
+  FAST (it only lets a quick second trade click through), the Invest ×÷ box removed (→ doubles, ← halves,
+  always on, step fixed at 2), Chip Position fixed to follow-cursor, Show Live as Demo always on. **Next and
+  last: the chart panel**, which takes the popup's chart settings; then popup.html/js go, and the toolbar
+  icon should toggle the bar (`chrome.action.onClicked` - it only fires once `default_popup` is removed).
+  Not verified live yet: the deposit scan walking the Balance pages from the trade page and coming back, the
+  pill on the Balance page, and the service worker staying alive through a long scan (every page load is an
+  extension event, which should keep it up). Covered by specs only.
+- **Requested for after the redesign - the chips around Quotex's own timer.** Quotex shows a timer beside the
+  running candle. The user wants the running amount (dynamic) just *above* that timer and the trade countdown
+  just *below* it, replacing follow-cursor. Their timer is part of the WebGL chart or its overlay - check which
+  before promising a position (see "What cannot be verified": a price cannot be mapped to a pixel).
 - Offered and not started: a sound for the trend-flip mark (left visual on purpose — a tone mid-trade
   is intrusive and gives no clue which chart it came from), and per-asset rather than per-timeframe
   zoom memory.
