@@ -1106,6 +1106,55 @@ test("self-healing: a wrong list and + learnt earlier are forgotten, and auto-op
 // The list found by what it is is looked for at most every 150 ms; in between the finder said "no list", so an
 // open list looked closed and auto-open pressed "+" again - which, on Quotex, closes it. The list here has no
 // class to remember it by (as live, where nothing was learnt for it), and "+" toggles it, as theirs does.
+test("R: works on a renamed pair list, and each pair it picks is on the pair-list log (v1.80.3)", async () => {
+  // Read live on 1.80.2: R opens the list once per pair, and Quotex closes it on each pick - which looked like a
+  // flicker because R's picks were not logged. The chart's pair is above the floor here, so auto-open stays out.
+  const store = quotexStore({ payout: 91 });
+  store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  const html = FIXTURE.replace('<div class="Q02Z1">', '<div class="Q02Z1"></div><button class="xP4qa" id="plus"><svg class="icon-plus"></svg></button><div class="Hm2vT">');
+  const setup = (w) => {
+    const rect = w.Element.prototype.getBoundingClientRect;
+    w.Element.prototype.getBoundingClientRect = function () {
+      if (this.hasAttribute && (this.hasAttribute("data-list") || (this.classList && this.classList.contains("rT5wy")))) {
+        return { left: 10, top: 60, width: 300, height: 40, right: 310, bottom: 100, x: 10, y: 60 };
+      }
+      return rect.call(this);
+    };
+    let list = null;
+    w.document.getElementById("plus").addEventListener("click", () => {
+      if (list) {
+        list.remove();
+        list = null;
+        return;
+      }
+      list = w.document.createElement("div");
+      list.setAttribute("data-list", "");
+      const row = (name, pct, id) => '<div class="rT5wy" id="' + id + '"><span>' + name + "</span><b>" + pct + " %</b></div>";
+      list.innerHTML = '<input type="text" placeholder="Search">' + row("EUR/USD (OTC)", 70, "rEur") + row("GBP/JPY (OTC)", 71, "rGbp") + row("AUD/CAD (OTC)", 93, "rAud");
+      w.document.getElementById("graph").before(list);
+      w.document.getElementById("rAud").addEventListener("click", () => {
+        list.remove(); // Quotex closes its list on a pick
+        list = null;
+        const tab = w.document.createElement("div");
+        tab.className = "dJ15T vXMlv";
+        tab.setAttribute("data-symbol", "AUDCAD_otc");
+        tab.innerHTML = '<div class="WRocw">AUD/CAD (OTC)</div><div class="ElyTP">93 %</div>';
+        w.document.querySelector(".Hm2vT").appendChild(tab);
+      });
+    });
+  };
+  const qx = await boot({ html, store, setup });
+  try {
+    await sleep(500);
+    qx.window.document.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key: "r", code: "KeyR", bubbles: true, cancelable: true }));
+    await sleep(5000);
+    const log = JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").assetLog || "";
+    assert.match(log, /R picked AUD\/CAD \(OTC\)/, log);
+  } finally {
+    qx.close();
+  }
+});
+
 test("self-healing: an open pair list found by what it is does not look closed between looks (v1.80.2)", async () => {
   const store = quotexStore({ payout: 70 });
   store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };

@@ -4544,7 +4544,10 @@
           return o;
         }
       }
-      return NaN;
+      // v1.80.3 (self-healing): with those names gone, the highest percent the row itself shows. Until now R found
+      // no payout on a renamed list, and so nothing to open.
+      const pcts = (textOf(t).match(/\d{2,3}(?=\s*%)/g) || []).map(Number).filter((p) => p > 0 && p <= 100);
+      return pcts.length ? Math.max(...pcts) : NaN;
     }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Trade click guard (double-click, max trades, min payout)
@@ -4848,6 +4851,7 @@
                         const e = getOtcAssetRows().find((e) => e.norm === t),
                           n = e && (e.click || e.row);
                         if (n && n.isConnected) {
+                          noteAsset("R picked " + e.name);
                           synthClick(n);
                         }
                         waitUntil(() => isPairTabOpen(t), 80, 500, i);
@@ -4883,6 +4887,7 @@
                       const e = getOtcAssetRows().find((t) => t.norm === c),
                         n = e && (e.click || e.row);
                       if (n && n.isConnected) {
+                        noteAsset("R picked " + e.name);
                         synthClick(n);
                       }
                       waitUntil(() => isPairTabOpen(c), 80, 500, t);

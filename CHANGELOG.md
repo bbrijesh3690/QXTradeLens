@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.80.3] - 2026-09-29
+
+### Fixed
+- **R found nothing to open on a renamed pair list.** It read each row's payout by three Quotex class names only;
+  with those gone every row read as no payout, so R opened the list and closed it again. It now falls back to the
+  highest percent the row itself shows. Found while writing the spec below.
+
+### Added
+- **R's picks are on the pair-list log** ("R picked AUD/CAD (OTC)"). Read live on 1.80.2, R's list opening, closing
+  on each pick and opening again for the next pair looked like the flicker 1.80.2 set out to fix; it was R working
+  as intended. 1.80.2's change is kept: it guards a real case its spec shows.
+
 ## [1.80.2] - 2026-09-28
 
 ### Fixed
