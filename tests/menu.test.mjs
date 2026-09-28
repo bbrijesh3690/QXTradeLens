@@ -47,6 +47,38 @@ test("bar: MAX shows the trade cap, and Enter saves a new one that the trade gua
   }
 });
 
+test("MAX: quick clicks cannot place more trades than the cap before Quotex shows them (v1.72.5)", async () => {
+  // Reported live: MAX 2, FAST on, and quick clicks on Up placed more than 2. Quotex lists a trade only once
+  // its server has it; here it never does within the test, which is the moment the clicks land in.
+  const qx = await boot({ storage: { ...slStorage(10000), __tradeCalc_multi: "1" }, store: quotexStore({ opened: [] }) });
+  try {
+    const reached = [0, 1, 2, 3, 4].map(() => tradeReachesPlatform(qx)).filter(Boolean).length;
+    assert.equal(reached, 2, "five quick clicks, two trades");
+    // A trade Quotex never shows (it refused it) stops holding a place after a few seconds.
+    await sleep(3200);
+    assert.equal(tradeReachesPlatform(qx), true, "the places free up again");
+  } finally {
+    qx.close();
+  }
+});
+
+test("MAX: quick ↑ presses cannot place more trades than the cap either (v1.72.5)", async () => {
+  const qx = await boot({
+    storage: { ...slStorage(10000), __tradeCalc_multi: "1", __tradeCalc_hk_updown: "true" },
+    store: quotexStore({ opened: [] }),
+  });
+  try {
+    let placed = 0;
+    qx.window.document.querySelector("#trade-button button").addEventListener("click", () => placed++);
+    for (let i = 0; i < 5; i++) {
+      qx.window.document.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key: "ArrowUp", code: "ArrowUp", bubbles: true }));
+    }
+    assert.equal(placed, 2, "five presses, two trades");
+  } finally {
+    qx.close();
+  }
+});
+
 test("bar: MAX keeps to 1-4 and ignores what is not a number (v1.69.0)", async () => {
   const qx = await boot({ sync: {} });
   try {

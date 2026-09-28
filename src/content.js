@@ -1484,6 +1484,9 @@
         return 2;
       }
     })();
+    // Trades let through but not yet in Quotex's data (v1.72.5, see effectiveOpenTrades).
+    const PENDING_TRADE_MS = 3000;
+    let pendingTrades = [];
     const KEY_BAL_LOGGED_DATE = "__tradeCalc_bal_logged_date",
       KEY_NATIVE_LIMIT_LOCK_DATE = "__tradeCalc_native_limit_lock_date";
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -3611,7 +3614,7 @@
       // v1.21.0: the stop loss never blocks trading. The "trade would breach stop loss" block was
       // removed: after a breach it disabled Up/Down permanently, and the trailing SL pushed any new
       // SL back above the balance. Only payout-too-low and the max-open-trades cap block now.
-      const tradeCapReached = openTradeCount() >= maxTrades,
+      const tradeCapReached = effectiveOpenTrades() >= maxTrades,
         shouldBlock = payoutTooLow || tradeCapReached;
       tradingBlocked = shouldBlock;
       setTradeButtonsDisabled(shouldBlock);
@@ -3871,6 +3874,33 @@
     }
     let lastTradeClickAt = 0,
       stakeInputEl = null;
+    // v1.72.5: reported live - with MAX 2 and FAST on, quick clicks on Up/Down placed more than 2 trades. The
+    // open-trade count comes from Quotex's data, which lists a trade only once their server has taken it, a
+    // moment after the click; every click inside that moment still saw the old count and went through. So a
+    // trade the panel lets through counts at once, until Quotex's data shows it. One that never shows (the
+    // platform refused it) stops counting after PENDING_TRADE_MS.
+    function effectiveOpenTrades() {
+      const now = Date.now(),
+        current = openTradeCount();
+      pendingTrades = pendingTrades.filter((p) => now - p.at < PENDING_TRADE_MS);
+      // Each pending click was made when `base` trades were open, so from it on at least base + (clicks since)
+      // should be open. When the data has caught up with all of them, they are no longer pending.
+      let expected = 0;
+      pendingTrades.forEach((p, i) => {
+        expected = Math.max(expected, p.base + (pendingTrades.length - i));
+      });
+      if (current >= expected) {
+        pendingTrades = [];
+        return current;
+      }
+      return expected;
+    }
+    function notePlacedTrade() {
+      pendingTrades.push({ at: Date.now(), base: openTradeCount() });
+      // The block this may have set is lifted by a recalculation; make sure one runs when this one expires,
+      // rather than waiting for the page to change.
+      setTimeout(scheduleRecalc, PENDING_TRADE_MS + 50);
+    }
     function isActiveTab(t) {
       return t.id === "tab-active" || t.classList.contains("tab-active");
     }
@@ -3926,7 +3956,7 @@
           t.preventDefault();
           return;
         }
-        if (openTradeCount() >= maxTrades) {
+        if (effectiveOpenTrades() >= maxTrades) {
           t.stopPropagation();
           t.preventDefault();
           scheduleRecalc();
@@ -3947,7 +3977,9 @@
           return;
         }
         lastTradeClickAt = e;
+        notePlacedTrade();
         recordPlacement();
+        scheduleRecalc();
       }
     };
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -4033,7 +4065,7 @@
           t.preventDefault();
           return;
         }
-        if (openTradeCount() >= maxTrades) {
+        if (effectiveOpenTrades() >= maxTrades) {
           t.preventDefault();
           scheduleRecalc();
           return;
@@ -4081,6 +4113,7 @@
         if (r.length >= 2) {
           t.preventDefault();
           lastTradeClickAt = e;
+          notePlacedTrade();
           recordPlacement();
           if (t.code === "ArrowUp") {
             synthClick(r[0]);

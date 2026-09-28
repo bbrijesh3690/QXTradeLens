@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.72.5] - 2026-09-28
+
+### Fixed
+- **MAX holds on quick clicks.** Reported live: with MAX 2 and FAST on, clicking Up/Down several times quickly
+  placed more than 2 trades. The open-trade count comes from Quotex's data, which lists a trade only once
+  their server has taken it - a moment after the click - so every click inside that moment still saw the old
+  count and went through. A trade the panel lets through now counts at once, until Quotex's data shows it;
+  one that never shows (the platform refused it) stops counting after 3 s, and the block is re-checked then.
+  Applies to clicks on Up/Down and to the ↑/↓ keys, and the bar's "max trades" warning uses the same count.
+
+### Tests
+- Five quick clicks with MAX 2 place two trades, and five quick ↑ presses place two; both place five on
+  1.72.4. The places free up again when Quotex never shows the trades.
+
 ## [1.72.4] - 2026-09-28
 
 ### Fixed
