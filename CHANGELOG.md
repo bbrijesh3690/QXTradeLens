@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.80.2] - 2026-09-28
+
+### Fixed
+- **Auto-open pressed "+" twice (read live on 1.80.1).** The log showed "list appeared", "list went" 0.3 s later,
+  then "+" pressed again. The pair list, found by what it is since Quotex renamed it, is looked for at most every
+  150 ms, and in between the finder answered "no list" - so an open list looked closed, and "+" (which closes
+  Quotex's list) was pressed again. Between looks it now answers with the list it last found, while that list is
+  still on the page. The spec reproduces the live sequence on 1.80.1.
+
 ## [1.80.1] - 2026-09-28
 
 ### Fixed

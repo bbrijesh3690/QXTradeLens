@@ -1102,6 +1102,62 @@ async function autoOpenBesideDeposit(remembered) {
 test("self-healing: auto-open presses the + beside the tabs, not the deposit + in the header (v1.80.0)", () => autoOpenBesideDeposit(false));
 test("self-healing: a wrong list and + learnt earlier are forgotten, and auto-open works (v1.80.0)", () => autoOpenBesideDeposit(true));
 
+// ── v1.80.2: read live on 1.80.1 - "list appeared", 0.3 s later "list went", "+" pressed again ─────────
+// The list found by what it is is looked for at most every 150 ms; in between the finder said "no list", so an
+// open list looked closed and auto-open pressed "+" again - which, on Quotex, closes it. The list here has no
+// class to remember it by (as live, where nothing was learnt for it), and "+" toggles it, as theirs does.
+test("self-healing: an open pair list found by what it is does not look closed between looks (v1.80.2)", async () => {
+  const store = quotexStore({ payout: 70 });
+  store.assets.assetBySymbol.AUDCAD_otc = { symbol: "AUDCAD_otc", label: "AUD/CAD (OTC)", payout: 93, is_otc: 1, active: true };
+  const html = FIXTURE.replace('<div class="ElyTP">91 %</div>', '<div class="ElyTP">70 %</div>')
+    .replace('<span class="UI2Kh">91 %</span>', '<span class="UI2Kh">70 %</span>')
+    .replace('<div class="Q02Z1">', '<div class="Q02Z1"></div><button class="xP4qa" id="plus"><svg class="icon-plus"></svg></button><div class="Hm2vT">');
+  const events = [];
+  const setup = (w) => {
+    const rect = w.Element.prototype.getBoundingClientRect;
+    w.Element.prototype.getBoundingClientRect = function () {
+      if (this.hasAttribute && (this.hasAttribute("data-list") || (this.classList && this.classList.contains("rT5wy")))) {
+        return { left: 10, top: 60, width: 300, height: 40, right: 310, bottom: 100, x: 10, y: 60 };
+      }
+      return rect.call(this);
+    };
+    let list = null;
+    w.document.getElementById("plus").addEventListener("click", () => {
+      if (list) {
+        events.push("+ closed the list");
+        list.remove();
+        list = null;
+        return;
+      }
+      events.push("opened list");
+      list = w.document.createElement("div");
+      list.setAttribute("data-list", "");
+      const row = (name, pct, id) => '<div class="rT5wy" id="' + id + '"><span>' + name + "</span><b>" + pct + " %</b></div>";
+      list.innerHTML = '<input type="text" placeholder="Search">' + row("EUR/USD (OTC)", 70, "rEur") + row("GBP/JPY (OTC)", 71, "rGbp") + row("AUD/CAD (OTC)", 93, "rAud");
+      w.document.getElementById("graph").before(list);
+      w.document.getElementById("rAud").addEventListener("click", () => {
+        if (events.includes("picked AUD/CAD")) return;
+        events.push("picked AUD/CAD");
+        const tab = w.document.createElement("div");
+        tab.className = "dJ15T vXMlv";
+        tab.setAttribute("data-symbol", "AUDCAD_otc");
+        tab.innerHTML = '<div class="WRocw">AUD/CAD (OTC)</div><div class="ElyTP">93 %</div>';
+        w.document.querySelector(".Hm2vT").appendChild(tab);
+      });
+    });
+  };
+  const qx = await boot({ html, store, setup });
+  try {
+    await sleep(10000);
+    const picked = events.indexOf("picked AUD/CAD");
+    assert.ok(picked > 0, "the pair was picked: " + events.join(", "));
+    assert.ok(!events.slice(0, picked).includes("+ closed the list"), "the list was not closed by a second + before the pick: " + events.join(", "));
+    assert.equal(events.filter((e) => e === "opened list").length, 1, "one open was enough: " + events.join(", "));
+  } finally {
+    qx.close();
+  }
+});
+
 test("self-healing: middle-click closes a pair tab whose class was renamed (v1.77.0)", async () => {
   const html = FIXTURE.replace('<div class="dJ15T vXMlv" id="tab-active" data-symbol="USDDZD_otc">', '<div class="kW3nb" id="tab-active" data-symbol="USDDZD_otc"><button aria-label="Close" id="closeMe">x</button>');
   const qx = await boot({ html });

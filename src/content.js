@@ -442,7 +442,8 @@
       } catch (t) {}
       return out;
     }
-    let assetListLookAt = 0;
+    let assetListLookAt = 0,
+      assetListLast = null;
     // The page's largest canvas, at least 200 px wide: Quotex's chart is one canvas and nothing else on the
     // page comes near its size.
     function largestCanvas() {
@@ -571,8 +572,10 @@
       assetDropdown: () => {
         const now = Date.now(),
           busy = now - lastPlusAt < 5000;
+        // v1.80.2: between walks, the list last found while it is still on the page - reported live, "no list"
+        // here made an open list look closed for a moment, and auto-open pressed "+" a second time.
         if (now - assetListLookAt < (busy ? 150 : 1500)) {
-          return null;
+          return assetListLast && assetListLast.isConnected ? assetListLast : null;
         }
         assetListLookAt = now;
         const tabs = getPairTabs(),
@@ -617,11 +620,10 @@
             }
           }
         }
+        assetListLast = best;
         return best;
       },
-      // The "+" that opens the pair list: its plus icon, else a small control beside the pair tabs showing a
-      // plus sign or a plus icon.
-      // v1.80.0: only the plus nearest the pair tabs - reported live, the first plus icon on the page was the
+      // The "+" that opens the pair list. v1.80.0: only the plus nearest the pair tabs - reported live, the first plus icon on the page was the
       // deposit button in the header, so R opened the deposit window.
       assetAddButton: () => plusBesideTabs()[0] || null,
       // The button that opens the timeframe menu: the one element on the page showing a single timeframe
