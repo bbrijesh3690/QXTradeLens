@@ -5,6 +5,25 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.76.0] - 2026-09-28
+
+Self-healing, step 1 of the audit (every feature checked for what happens when Quotex renames its markup).
+
+### Fixed
+- **The trade guard finds Quotex's Up / Down buttons even after a rename.** The guard behind the PAYOUT floor,
+  MAX and FAST knew the buttons by three fixed names only (`#trade-button button`, `.hkjXJ button`,
+  `.bSenO button`); a rename by Quotex would have stopped every block without a word - trades would simply go
+  through. One finder now serves the guard, the ↑/↓ keys, the greying of blocked buttons and the win/loss
+  preview: the known names, then the buttons by what they are - their arrow icons, then their "Up" / "Down"
+  words - and the name that worked is remembered for next time. ⚙ → Check reports which way it found them.
+- **The win/loss preview above the buttons** hung off the `trade-button` id alone; it now sits above the block
+  holding both buttons, however that block is named. The payout-amount finder uses the same block.
+
+### Tests
+- Quotex's buttons with no id and every class name changed: MAX still stops a third trade, a trade still goes
+  through when nothing blocks it, Check still finds them, and the win/loss preview still sits above them. All
+  fail on 1.75.4.
+
 ## [1.75.4] - 2026-09-28
 
 ### Fixed

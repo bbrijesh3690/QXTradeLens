@@ -939,3 +939,48 @@ test("auto-open: a list that is still opening when auto-open gives up is closed 
     qx.close();
   }
 });
+
+// ── v1.76.0: self-healing, step 1 - the Up / Down buttons ──────────────────────────────────────────
+// Quotex renames its markup every few weeks. The buttons here have lost their id and every class name.
+const renamedButtons = () =>
+  FIXTURE.replace('<div class="DSGsX" id="trade-button">', '<div class="zQ9xT">').replace(/class="oQ4Z4"/g, 'class="kP3wL"');
+const clickUp = (qx) => {
+  const up = Array.from(qx.window.document.querySelectorAll("button")).find((b) => /^Up$/.test(b.textContent.trim()));
+  let reached = false;
+  up.addEventListener("click", () => (reached = true));
+  up.dispatchEvent(new qx.window.MouseEvent("click", { bubbles: true, cancelable: true }));
+  return reached;
+};
+
+test("self-healing: renamed Up / Down buttons are still guarded - MAX blocks the third trade (v1.76.0)", async () => {
+  const qx = await boot({ html: renamedButtons(), store: quotexStore({ opened: [deal("a"), deal("b")] }) });
+  try {
+    assert.equal(clickUp(qx), false, "two open, MAX 2: the click is stopped");
+  } finally {
+    qx.close();
+  }
+});
+
+test("self-healing: renamed Up / Down buttons still let a trade through when nothing blocks it (v1.76.0)", async () => {
+  const qx = await boot({ html: renamedButtons(), store: quotexStore({ opened: [] }) });
+  try {
+    assert.equal(clickUp(qx), true, "nothing open: the click goes through");
+    await sleep(2200);
+    const row = qx.askPanel({ type: "GET_HEALTH" }).rows.find((r) => r.name === "Up/Down buttons");
+    assert.notEqual(row.status, "missing", "and Check finds them: " + JSON.stringify(row));
+  } finally {
+    qx.close();
+  }
+});
+
+test("self-healing: the win/loss preview still sits above renamed Up / Down buttons (v1.76.0)", async () => {
+  const qx = await boot({ html: renamedButtons(), store: quotexStore({ opened: [] }) });
+  try {
+    await sleep(900);
+    const block = qx.window.document.querySelector(".zQ9xT");
+    const before = block.previousElementSibling;
+    assert.ok(before && /\d/.test(before.textContent) && /↑|↓/.test(before.textContent), "the preview is right above them: " + (before && before.textContent));
+  } finally {
+    qx.close();
+  }
+});

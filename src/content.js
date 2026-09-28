@@ -474,7 +474,7 @@
           return p.parentElement.querySelector("b");
         }
         // Any site language (v1.24.0): the <p>label</p> + <b>amount</b> block above the Up/Down buttons.
-        const trade = document.getElementById("trade-button");
+        const trade = tradeButtonsBlock();
         for (let el = trade && trade.previousElementSibling; el; el = el.previousElementSibling) {
           const b = el.querySelector(":scope > b");
           if (b && el.querySelector(":scope > p") && /\d/.test(textOf(b))) {
@@ -483,7 +483,7 @@
         }
         return null;
       },
-      tradeButtons: () => document.querySelector("#trade-button button"),
+      tradeButtons: () => getTradeButtons()[0] || null,
       amountInput: () => {
         const legend = Array.from(document.querySelectorAll("legend")).find((el) => textOf(el).toLowerCase() === "investment");
         const field = legend && legend.closest("fieldset");
@@ -3237,7 +3237,7 @@
       projBalWinEl = null,
       projBalLossEl = null;
     function renderProjectedBalances(t, e) {
-      const n = document.getElementById("trade-button");
+      const n = tradeButtonsBlock();
       if (!n || !n.parentElement) {
         projBalRow = projBalWinEl = projBalLossEl = null;
         return;
@@ -3427,11 +3427,63 @@
         maybeAutoOpenPair(t);
       }
     });
-    const TRADE_BTN_SELECTOR = "#trade-button button, .hkjXJ button, .bSenO button";
+    // v1.76.0 (self-healing, step 1): Quotex's Up and Down buttons, found the self-repairing way - the known
+    // names, then by what they are (their arrow icons, then their "Up" / "Down" words), and the name that
+    // worked is remembered. The trade guard (PAYOUT floor, MAX, FAST), the ↑/↓ keys, the greying and the
+    // win/loss preview all use it. Until now the guard knew the buttons by three fixed names only, so a
+    // rename by Quotex would have stopped every block without a word.
+    const TRADE_BTN_NAMES = ["#trade-button button", ".hkjXJ button", ".bSenO button"];
+    let tradeBtnsCache = { at: 0, btns: [] };
+    function findTradeButtonsByWhatTheyAre() {
+      const ours = (el) => !el || isOurElement(el) || !!el.closest("#__tradeCalc");
+      const byIcon = (dir) => {
+        const icon = document.querySelector(
+          'svg[class*="arrow-' + dir + '"], use[href*="arrow-' + dir + '"], use[xlink\\:href*="arrow-' + dir + '"]',
+        );
+        const btn = icon && icon.closest("button");
+        return btn && !ours(btn) ? btn : null;
+      };
+      const up = byIcon("up"),
+        down = byIcon("down");
+      if (up && down && up !== down) {
+        return [up, down];
+      }
+      const buttons = Array.from(document.querySelectorAll("button")).filter((b) => !ours(b));
+      const byWord = (re) => buttons.find((b) => re.test(textOf(b)));
+      const upW = byWord(/^\s*up\b/i),
+        downW = byWord(/^\s*down\b/i);
+      return upW && downW && upW !== downW ? [upW, downW] : [];
+    }
+    // [up, down], or [] when they are not on the page. Kept for half a second - the click guard asks on every
+    // click on the page.
+    function getTradeButtons() {
+      const now = Date.now();
+      if (now - tradeBtnsCache.at < 500 && tradeBtnsCache.btns.length && tradeBtnsCache.btns.every((b) => b.isConnected)) {
+        return tradeBtnsCache.btns;
+      }
+      const found = resolveList("tradeButtons", document, TRADE_BTN_NAMES, findTradeButtonsByWhatTheyAre);
+      tradeBtnsCache = { at: now, btns: found.length >= 2 ? [found[0], found[1]] : [] };
+      return tradeBtnsCache.btns;
+    }
+    // The block holding both buttons - where the win/loss preview goes above.
+    function tradeButtonsBlock() {
+      const byId = document.getElementById("trade-button");
+      if (byId) {
+        return byId;
+      }
+      const [up, down] = getTradeButtons();
+      for (let el = up && up.parentElement; el && el !== document.body; el = el.parentElement) {
+        if (down && el.contains(down)) {
+          return el;
+        }
+      }
+      return null;
+    }
+    const isTradeButton = (el) => !!el && getTradeButtons().some((b) => b === el || b.contains(el));
     let lastTradeBtnLock = null,
       lastTradeBtnEl = null;
     function setTradeButtonsDisabled(t) {
-      const e = document.querySelector(TRADE_BTN_SELECTOR);
+      const e = getTradeButtons()[0] || null;
       if (lastTradeBtnLock === t && e === lastTradeBtnEl) {
         return;
       }
@@ -3439,7 +3491,7 @@
       lastTradeBtnEl = e;
       // v1.27.0: their buttons keep their own state. A blocked trade is stopped in the capture phase by
       // __tcTradeBlocker (which also reads tradingBlocked); the greying is only so you can see it.
-      const n = e ? document.querySelectorAll(TRADE_BTN_SELECTOR) : [];
+      const n = e ? getTradeButtons() : [];
       for (let e = 0; e < n.length; e++) {
         const o = n[e];
         o.style.filter = t ? "grayscale(1)" : "";
@@ -4208,7 +4260,7 @@
     // Trade click guard (double-click, max trades, min payout)
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     window.__tcTradeBlocker = (t) => {
-      if (!t._tcFired && t.target.closest("#trade-button button, .bSenO button, .hkjXJ button")) {
+      if (!t._tcFired && isTradeButton(t.target)) {
         const e = Date.now();
         if (!multiMode && e - lastTradeClickAt < 1500) {
           t.stopPropagation();
@@ -4274,7 +4326,7 @@
       if (t.key === "Enter" || t.code === "Space") {
         // A focused Up/Down button belongs to the platform: let the browser activate it (v1.28.0).
         const focused = document.activeElement;
-        if (focused && focused.closest && focused.closest("#trade-button, .bSenO, .hkjXJ, .deal-amount-input")) {
+        if (focused && focused.closest && (focused.closest("#trade-button, .bSenO, .hkjXJ, .deal-amount-input") || isTradeButton(focused))) {
           return;
         }
       }
@@ -4334,26 +4386,7 @@
         if (!isNaN(n) && n < o) {
           return;
         }
-        const r = (function () {
-          let t = document.querySelectorAll("#trade-button button");
-          if (t.length >= 2) {
-            return t;
-          }
-          const e = document.querySelector("svg.icon-arrow-up-circle")?.closest("button"),
-            n = document.querySelector("svg.icon-arrow-down-circle")?.closest("button");
-          if (e && n) {
-            return [e, n];
-          }
-          const o = Array.from(document.querySelectorAll("button")).filter((t) => !t.closest("#__tradeCalc")),
-            r = o.find((t) => t.querySelector(".WRS3E")?.textContent.trim() === "Up"),
-            a = o.find((t) => t.querySelector(".WRS3E")?.textContent.trim() === "Down");
-          if (r && a) {
-            return [r, a];
-          } else {
-            t = document.querySelectorAll(".hkjXJ button, .bSenO button");
-            return t.length >= 2 ? t : [];
-          }
-        })();
+        const r = getTradeButtons();
         if (r.length >= 2 && hkFocusMode) {
           // Focus mode (v1.28.0): select the button and let your next Enter/Space fire it, so the click
           // is generated by the browser itself. Focus stays put, so repeats are one key each.
