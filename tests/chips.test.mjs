@@ -214,27 +214,35 @@ test("trade clock: the line says how far Quotex's clock is from this one, and bo
 });
 
 // ── v1.75.0: the countdown the way Quotex shows it, kept right by itself ───────────────────────────
-function openTradePage({ rowText = null, ahead = 2, rowFollows = null } = {}) {
+// v1.80.1: everything here runs on the page's clock, which a spec can hold still at a chosen moment (`hold`).
+function openTradePage({ rowText = null, ahead = 2, rowFollows = null, rowTick = 100 } = {}) {
   const now = Math.floor(Date.now() / 1000);
   const store = quotexStore({
     opened: [{ id: "a", asset: "USDDZD_otc", amount: 1000, profit: 0, isDemo: 1, command: 0, openPrice: 100, percentProfit: 80, openTimestamp: now - 10, closeTimestamp: now + 50 }],
   });
   const close = now + 50;
+  const clock = { held: null };
   const setup = (w) => {
+    const realNow = w.Date.now.bind(w.Date);
+    w.Date.now = () => clock.held ?? realNow();
+    // Quotex's server clock `ahead` of this computer's from the start, so no row is learnt against a wrong one.
+    Object.defineProperty(store.__plot.pointsManager, "targetTime", { get: () => w.Date.now() / 1000 + ahead, configurable: true });
     if (rowText == null && !rowFollows) return;
     const row = w.document.createElement("div");
     row.className = "A7vDd";
     row.innerHTML = '<span class="DBihS">USD/DZD (OTC)</span><span class="PiYD4">' + (rowText || "00:50") + '</span><span class="Os2ep">1,800.00</span>';
     w.document.body.appendChild(row);
-    // Quotex's own row counting down against its server clock, rounding the way `rowFollows` says.
+    // Quotex's own row counting down against its server clock on a `rowTick` ms tick, rounding the way
+    // `rowFollows` says. Worked out when it is read, so a timer running late on a busy machine cannot make it
+    // lag more than one tick - that lag, beyond the panel's 0.15 s slack, made the v1.75.2 spec flaky.
     if (rowFollows) {
-      w.setInterval(() => {
-        const left = rowFollows(close - (Date.now() / 1000 + ahead));
-        row.querySelector(".PiYD4").textContent = "00:" + String(left).padStart(2, "0");
-      }, 100);
+      const el = row.querySelector(".PiYD4");
+      const text = () => "00:" + String(rowFollows(close - (Math.floor(w.Date.now() / rowTick) * rowTick) / 1000 - ahead)).padStart(2, "0");
+      Object.defineProperty(el, "textContent", { get: text, configurable: true });
+      w.setInterval(() => (el.firstChild.nodeValue = text()), Math.max(rowTick, 100)); // keeps the row's own text in step too
     }
   };
-  return { store, close, setup, pin: () => Object.defineProperty(store.__plot.pointsManager, "targetTime", { get: () => Date.now() / 1000 + ahead, configurable: true }) };
+  return { store, close, setup, hold: (ms) => (clock.held = ms) };
 }
 const chipTime = (qx) => ((chipEl(qx) && chipEl(qx).textContent) || "").match(/\d{2}:\d{2}(\.\d{2})?/)?.[0];
 const clockLine = (qx) => String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").tradeClock);
@@ -245,7 +253,6 @@ test("countdown: with Quotex's trade history on screen, the chip shows its numbe
   const page = openTradePage({ rowText: "00:46" });
   const qx = await boot({ store: page.store, setup: page.setup });
   try {
-    page.pin();
     await sleep(900);
     assert.equal(chipTime(qx), "00:46", "copied from the trade history");
     await sleep(1500);
@@ -260,7 +267,6 @@ test("countdown: a row that disagrees with the trade's close time is not copied 
   const page = openTradePage({ rowText: "00:30" });
   const qx = await boot({ store: page.store, setup: page.setup });
   try {
-    page.pin();
     await sleep(900);
     const shown = chipTime(qx);
     assert.notEqual(shown, "00:30", "not the disagreeing row");
@@ -277,7 +283,6 @@ test("countdown: without the trade history, the chip counts against Quotex's ser
   const page = openTradePage({ ahead: 5 });
   const qx = await boot({ store: page.store, setup: page.setup });
   try {
-    page.pin();
     await sleep(900);
     const shown = chipTime(qx);
     assert.match(shown, /^00:4[2-5]$/, "by Quotex's clock, in whole seconds: " + shown);
@@ -293,7 +298,6 @@ test("countdown: the rounding is learnt from Quotex's rows (v1.75.0)", async () 
   const page = openTradePage({ rowFollows: Math.floor });
   const qx = await boot({ store: page.store, setup: page.setup });
   try {
-    page.pin();
     await sleep(2400);
     // v1.75.2: rounding down is learnt as a shift just above -1.
     const shift = parseFloat((clockLine(qx).match(/shift ([+-]\d+\.\d+) s/) || [])[1]);
@@ -309,18 +313,54 @@ test("countdown: Quotex's number running ahead of a round-up is learnt, and the 
   const page = openTradePage({ rowFollows: (e) => Math.ceil(e + 0.6) });
   const qx = await boot({ store: page.store, setup: page.setup });
   try {
-    page.pin();
     await sleep(2400);
     const shift = parseFloat((clockLine(qx).match(/shift ([+-]\d+\.\d+) s/) || [])[1]);
     assert.ok(shift > 0.4 && shift < 0.8, "learnt about +0.6: " + clockLine(qx));
     // The trade history goes off screen: the chip now counts by itself.
     qx.window.document.querySelectorAll(".A7vDd").forEach((row) => row.remove());
     await sleep(400);
-    const expect = () => Math.ceil(page.close - (Date.now() / 1000 + 2) + 0.6);
-    const before = expect(),
-      shown = parseInt(chipTime(qx).slice(3), 10),
-      after = expect();
-    assert.ok(shown === before || shown === after, "the chip shows " + shown + ", their rows would show " + before);
+    // v1.80.1: read when the time left sits 0.65-0.75 s into its second. There any shift the check above allows
+    // gives the same whole second as +0.6, and no shift at all gives one less - so a chip read a moment late
+    // cannot pass or fail by luck, and a fallback that ignored the learning would always fail.
+    const left = () => page.close - (Date.now() / 1000 + 2);
+    while (left() % 1 < 0.65 || left() % 1 > 0.75) await sleep(5);
+    const expect = Math.ceil(left() + 0.6),
+      shown = parseInt(chipTime(qx).slice(3), 10);
+    assert.equal(shown, expect, "the chip shows " + shown + ", their rows would show " + expect + " · " + clockLine(qx));
+  } finally {
+    qx.close();
+  }
+});
+
+test("countdown: a trade-history row is learnt as of the moment it was read (v1.80.1)", async () => {
+  // The rows are read at most every 200 ms; the seconds left are worked out on every frame. Up to 1.80.0 a row
+  // up to 200 ms old was learnt against the seconds left now, which pushed the shift up by as much as the 0.2 s
+  // it is there to learn - and the fallback then turned a second before Quotex did. The page's clock is held
+  // still here, so each read and each use happens at a chosen moment. Their rows run 0.6 s ahead.
+  const page = openTradePage({ rowFollows: (e) => Math.ceil(e + 0.6), rowTick: 1 });
+  const qx = await boot({ store: page.store, setup: page.setup });
+  try {
+    await sleep(600);
+    // A moment whose time left is `frac` into its second, `sec` whole seconds from now (close is a whole second).
+    const base = Math.ceil(Date.now() / 1000) * 1000 + 1000;
+    const at = (sec, frac) => base + sec * 1000 + Math.round((1 - frac) * 1000);
+    // 1. A row read 0.42 s into a second (its number turned 0.02 s ago): the shift is above 0.43.
+    page.hold(at(0, 0.42));
+    await sleep(250);
+    // 2. The same row still cached 190 ms later. Learnt against the seconds left then, it says "above 0.62".
+    page.hold(at(0, 0.42) + 190);
+    await sleep(250);
+    // 3. A fresh row 0.39 s into a second (its number about to turn): the shift is at most 0.76.
+    page.hold(at(1, 0.39));
+    await sleep(250);
+    // 4. The rows go; 0.36 s into a second, +0.6 and the learnt middle (0.59-0.61) give the same whole second,
+    //    and the 1.80.0 middle (0.69 or more) gives one more.
+    qx.window.document.querySelectorAll(".A7vDd").forEach((row) => row.remove());
+    page.hold(at(2, 0.36));
+    await sleep(300);
+    const expect = Math.ceil(page.close - at(2, 0.36) / 1000 - 2 + 0.6),
+      shown = parseInt(chipTime(qx).slice(3), 10);
+    assert.equal(shown, expect, "the chip shows " + shown + ", their rows would show " + expect);
   } finally {
     qx.close();
   }

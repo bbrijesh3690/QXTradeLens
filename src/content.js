@@ -1041,8 +1041,11 @@
     function tradeSecondsLeft(deals, labelOf) {
       const state = readQuotexState(),
         offset = serverClockOffset(state),
-        now = Date.now() / 1000 + offset,
+        nowMs = Date.now(),
+        now = nowMs / 1000 + offset,
         rows = tradeHistoryCountdowns(),
+        // How much longer every trade had when those rows were read (v1.80.1).
+        rowsAge = (nowMs - tradeRowsCache.at) / 1000,
         used = new Set(),
         notes = [];
       const out = deals.map((d) => {
@@ -1068,7 +1071,10 @@
         }
         if (match) {
           used.add(match);
-          learnTradeShift(match.secs, exact);
+          // v1.80.1: the rows can be up to 200 ms old, and what a row says is what was left when it was read.
+          // Learning it against the seconds left now pushed the shift up by as much as the 0.2 s it is there to
+          // learn, so the fallback turned a second early.
+          learnTradeShift(match.secs, exact + rowsAge);
           notes.push("Quotex shows " + match.text + " (copied)");
           return { secs: match.secs, via: "trade history" };
         }

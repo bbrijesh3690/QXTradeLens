@@ -5,6 +5,25 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.80.1] - 2026-09-28
+
+### Fixed
+- **With the trade history hidden, the chip's countdown turned a second before Quotex's.** The panel learns how
+  Quotex rounds its countdown from the numbers in their trade history (1.75.2). It reads those at most every
+  200 ms but works out the seconds left on every frame, and it learnt a row up to 200 ms old against the seconds
+  left now. That pushed what it learnt up by as much as the 0.2 s it is there to learn (+0.68 to +0.91 s measured
+  where the answer was +0.6). Each row is now learnt as of the moment it was read.
+
+### Tests
+- The 1.75.2 spec failed about half the time, on this build and on 1.79.0 alike. It set Quotex's clock only after
+  the panel had started, its row ran on a timer that could lag more than the panel's slack, and it read the chip
+  at any moment of the second. The clock is now set from the start, the row is worked out from the page's clock
+  on a 100 ms tick, and the chip is read where every shift the spec accepts gives the same second - and where a
+  countdown that ignored the learning would always fail, which it used to pass most of the time.
+- New: "a trade-history row is learnt as of the moment it was read". The page's clock is held at chosen moments
+  so a cached row is used 190 ms after it was read. Fails on 1.80.0 every time ("the chip shows 43, their rows
+  would show 42"), passes here every time.
+
 ## [1.80.0] - 2026-09-28
 
 Self-healing, step 4 - and a live bug that step 2 caused.
