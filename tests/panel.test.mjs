@@ -96,7 +96,7 @@ test("bug 1: arriving at a trade page from another Quotex page starts the panel"
   }
 });
 
-test("bug 1: turning the panel off from the popup sticks across navigation", async () => {
+test("bug 1: turning the panel off from the toolbar icon sticks across navigation", async () => {
   const qx = await boot();
   try {
     await qx.sendToPanel({ type: "TOGGLE_PANEL" });
@@ -110,7 +110,7 @@ test("bug 1: turning the panel off from the popup sticks across navigation", asy
   }
 });
 
-test("bug 1: a relaunched panel leaves exactly one popup message listener", async () => {
+test("bug 1: a relaunched panel leaves exactly one extension message listener", async () => {
   const qx = await boot();
   try {
     const initial = qx.listeners.size; // launcher listener + panel listener

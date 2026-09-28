@@ -499,16 +499,24 @@ test("MTF: a chart with gaps in it is never marked (v1.39.0)", async () => {
   }
 });
 
-test("MTF: the bars per trend is a setting, clamped (v1.39.0)", async () => {
+test("MTF: the bars per trend is a setting, clamped (v1.39.0; set from the ⚙ menu since v1.70.0)", async () => {
   const qx = await boot({ storage: bigTfStorage });
   try {
-    assert.equal(qx.askPanel({ type: "GET_STATE" }).mtfFlipBars, 3, "default");
-    await qx.sendToPanel({ type: "SET_MTF", flipBars: 99 });
-    assert.equal(qx.askPanel({ type: "GET_STATE" }).mtfFlipBars, 10, "clamped at the top");
-    await qx.sendToPanel({ type: "SET_MTF", flipBars: 1 });
-    assert.equal(qx.askPanel({ type: "GET_STATE" }).mtfFlipBars, 2, "and at the bottom");
-    await qx.sendToPanel({ type: "SET_MTF", flip: false });
-    assert.equal(qx.askPanel({ type: "GET_STATE" }).mtfFlip, false, "and the switch carries");
+    const root = qx.panelRoot();
+    const click = (el) => el.dispatchEvent(new qx.window.MouseEvent("click", { bubbles: true }));
+    click(root.getElementById("__tcMenuBtn"));
+    const bars = () => root.getElementById("__tcMnBars").textContent;
+    assert.equal(bars(), "3", "default");
+    for (let i = 0; i < 12; i++) click(root.querySelector('[data-mn="barsUp"]'));
+    assert.equal(bars(), "10", "clamped at the top");
+    assert.equal(pref(qx, "__tradeCalc_mtf_flip_bars"), "10");
+    for (let i = 0; i < 12; i++) click(root.querySelector('[data-mn="barsDown"]'));
+    assert.equal(bars(), "2", "and at the bottom");
+    const flip = root.querySelector('[data-mn="mtfFlip"]');
+    assert.equal(flip.getAttribute("aria-checked"), "true", "marks are on by default");
+    click(flip);
+    assert.equal(flip.getAttribute("aria-checked"), "false");
+    assert.equal(pref(qx, "__tradeCalc_mtf_flip"), "0", "and the switch carries");
   } finally {
     qx.close();
   }

@@ -8,7 +8,7 @@ It is **read-only towards Quotex**: it never sends anything to the broker, and i
 if you press a shortcut you switched on yourself.
 
 - Install and daily use: [Quick start](#quick-start)
-- Every feature: [The panel](#the-panel) · [On-chart widgets](#on-chart-widgets) · [Shortcuts](#keyboard-shortcuts) · [Popup settings](#popup-settings)
+- Every feature: [The panel](#the-panel) · [On-chart widgets](#on-chart-widgets) · [Shortcuts](#keyboard-shortcuts) · [Settings (⚙ menu)](#settings--menu)
 - When Quotex changes something: [Health check and self-repair](#health-check-and-self-repair)
 - Version history: [CHANGELOG.md](CHANGELOG.md) · Deeper notes: [docs/ANALYSIS.md](docs/ANALYSIS.md)
 
@@ -18,6 +18,7 @@ if you press a shortcut you switched on yourself.
 2. Click **Load unpacked** and pick `qx-calc-updater/qx-calc-updater`.
 3. Open a Quotex trade page (`/en/trade` or `/en/demo-trade`). The panel appears along the top.
 4. After pulling new changes, press the **reload** icon on the extension card, then refresh the Quotex tab.
+5. Click the extension's icon in Chrome's toolbar to show or hide the panel. There is no popup (v1.70.0).
 
 The panel runs on the trade pages only, follows you between demo and live, and disappears on other
 Quotex pages. Drag it by its left grip; the position is remembered.
@@ -29,17 +30,17 @@ Quotex pages. Drag it by its left grip; the position is remembered.
 | **TP** | Your take-profit target for the day. Hover it, type, press Enter |
 | **SL** | Your stop loss. Type a number and press Enter; it stays until you change it. It is a reference only: nothing happens when your balance reaches it |
 | **PAYOUT** | Minimum payout % you are willing to trade. Trades are blocked below it |
-
-**← and → double and halve the trade amount** (v1.63.0), with nothing to configure — the factor is 2 by
-default. The floating `× ÷` widget cycles it to 1.5 or 1.3 if you want a gentler step, and `1` makes the
-arrows use Quotex's own −/+ buttons instead. Hide the widget with the `×` button in the main panel and it
-stays hidden; the arrows keep working, because they read the factor from storage rather than from the widget.
-Arrows are ignored while the caret is in any input, so typing is never intercepted.
-| **MULT** | Multi mode: allows several trades in quick succession (off = one trade per 1.5 s) |
+| **MAX** | The most trades open at once, 1 to 4. Type and press Enter |
+| **FAST** | On: a quick second click on Up/Down goes through. Off: a second click within 1.5 s is ignored. It never changes the amount |
 | **REQ** | How many winning trades are still needed to reach TP, at your current stake and payout |
 | **RISK** | Your stake as a % of balance — green under 2%, amber to 5%, red above |
 | **Sparkline** | Your balance over the last 30 updates, behind the panel |
+| **📊** | Show or hide the multi-timeframe charts (also **C**) |
+| **⚙** | The settings menu — see [Settings](#settings--menu) |
 | **Version** | The build this tab is running, at the right-hand end of the row. Reloading the extension does **not** update an open tab, so if this differs from the installed version, refresh the tab |
+
+**← and → halve and double the trade amount**, always on (v1.69.0): the step is 2, with nothing to set.
+They are ignored while the caret is in any input, so typing is never intercepted.
 
 ### What blocks a trade
 
@@ -88,11 +89,9 @@ running. The diagnostics line carries what it decided — `1 of 2 at or above 90
 
 ## On-chart widgets
 
-- **Trade countdown chips** — a countdown per open trade, plus your projected balance. They can follow
-  the cursor, sit centred, or stay anchored (popup setting).
+- **Trade countdown chips** — a countdown per open trade, plus your projected balance. They follow the
+  cursor, and rest at a fixed spot when the cursor is off the chart.
 - **Win/loss preview** — "↑ win / ↓ loss" balances shown right above the Up/Down buttons.
-- **Investment multiplier** — a small box with **×1.5 / 1.5× / ÷1.5**: multiply or divide your trade
-  amount, and tap the middle button to switch the factor between 1.3 and 1.5.
 - **Multi-timeframe charts** — up to 4 mini candle charts (default 1m, 5m, 15m) drawn from Quotex's own
   candle data. Drag to pan back through older candles, scroll to zoom that chart in or out (kept per timeframe), drag edges to resize, double-click to return to live. The header shows the pair
   and highlights the timeframe your chart is on, and each cell says how many bars it has, with a dashed line and a label at the right edge for the last price.
@@ -104,7 +103,7 @@ running. The diagnostics line carries what it decided — `1 of 2 at or above 90
   it is drawing, on the chart itself.
   **Click a cell's timeframe label** to put the platform chart on that timeframe. Opening a pair
   **runs that walk for you** — the chart visits each of your timeframes once and comes back (only with the
-  tab in front; switch it off in the popup, or set a wait before it starts),
+  tab in front; switch it off in the ⚙ menu, or set a wait before it starts),
   and the ↻ button does the same on demand. From then on a **rolling 1-minute history**
   per pair keeps the cells current as you trade, and collected candles are kept per pair (last 6) so
   switching pairs does not lose them. Press **C** to show or hide the panel.
@@ -165,8 +164,8 @@ Active on the trade page when you are not typing in a field.
 
 | Key | Action |
 |---|---|
-| **↑ / ↓** | **Place an Up / Down trade** (off by default; enable in the popup). With **Focus Mode** on, ↑/↓ select the button and your **Enter** places the trade |
-| **← / →** | Decrease / increase the trade amount (off by default). With **Focus Mode** on, they select the amount −/+ button and your **Enter** presses it |
+| **↑ / ↓** | **Place an Up / Down trade** (off by default; turn on in the ⚙ menu). With **Focus Mode** on, ↑/↓ select the button and your **Enter** places the trade |
+| **← / →** | Halve / double the trade amount (always on) |
 | **S / D** | Previous / next chart timeframe |
 | **F / Shift+F / G** | Next / previous pair tab |
 | **R** | Open the highest-paying OTC pairs (at or above your minimum) and close the rest |
@@ -183,23 +182,28 @@ Tabs paying below your minimum are also closed automatically every 5 s, when Quo
 button on them — and if that would leave you with nothing tradeable, a pair above the floor is opened
 first. See [The payout floor works both ways](#the-payout-floor-works-both-ways).
 
-## Popup settings
+## Settings (⚙ menu)
 
-| Section | Settings |
+The **⚙** button at the right of the bar opens a small menu. It closes on ⚙, Escape, or a press anywhere
+outside it. (MAX, the trade cap, is on the bar itself.)
+
+| Part | Settings |
 |---|---|
-| **Display** | Panel scale, chip position (cursor / centre / anchored), light–dark theme, show or hide the panel |
-| **Risk** | Max concurrent trades (1–4) |
-| **Hotkeys** | ↑↓ places trades, ←→ changes the trade amount (both off by default), and Hotkey Focus Mode (your Enter does the pressing, so the click comes from the browser) |
-| **Multi-timeframe charts** | Which timeframes (up to 4), whether a new pair is filled in automatically, and how long a pair must stay on screen first (default 15 s) |
-| **Health** | "Check Quotex compatibility" — see below |
-| **Deposits** | "Scan Deposits" — see below |
+| **Theme, Size** | Dark or light; − / + to make the panel smaller or bigger |
+| **↑↓ places trades** | Off until you turn it on |
+| **Focus Mode** | ↑/↓ only select Up / Down, and your Enter places the trade, so the click comes from the browser |
+| **Charts** | Timeframes (up to 4), fill charts when a pair opens, mark when a chart turns, bars to confirm a turn, and how long to wait before filling |
+| **Quotex compatibility** | **Check** — see below |
+| **Deposits** | **Scan** — see below |
 
 ### Deposit scanner
 
-On the Balance page, **Scan Deposits** walks every page of your transaction history and totals all
-**successful deposits of every payment method**, with a per-method breakdown. Totals are kept separate
-per currency (for example ₹ and $) and are never converted. Failed deposits and withdrawals are excluded.
-It works in any site language, and returns the tab to where it started.
+**Scan** in the ⚙ menu opens your Balance page in the same tab, walks every page of your transaction
+history, and totals all **successful deposits of every payment method**, with a per-method breakdown. Totals
+are kept separate per currency (for example ₹ and $) and are never converted. Failed deposits and
+withdrawals are excluded. While it runs, a small pill on the Balance page shows which page it is on and has
+a **Stop** button. It then brings you back to the trade page, opens the menu on the result, and keeps that
+result until the next scan. It works in any site language.
 
 ## Health check and self-repair
 
@@ -216,7 +220,7 @@ Two layers deal with that:
    (the account label next to it, the "Payout" text, a pair name beside a countdown, and so on). When
    the fallback works, the element's new class is remembered, so later lookups are fast again.
 
-**Check Quotex compatibility** in the popup reports the current state of each of those:
+**Check** (⚙ menu → Quotex compatibility) reports the current state of each of those:
 
 | Mark | Meaning |
 |---|---|
@@ -228,9 +232,9 @@ Two layers deal with that:
 If you ever see ❌, send a screenshot of that list; it names exactly what moved.
 
 The list also reports the **charts auto-fill** in plain words (`ready — nothing blank`, `waiting: a
-trade is open`, `filled this pair 4m ago`, `switched off in the popup`), and **which build the tab is
-running** next to the installed version. If those two differ, the tab was never refreshed after the
-extension was reloaded, and it is still running the old code.
+trade is open`, `filled this pair 4m ago`, `switched off in the ⚙ menu`), and **says when the tab is
+running an old copy**: after the extension is reloaded, a tab that was not refreshed keeps the old code,
+and the check tells you to refresh it.
 
 ### The diagnostics line
 
@@ -252,17 +256,15 @@ into a single look.
   the relabel does nothing — the tab title still says "Demo trading". Nothing is painted over their page
   to compensate; if a later build puts the label back, the relabel resumes by itself.
 - **Your data stays on your machine.** Settings live in Chrome storage and in this site's own storage under
-  opaque names. **The extension makes no network requests at all** — not on Quotex, not in the background,
-  not in the popup. The Google Sheet journal went in v1.65.0 and the popup's Google Fonts in v1.65.2; the
-  popup now uses your system's own fonts.
+  opaque names. **The extension makes no network requests at all** — not on Quotex, not in the background.
+  The Google Sheet journal went in v1.65.0, and the popup, with its fonts, in v1.70.0.
 - **Footprint on Quotex's page is kept small**: no webfont request, no stylesheet naming their classes, and
   their buttons are never disabled by the panel (blocked trades are stopped before the click reaches them).
-  Two things are written into their page: "Show Live as Demo", which can be switched off in the popup, and
-  the trade-history "Entry" tags, which are always on.
+  Two things are written into their page, both always on: "Show Live as Demo" and the trade-history
+  "Entry" tags.
   Amount changes are **typed** into Quotex's field through the browser's own editing pipeline, so they look
   like you typing rather than a script writing the value. Trades placed by the ↑/↓ shortcut dispatch a
-  scripted click; switch on **Hotkey Focus Mode** and your Enter does the pressing — for the trade buttons
-  and for the amount −/+ — leaving nothing scripted about it.
+  scripted click; switch on **Focus Mode** and your Enter does the pressing, leaving nothing scripted about it.
 - **Trades are only placed by you** — by clicking Quotex's buttons, or by the ↑/↓ shortcut if you
   enabled it.
 
@@ -272,13 +274,13 @@ into a single look.
 |---|---|
 | `src/content.js` | **Source** of the main panel. Edit this, not the built file |
 | `tools/` | `build.mjs` (build), `verify-equivalence.mjs` (proof check), `unminify.mjs` + `rename-map.json` (one-off source recovery) |
-| `tests/` | jsdom behavior specs plus a fixture copied from the live Quotex DOM. `helpers.mjs` holds the shared harness; the specs are split by area (`panel`, `platform`, `mtf`, `mtf-fill`, `scan`, `chips`, `privacy`, `popup`) so Node can run them in parallel |
+| `tests/` | jsdom behavior specs plus a fixture copied from the live Quotex DOM. `helpers.mjs` holds the shared harness; the specs are split by area (`panel`, `platform`, `mtf`, `mtf-fill`, `scan`, `chips`, `privacy`, `menu`, `deposits`, `extension`) so Node can run them in parallel |
 | `qx-calc-updater/qx-calc-updater/` | The unpacked extension (load this folder in `chrome://extensions`) |
 | `…/manifest.json` | Extension manifest. `version` is the source of truth for releases |
 | `…/content.js` | Main panel, **generated** by `npm run build` from `src/content.js` (committed so the folder loads without building) |
 | `…/chart_reader.js` | Read-only bridge to Quotex's chart and internal state |
-| `…/service_worker.js` | Background: dev reload, and clearing any block left by the loss-streak lock removed in v1.65.0 |
-| `…/popup.html`, `popup.js` | Toolbar popup: settings, health check, deposit scanner |
+| `…/service_worker.js` | Background: the toolbar icon's show / hide, the deposit scan, dev reload, and clearing leftovers of removed features |
+| `…/deposit_scan.js` | The deposit scan, loaded by the service worker: walks the Balance pages and reads Quotex's data |
 | `CLAUDE.md` | Working notes: the rules a change is judged against, what cannot be verified from outside the browser, and how to pick the work up cold |
 | `docs/ANALYSIS.md` | Capability map, known bugs and the refactor plan |
 | `CHANGELOG.md` | Version history |
@@ -304,7 +306,7 @@ npm install
 - `npm run verify` checks that a build is the same program as the v1.19.0 release. Useful for refactors
   that should not change behavior; once a fix lands, a difference is expected.
 
-Other extension files (`popup.*`, `service_worker.js`, `chart_reader.js`, `manifest.json`) are plain
+Other extension files (`service_worker.js`, `deposit_scan.js`, `chart_reader.js`, `manifest.json`) are plain
 source and are edited in place.
 
 ## Release workflow

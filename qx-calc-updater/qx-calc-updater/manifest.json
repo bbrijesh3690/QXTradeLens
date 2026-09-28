@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "QXTradeLens Controller",
-  "version": "1.69.0",
+  "version": "1.70.0",
   "description": "Professional trading controls and real-time scaling for QXTradeLens.",
   "permissions": [
     "storage",
@@ -55,8 +55,7 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "QXTradeLens Controls",
-    "default_popup": "popup.html",
+    "default_title": "QXTradeLens - show / hide the panel",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png"

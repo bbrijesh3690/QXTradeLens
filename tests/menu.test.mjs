@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sleep, pref, quotexStore, deal, boot, tradeReachesPlatform } from "./helpers.mjs";
+import { sleep, pref, quotexStore, deal, boot, tradeReachesPlatform, bigTfStorage, healthRow } from "./helpers.mjs";
 
 const $ = (qx, sel) => qx.panelRoot().querySelector(sel);
 const click = (qx, el) => el.dispatchEvent(new qx.window.MouseEvent("click", { bubbles: true, composed: true }));
@@ -167,6 +167,57 @@ test("⚙ menu: Check lists every lookup, and says when the tab is running an ol
     delete qx.window.chrome.runtime.id;
     click(qx, item(qx, "health"));
     assert.match(out.textContent, /updated - refresh this tab/);
+  } finally {
+    qx.close();
+  }
+});
+
+// ── Charts (v1.70.0: moved from the deleted popup) ───────────────────────────────────────────────
+
+test("⚙ menu: the chart settings are in it, showing their current values (v1.70.0)", async () => {
+  const qx = await boot({ storage: bigTfStorage });
+  try {
+    openMenu(qx);
+    assert.match(menuText(qx), /Charts/);
+    assert.equal($(qx, "#__tcMnTfs").value, "1m, 5m, 15m");
+    assert.equal(item(qx, "mtfFill").getAttribute("aria-checked"), "true", "fill on by default");
+    assert.equal(item(qx, "mtfFlip").getAttribute("aria-checked"), "true", "turn marks on by default");
+    assert.equal($(qx, "#__tcMnBars").textContent, "3");
+    assert.equal($(qx, "#__tcMnWait").value, "3", "the wait stored for the tests");
+  } finally {
+    qx.close();
+  }
+});
+
+test("⚙ menu: timeframes are cleaned, saved and shown on the charts at once (v1.70.0)", async () => {
+  const qx = await boot({ storage: bigTfStorage, sync: {} });
+  try {
+    openMenu(qx);
+    const box = $(qx, "#__tcMnTfs");
+    box.focus();
+    box.value = "15m, 1m, 1m, 2h, 5m, 30m";
+    press(qx, box, "Enter");
+    assert.equal(box.value, "1m, 5m, 15m, 30m", "sorted, duplicates and unknown ones dropped");
+    assert.deepEqual(JSON.parse(pref(qx, "__tradeCalc_mtf_tfs")), ["1m", "5m", "15m", "30m"]);
+    assert.deepEqual([...qx.window.chrome.storage.sync.data.__tradeCalc_mtf_tfs], ["1m", "5m", "15m", "30m"], "in sync too");
+    const cells = [...qx.panelRoot().querySelectorAll("#__tcMTF .tcMtfCell")].map((c) => c.getAttribute("data-tf"));
+    assert.deepEqual(cells, ["1m", "5m", "15m", "30m"], "the chart box was rebuilt with them");
+  } finally {
+    qx.close();
+  }
+});
+
+test("⚙ menu: the fill switch turns the auto-fill off, and the check says where (v1.70.0)", async () => {
+  const qx = await boot({ storage: bigTfStorage, sync: {} });
+  try {
+    openMenu(qx);
+    click(qx, item(qx, "mtfFill"));
+    assert.equal(item(qx, "mtfFill").getAttribute("aria-checked"), "false");
+    assert.equal(pref(qx, "__tradeCalc_mtf_autofill"), "0");
+    assert.equal(qx.window.chrome.storage.sync.data.__tradeCalc_mtf_autofill, false);
+    assert.equal(healthRow(qx, "Charts auto-fill").status, "idle", "the check stops expecting fills");
+    await sleep(2200); // the diagnostics line is written every 2 s
+    assert.equal(JSON.parse(pref(qx, "__tradeCalc_diag")).autofill, "switched off in the ⚙ menu", "and says where it was switched off");
   } finally {
     qx.close();
   }

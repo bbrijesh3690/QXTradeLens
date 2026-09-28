@@ -224,14 +224,24 @@ test("MTF: a pair passed through is not filled; one you stay on is (v1.33.0)", a
   }
 });
 
-test("MTF: the wait defaults to none and is clamped to sane values (v1.36.0)", async () => {
+test("MTF: the wait defaults to none and is clamped to sane values (v1.36.0; set from the ⚙ menu since v1.70.0)", async () => {
   const plain = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_settle: undefined } });
   try {
-    assert.equal(plain.askPanel({ type: "GET_STATE" }).mtfSettle, 0, "fills the moment you open a pair");
-    await plain.sendToPanel({ type: "SET_MTF", settle: 999 });
-    assert.equal(plain.askPanel({ type: "GET_STATE" }).mtfSettle, 120, "clamped at the top");
-    await plain.sendToPanel({ type: "SET_MTF", settle: -5 });
-    assert.equal(plain.askPanel({ type: "GET_STATE" }).mtfSettle, 0, "and at the bottom");
+    const root = plain.panelRoot();
+    root.getElementById("__tcMenuBtn").dispatchEvent(new plain.window.MouseEvent("click", { bubbles: true }));
+    const box = root.getElementById("__tcMnWait");
+    assert.equal(box.value, "0", "fills the moment you open a pair");
+    const type = (v) => {
+      box.focus();
+      box.value = v;
+      box.dispatchEvent(new plain.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    };
+    type("999");
+    assert.equal(box.value, "120", "clamped at the top");
+    assert.equal(pref(plain, "__tradeCalc_mtf_settle"), "120");
+    type("-5");
+    assert.equal(box.value, "0", "and at the bottom");
+    assert.equal(pref(plain, "__tradeCalc_mtf_settle"), "0");
   } finally {
     plain.close();
   }

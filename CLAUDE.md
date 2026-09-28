@@ -9,8 +9,9 @@ A Chrome MV3 extension that adds a trading-discipline panel to `qxbroker.com`. I
 risk and multi-timeframe charts while you trade, and repairs itself when Quotex renames their CSS.
 
 `src/content.js` is the source of the panel (~8,000 lines, one IIFE). Everything else is small:
-`chart_reader.js` (MAIN-world read-only bridge), `service_worker.js` + `deposit_scan.js` (the deposit scan),
-`popup.*` (only Show / Hide and the chart settings since v1.69.0 - see the redesign item below).
+`chart_reader.js` (MAIN-world read-only bridge), `service_worker.js` (toolbar-icon show / hide, start-up
+clean-up) + `deposit_scan.js` (the deposit scan). **There is no popup** since v1.70.0: every setting is on
+the bar or in its ⚙ menu.
 
 ## The thumb rule
 
@@ -32,9 +33,8 @@ Every change is judged against three words, in this order:
   their store. `chart_reader.js` carries the full contract at the top of the file — read it before
   touching anything in the page's own world.
 - **No network at all.** v1.65.0 removed the Google Sheet journal and the local lock daemon on 127.0.0.1;
-  v1.65.2 removed the popup's Google Fonts. No shipped file makes a request or names an external URL, and
-  `tests/popup.test.mjs` fails if the popup's markup or stylesheet ever does again. Fonts are the system's,
-  through `--font-sans` / `--font-mono` in popup.html - use those rather than naming a typeface.
+  v1.65.2 removed the popup's Google Fonts, and v1.70.0 the popup itself. No shipped file makes a request
+  or names a site other than Quotex, and `tests/extension.test.mjs` fails if one ever does.
 - **Nothing trades by itself.** A trade happens because the user clicked, or pressed a hotkey they
   enabled.
 - **The panel's own elements are invisible to its finders** (`isOurElement`), or a semantic lookup
@@ -66,7 +66,7 @@ Three things exist because of this:
   `zoom / have / drawn / pannedTo / atLive` into the site's own storage every 2 s, under the hashed key
   for `__tradeCalc_diag`. Any tab on the
   origin can read it back. This is how a live problem gets diagnosed in one round trip.
-- **The health check** (panel ⚙ menu → Quotex compatibility → Check; the popup until v1.69.0) reports every
+- **The health check** (panel ⚙ menu → Quotex compatibility → Check; it was in the popup until v1.69.0) reports every
   lookup as ok / fallback / missing, and says when the tab is running an old copy — an extension reload does
   not update an open tab, and that mismatch looks exactly like "the fix did nothing". It spots it by
   `chrome.runtime.id` going away, which is what a reload does to the old script's context.
@@ -96,6 +96,7 @@ npm test               # all specs, ~3.5 min (files run in parallel; tests/mtf.t
 node --test tests/mtf.test.mjs                      # one area, ~20 s
 node --test --test-name-pattern="v1.49" tests/...   # one change
 CONTENT_JS=path npm test                            # against another build
+# A new spec file must be added to the "test" script in package.json - it lists the files by name.
 ```
 
 `tests/helpers.mjs` holds the jsdom harness: a fake Quotex store shaped like theirs, a canvas stub
@@ -175,15 +176,15 @@ check will say so if only one happened.
   always on the panel; empty + Enter clears it. Do not delete `__tradeCalc_sl` in any clean-up: it is the
   SL. `getDayKey` stays - TP saving dates itself by the trading day, and the account timezone is now
   cached the first time that happens rather than at load.
-- **The redesign (started 2026-09-28): one panel - the top bar - and no popup.** Step 1 is v1.69.0: the ⚙
-  menu (theme, size, ↑↓ switch, Focus Mode, compatibility check, deposit scan), MAX on the bar, MULT renamed
-  FAST (it only lets a quick second trade click through), the Invest ×÷ box removed (→ doubles, ← halves,
-  always on, step fixed at 2), Chip Position fixed to follow-cursor, Show Live as Demo always on. **Next and
-  last: the chart panel**, which takes the popup's chart settings; then popup.html/js go, and the toolbar
-  icon should toggle the bar (`chrome.action.onClicked` - it only fires once `default_popup` is removed).
-  Not verified live yet: the deposit scan walking the Balance pages from the trade page and coming back, the
-  pill on the Balance page, and the service worker staying alive through a long scan (every page load is an
-  extension event, which should keep it up). Covered by specs only.
+- **The redesign (2026-09-28): one panel - the top bar - and no popup.** v1.69.0: the ⚙ menu (theme, size,
+  ↑↓ switch, Focus Mode, compatibility check, deposit scan), MAX on the bar, MULT renamed FAST (it only lets
+  a quick second trade click through - it is not Martingale; nothing ever changes the amount by itself), the
+  Invest ×÷ box removed (→ doubles, ← halves, always on, step fixed at 2), Chip Position fixed to
+  follow-cursor, Show Live as Demo always on. v1.70.0: the chart settings moved into the ⚙ menu (the user
+  chose the menu over the chart box), the popup was deleted, and clicking the toolbar icon shows / hides the
+  bar (`chrome.action.onClicked`, which only fires because the manifest names no `default_popup`). The
+  user confirmed v1.69.0 live ("all good"), deposit scan included. **Still to look at: the chart panel
+  itself** - the user said it comes last.
 - **Requested for after the redesign - the chips around Quotex's own timer.** Quotex shows a timer beside the
   running candle. The user wants the running amount (dynamic) just *above* that timer and the trade countdown
   just *below* it, replacing follow-cursor. Their timer is part of the WebGL chart or its overlay - check which

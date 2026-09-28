@@ -5,6 +5,35 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.70.0] - 2026-09-28
+
+### Changed
+- **The chart settings are in the ⚙ menu**, under "Charts": the timeframes (typed, Enter to save), fill
+  charts when a pair opens, mark when a chart turns, bars to confirm a turn (− / +), and the wait before
+  filling (typed, in seconds). They apply to the chart box at once, as they did from the popup, and your
+  values carry over.
+- **Clicking the extension's icon shows or hides the panel.** It is what the popup's Show / Hide button did.
+  The bar's own × and the "QXTradeLens" button still work too.
+
+### Removed
+- **The popup.** Everything it held is on the bar or in the ⚙ menu, so `popup.html` and `popup.js` are
+  deleted and the manifest names no popup. The panel no longer answers the popup's `GET_STATE` and
+  `SET_MTF` messages.
+
+### Fixed
+- **`npm test` ran neither of the two spec files added in 1.69.0.** The test script lists its files by
+  name, and `menu.test.mjs` and `deposits.test.mjs` were never added to it. Both were run on their own
+  before release and passed; they are in the list now, along with the new `extension.test.mjs`. A stale
+  entry for `cover.test.mjs`, deleted in v1.59.0, is gone from it too.
+
+### Tests
+- New `extension.test.mjs`: no popup in the manifest or the folder, the icon click sends `TOGGLE_PANEL` to
+  its tab, the worker starts and stops the deposit scan, and the start-up clean-up. It also carries the
+  "no network" guard that was in the popup's spec, now over every shipped file: none may name a site other
+  than Quotex.
+- Three new menu specs for the chart settings; the two chart specs that drove `SET_MTF` / `GET_STATE` now
+  go through the menu. All five fail on 1.69.0.
+
 ## [1.69.0] - 2026-09-28
 
 The first step of the redesign: one panel, the top bar, instead of a bar, a floating box and a popup. The

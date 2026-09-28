@@ -1,6 +1,17 @@
 // v1.69.0: the deposit scan moved here from the popup; the panel starts it from its ⚙ menu.
 importScripts("deposit_scan.js");
 
+// v1.70.0: there is no popup any more. Clicking the toolbar icon shows or hides the panel on that tab,
+// which is what the popup's Show / Hide button did. (onClicked only fires because the manifest names no
+// default_popup.) Any other tab has no panel to answer, and the message is dropped.
+chrome.action.onClicked.addListener((tab) => {
+  if (!tab || tab.id == null) return;
+  try {
+    const r = chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_PANEL" });
+    if (r && typeof r.catch === "function") r.catch(() => {});
+  } catch (e) {}
+});
+
 const QX_TAB_PATTERNS = ["*://qxbroker.com/*", "*://*.qxbroker.com/*"];
 const QX_RELOAD_PENDING = "__qxDevReloadTabs";
 
@@ -72,7 +83,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 
 // ── Settings that no longer exist ─────────────────────────────────────────────
 // Cleared from sync so they cannot linger. v1.65.0 did this from the popup, which only ran when it was
-// opened; the popup is going away, so it happens here on every start. Best effort and never fatal.
+// opened; the popup is gone (v1.70.0), so it happens here on every start. Best effort and never fatal.
 const REMOVED_SYNC_KEYS = [
   "sheetUrl", "__tradeCalc_sl_post_tp_gap", "__tradeCalc_sys_lock_disabled", "__tradeCalc_marquee_msg",
   "__tradeCalc_marquee_speed", "__tradeCalc_mtf_count", "__tradeCalc_entry_tags", "sectionVisibility",
