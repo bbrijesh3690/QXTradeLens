@@ -223,6 +223,21 @@ test("⚙ menu: the fill switch turns the auto-fill off, and the check says wher
   }
 });
 
+test("charts closed: the auto-fill says so, rather than 'starting up' for good (v1.70.2)", async () => {
+  // Seen live on 1.70.1: the charts were never opened after a refresh, so the auto-fill never ran and its
+  // label stayed on "starting up" - read as something being stuck.
+  const qx = await boot({ storage: { ...bigTfStorage, __tradeCalc_mtf_on: "0" } });
+  try {
+    assert.equal(qx.panelRoot().getElementById("__tcMTF"), null, "the charts are closed");
+    await sleep(500); // the panel's 200 ms loop has not run yet the moment it starts
+    assert.equal(healthRow(qx, "Charts auto-fill").value, "charts are hidden (press C)");
+    await sleep(2200); // the diagnostics line is written every 2 s
+    assert.equal(JSON.parse(pref(qx, "__tradeCalc_diag")).autofill, "charts are hidden (press C)");
+  } finally {
+    qx.close();
+  }
+});
+
 // ── Deposits ─────────────────────────────────────────────────────────────────────────────────────
 
 const RESULT = {

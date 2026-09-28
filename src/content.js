@@ -7859,6 +7859,9 @@
       (function () {
         const t = byId("__tcMTF");
         if (!t) {
+          // v1.70.2: the pair is only read, and the auto-fill only runs, while the charts are open. Closed
+          // since the page loaded, the label used to stay on "starting up" for good; it says why instead.
+          mtfAutofillReason = mtfAutofill ? "charts are hidden (press C)" : "switched off in the ⚙ menu";
           return;
         }
         const e = Date.now();

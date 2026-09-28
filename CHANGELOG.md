@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.70.2] - 2026-09-28
+
+### Fixed
+- **The charts auto-fill says "charts are hidden (press C)" while the charts are closed**, instead of
+  "starting up" for good. The pair is only read, and the auto-fill only runs, while the chart box is open;
+  closed since the page loaded, nothing ever replaced the first label, which read as something being stuck
+  (seen live on 1.70.1). Only the wording changes - the compatibility check and the diagnostics line both
+  carry it. The spec fails on 1.70.1, where the label is still "starting up".
+
 ## [1.70.1] - 2026-09-28
 
 ### Fixed
