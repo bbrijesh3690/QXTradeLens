@@ -298,6 +298,7 @@
         tabClose: [".LtauB", ".rGA6o"],
         chartClose: ["#graph canvas", "canvas.layer.plot", "#graph"],
         chartCanvas: ["#graph canvas.layer.plot", "#graph canvas", "#graph"],
+        chartBox: ["#graph"],
       },
       queryFirstWithin = (t, e) => {
         if (!t) {
@@ -442,6 +443,29 @@
       return out;
     }
     let assetListLookAt = 0;
+    // The page's largest canvas, at least 200 px wide: Quotex's chart is one canvas and nothing else on the
+    // page comes near its size.
+    function largestCanvas() {
+      let best = null,
+        bestArea = 0;
+      for (const c of document.querySelectorAll("canvas")) {
+        if (isOurElement(c)) {
+          continue;
+        }
+        const r = c.getBoundingClientRect(),
+          w = r.width || c.clientWidth || 0,
+          h = r.height || c.clientHeight || 0;
+        if (w >= 200 && w * h > bestArea) {
+          best = c;
+          bestArea = w * h;
+        }
+      }
+      return best;
+    }
+    // Quotex's chart block: "#graph", a remembered name, or the block around the largest canvas.
+    function getChartBox() {
+      return findEl("chartBox");
+    }
     const CLOCK_VALUE_RE = /^\d{1,2}:\d{2}(:\d{2})?$/;
     // The inputs of Quotex's trade panel: those in the few blocks around the Up / Down buttons.
     function tradePanelInputs() {
@@ -511,7 +535,7 @@
         }
         assetListLookAt = now;
         const tabs = getPairTabs(),
-          avoid = [...tabs, document.getElementById("graph"), tradeButtonsBlock()].filter(Boolean);
+          avoid = [...tabs, getChartBox(), tradeButtonsBlock()].filter(Boolean);
         const rows = [];
         const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
         for (let n = walker.nextNode(); n && rows.length < 60; n = walker.nextNode()) {
@@ -599,7 +623,13 @@
         const others = Array.from(box.querySelectorAll("button, [role='button']")).filter((el) => !field.contains(el));
         return others.length === 1 ? others[0] : null;
       },
-      chartCanvas: () => document.querySelector("#graph canvas") || document.getElementById("graph"),
+      // v1.79.0 (self-healing): the chart - the largest canvas on the page - and the block holding it. Until
+      // now both were known only as "#graph"; a rename would have taken the chips and the chart clicks with it.
+      chartCanvas: () => largestCanvas(),
+      chartBox: () => {
+        const c = largestCanvas();
+        return (c && c.parentElement) || null;
+      },
     };
     // A selector that finds `el` first in the document: its first class, or parent class + tag.
     function selectorFor(el) {
@@ -3220,12 +3250,13 @@
       // v1.25.0: a running trade's row holds both a pair name and a mm:ss countdown, and no settled marker.
       const rows = resolveList("openTradeRows", document, [".ib6yR", ".RLj1p"], (root) => {
         const clocks = leafMatches(root, CLOCK_ONLY_RE);
+        const chart = getChartBox();
         const seen = new Set();
         const out = [];
         for (const clock of clocks) {
           for (let el = clock.parentElement, hops = 0; el && hops < 4; el = el.parentElement, hops++) {
             // Stop before anything page-sized: a deal row is a small block holding one pair and one clock.
-            if (el.closest("#__tradeCalc") || el.querySelector("#graph, #trade-button, #tab-active")) {
+            if (el.closest("#__tradeCalc") || el.querySelector("#graph, #trade-button, #tab-active") || (chart && el.contains(chart))) {
               break;
             }
             const text = textIn(el);
@@ -5001,7 +5032,7 @@
     // is one WebGL canvas, see CLAUDE.md). This only reports which, for the diagnostics line; nothing moves.
     const probeTimerTexts = new WeakMap();
     function candleTimerProbe() {
-      const canvas = document.querySelector("#graph canvas") || document.querySelector("canvas.layer.plot");
+      const canvas = findEl("chartCanvas");
       if (!canvas) {
         return "no chart on the page";
       }
@@ -5157,9 +5188,7 @@
         if (
           !(function () {
             const t =
-              document.querySelector("#graph canvas") ||
-              document.querySelector("canvas.layer.plot") ||
-              document.querySelector("#graph") ||
+              findEl("chartCanvas") ||
               document.querySelector(".trading-chart__wrapper");
             return !(
               !t ||
@@ -5826,7 +5855,7 @@
         if (!chipRaf) {
           chipRaf = requestAnimationFrame(() => {
             chipRaf = 0;
-            const t = document.getElementById("graph");
+            const t = getChartBox();
             positionChip(byId(ids.tcTradeTimer), t);
             positionChip(byId(ids.tcProjChip), t);
           });
@@ -5835,7 +5864,7 @@
     };
     window.__tcTimerMouseLeave = () => {
       cursorInGraph = false;
-      const t = document.getElementById("graph");
+      const t = getChartBox();
       positionChip(byId(ids.tcTradeTimer), t);
       positionChip(byId(ids.tcProjChip), t);
     };
@@ -5944,7 +5973,7 @@
         stopTimerLoop();
         return;
       }
-      const n = document.getElementById("graph");
+      const n = getChartBox(); // v1.79.0: survives a rename of "#graph"
       if (!n) {
         if (e) {
           e.style.display = "none";

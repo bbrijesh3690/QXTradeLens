@@ -325,3 +325,30 @@ test("countdown: Quotex's number running ahead of a round-up is learnt, and the 
     qx.close();
   }
 });
+
+// ── v1.79.0 (self-healing): Quotex renames "#graph" ────────────────────────────────────────────────
+// The chart block was known by that one id, in the panel (the chips live in it) and in the bridge that
+// reads the balance, the deals and the candles. A rename would have stopped both without a word.
+test("self-healing: the chart block renamed - the data still arrives and the chips still stand on the chart (v1.79.0)", async () => {
+  const html = FIXTURE.replace('<div id="graph"><canvas class="layer plot"></canvas></div>', '<div class="xY9zq"><canvas class="k2Pq"></canvas></div>');
+  assert.ok(!/id="graph"|layer plot/.test(html), "the fixture really has no known name left");
+  const now = Math.floor(Date.now() / 1000);
+  const store = quotexStore({
+    balance: 43662.072,
+    demoBalance: 43662.072,
+    activeAccount: "demo",
+    opened: [{ id: "a", asset: "USDDZD_otc", amount: 1000, profit: 0, isDemo: 1, command: 0, openPrice: 100, percentProfit: 80, openTimestamp: now - 10, closeTimestamp: now + 50 }],
+  });
+  const qx = await boot({ html, store });
+  try {
+    await sleep(900);
+    const row = healthRow(qx, "Balance value");
+    assert.equal(row.via, "store", "the bridge found the chart and read the platform: " + row.via);
+    const box = qx.window.document.querySelector(".xY9zq");
+    const chips = [...box.children].filter((d) => (d.style.cssText || "").includes("translate(-50%"));
+    assert.ok(chips.some((d) => /[⏱]/.test(d.textContent || "") && visible(d)), "the countdown chip is on the renamed chart");
+    assert.ok(chips.some((d) => /win/.test(d.textContent || "") && visible(d)), "and the amount chip");
+  } finally {
+    qx.close();
+  }
+});

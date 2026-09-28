@@ -42,10 +42,15 @@
   // the orphaned plot still satisfies both checks, so the panel would read a dead candle array
   // forever (observed 2026-07-30 after a trade-room re-init). Node identity and object shape cannot
   // prove liveness — only re-deriving from the current fiber can.
+  // v1.79.0 (self-healing): "#graph" first; if Quotex renames it, every canvas on the page is tried, since
+  // the chart is the one whose React owner holds a plot with candles. Reading only, as everywhere here.
   function findPlot() {
     var graph = document.getElementById('graph');
-    if (!graph) return null;
-    var cans = [graph.querySelector('canvas.layer.plot'), graph.querySelector('canvas'), graph];
+    var cans = graph ? [graph.querySelector('canvas.layer.plot'), graph.querySelector('canvas'), graph] : [];
+    if (!graph) {
+      var all = document.getElementsByTagName('canvas');
+      for (var c = 0; c < all.length; c++) cans.push(all[c]);
+    }
     for (var i = 0; i < cans.length; i++) {
       var node = cans[i];
       if (!node) continue;

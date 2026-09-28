@@ -5,6 +5,19 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.79.0] - 2026-09-28
+
+Self-healing, step 4.
+
+### Fixed
+- **Everything that reads Quotex's data depended on one id, `#graph`.** The bridge that reads the balance, the
+  open deals, the candles and Quotex's clock found the chart only by that id; renamed, all of it would have
+  stopped - balance, countdowns, MAX, charts - with no error. It now tries every canvas on the page when the id
+  is gone: the chart is the one whose owner holds a plot with candles. Still read-only.
+- **The chips, the candle-timer probe and the click that closes the pair list** knew the chart block by the
+  same id. They now use one finder: the known name, then a remembered one, then the block around the page's
+  largest canvas. The chips appear on a renamed chart; the spec shows both halves failing on 1.78.0.
+
 ## [1.78.0] - 2026-09-28
 
 Self-healing, step 3.

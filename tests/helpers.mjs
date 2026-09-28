@@ -205,7 +205,7 @@ async function boot({ path = "/en/demo-trade", storage = slStorage(10000), html 
 
   // Optional Quotex store: attach a React fiber to the chart canvas and load the real chart_reader.js.
   if (store) {
-    const canvas = window.document.querySelector("#graph canvas.layer.plot");
+    const canvas = window.document.querySelector("#graph canvas.layer.plot") || window.document.querySelector("canvas");
     const plot = {
       chartId: "c1",
       pointsManager: { candles: store.__candles || [] },
