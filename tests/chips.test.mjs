@@ -169,3 +169,27 @@ test("candle timer: with none over the chart, the line says it is painted on the
     qx.close();
   }
 });
+
+test("chips: the amount stands just above the middle of the chart's right side, the countdown just below (v1.73.0)", async () => {
+  // Requested: the amount above Quotex's candle countdown and the trade countdown below it. Their countdown is
+  // painted on the chart canvas (read live, v1.72.6), so the stack stands where it usually is instead.
+  const now = Math.floor(Date.now() / 1000);
+  const store = quotexStore({
+    opened: [{ id: "a", asset: "USDDZD_otc", amount: 1000, profit: 0, isDemo: 1, command: 0, openPrice: 100, percentProfit: 80, openTimestamp: now - 10, closeTimestamp: now + 50 }],
+  });
+  const qx = await boot({ store });
+  try {
+    await sleep(900);
+    const amount = projEl(qx),
+      countdown = chipEl(qx);
+    assert.ok(visible(amount) && visible(countdown), "both chips are up");
+    for (const chip of [amount, countdown]) {
+      assert.equal(chip.style.left, "88%", "on the chart's right side");
+      assert.equal(chip.style.top, "50%", "at its middle");
+    }
+    assert.equal(amount.style.transform, "translate(-50%, calc(-100% - 4px))", "the amount sits above the middle");
+    assert.equal(countdown.style.transform, "translate(-50%, 4px)", "the countdown below it");
+  } finally {
+    qx.close();
+  }
+});

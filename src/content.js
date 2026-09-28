@@ -5245,6 +5245,8 @@
       cursorInGraph = false,
       chipRaf = 0,
       liveTagRaf = 0;
+    // Where the chip stack stands across the chart: its centre line, as a percentage of the chart's width.
+    const CHIP_STACK_X = 88;
     function positionChip(t, e) {
       if (!t) {
         return;
@@ -5272,39 +5274,22 @@
           t.style.right = "auto";
           t.style.bottom = "auto";
         }
-        // v1.69.0: the chips always follow the cursor (the popup choice of centre / anchored is gone). Away
-        // from the chart they rest at the anchored spot.
-        if (cursorInGraph && cursorPos && e) {
-          const o = e.getBoundingClientRect();
-          let r = cursorPos.x - o.left,
-            a = cursorPos.y - o.top + (n ? -30 : 30);
-          r = Math.max(8, Math.min(r, o.width - 8));
-          const i = t.offsetHeight || 30;
-          a = n ? Math.max(i + 4, Math.min(a, o.height - 4)) : Math.max(4, Math.min(a, o.height - i - 4));
-          if (t._tcPxX !== r) {
-            t._tcPxX = r;
-            t.style.left = r + "px";
-          }
-          if (t._tcPxY !== a) {
-            t._tcPxY = a;
-            t.style.top = a + "px";
-          }
-          t.style.transform = n ? "translate(-50%, -100%)" : "translate(-50%, 0)";
-          t._tcPosX = t._tcPosY = null;
-        } else {
-          const e = n ? 50 : timerX,
-            o = n ? 10 : timerY;
-          if (t._tcPosX !== e) {
-            t._tcPosX = e;
-            t.style.left = e + "%";
-          }
-          if (t._tcPosY !== o) {
-            t._tcPosY = o;
-            t.style.top = o + "%";
-          }
-          t.style.transform = "translate(-50%, -50%)";
-          t._tcPxX = t._tcPxY = null;
+        // v1.73.0: the chips stand at the chart's right side, where Quotex's candle countdown usually is -
+        // the amount just above the middle, the trade countdown just below it. Their countdown itself cannot
+        // be followed: it is painted on the chart canvas, at a height set by the price (read live, v1.72.6).
+        // Percentages of the chart, so the spot scales with it. They used to follow the cursor.
+        const x = CHIP_STACK_X,
+          y = 50;
+        if (t._tcPosX !== x) {
+          t._tcPosX = x;
+          t.style.left = x + "%";
         }
+        if (t._tcPosY !== y) {
+          t._tcPosY = y;
+          t.style.top = y + "%";
+        }
+        t.style.transform = n ? "translate(-50%, calc(-100% - 4px))" : "translate(-50%, 4px)";
+        t._tcPxX = t._tcPxY = null;
       }
     }
     window.__tcLiveMouseMove = (t) => {

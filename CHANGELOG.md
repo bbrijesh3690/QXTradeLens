@@ -5,6 +5,20 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.73.0] - 2026-09-28
+
+### Changed
+- **The chips stand at the chart's right side**: the amount just above the middle, the trade countdown just
+  below it. Requested: around Quotex's own candle countdown. That countdown is painted on the chart canvas at a
+  height set by the price (1.72.6's probe, live), so it cannot be followed; the stack stands where it usually
+  is instead - 88% across the chart, at half its height, as percentages so it scales with the chart. The
+  chips no longer follow the cursor. The spot is one number (`CHIP_STACK_X`) if it wants moving.
+
+### Found
+- `accountBlock` on the live page (1.72.7): the block is 143x38 at 1551,15; what paints behind it is
+  `div.app`, a flat `rgb(28, 31, 45)` gradient - not a parent of the block, which is why looking up through its
+  parents found only white; its font is Roboto 14px 400, white. Step 2 - our own "Demo Account" block - is next.
+
 ## [1.72.7] - 2026-09-28
 
 ### Added
