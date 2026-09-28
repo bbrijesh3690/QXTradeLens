@@ -110,6 +110,53 @@ test("bug 1: turning the panel off from the toolbar icon sticks across navigatio
   }
 });
 
+test("the bar comes back where it was when the toolbar icon shows it again (v1.70.1)", async () => {
+  // Seen live on 1.70.0: the saved spot was the top of the page (6 px down), over the pair tabs. On a refresh
+  // the bar is built before Quotex draws its tabs, so it stayed there; brought back by the icon, the tabs were
+  // already drawn and the "keep off the tabs" nudge pushed it below them. jsdom has no layout, so the pair
+  // tab gets a real-looking box - a strip across the top of the page, 40 px tall - and so does the bar: its
+  // stylesheet puts it 5 px from the top, moved by its transform.
+  const setup = (w) => {
+    const rect = w.Element.prototype.getBoundingClientRect;
+    w.Element.prototype.getBoundingClientRect = function () {
+      if (this.classList && this.classList.contains("dJ15T")) {
+        return { left: 0, right: 2000, top: 0, bottom: 40, width: 2000, height: 40, x: 0, y: 0 };
+      }
+      if (this.id === "__tradeCalc") {
+        const m = /translate3d\((-?[\d.]+)px,\s*(-?[\d.]+)px/.exec(this.style.transform) || [0, 0, 0];
+        const left = 300 + parseFloat(m[1]),
+          top = 5 + parseFloat(m[2]);
+        return { left, top, right: left + 700, bottom: top + 50, width: 700, height: 50, x: left, y: top };
+      }
+      return rect.call(this);
+    };
+  };
+  const storage = { ...slStorage(10000), [prefKey("tc_pos")]: JSON.stringify({ tx: 0, ty: 1, x: 676, y: 6 }) };
+  const qx = await boot({ storage, setup });
+  try {
+    const y = () => {
+      const m = /translate3d\([^,]+,\s*(-?[\d.]+)px/.exec(qx.panelRoot().getElementById("__tradeCalc").style.transform);
+      return m ? parseFloat(m[1]) : NaN;
+    };
+    assert.equal(y(), 1, "at the saved spot after loading, over the tabs");
+    await qx.sendToPanel({ type: "TOGGLE_PANEL" });
+    assert.equal(qx.isRunning(), false, "hidden");
+    await qx.sendToPanel({ type: "TOGGLE_PANEL" });
+    await sleep(100); // the spot is settled on the next animation frame
+    assert.equal(y(), 1, "and back at the same spot, not pushed below the tabs");
+  } finally {
+    qx.close();
+  }
+  // A bar that has never been dragged still keeps off the tabs - that is what the nudge is for.
+  const fresh = await boot({ setup });
+  try {
+    const m = /translate3d\([^,]+,\s*(-?[\d.]+)px/.exec(fresh.panelRoot().getElementById("__tradeCalc").style.transform);
+    assert.equal(parseFloat(m[1]), 38, "moved 38 px down: 3 px under the 40 px tab strip, from its 5 px start");
+  } finally {
+    fresh.close();
+  }
+});
+
 test("bug 1: a relaunched panel leaves exactly one extension message listener", async () => {
   const qx = await boot();
   try {

@@ -1694,7 +1694,11 @@
           l = c + panelPos.ty,
           d = i + panelPos.x,
           u = c + panelPos.y;
-        const p = t
+        // v1.70.1: a spot the user dragged the bar to is theirs - it is only kept inside the window. Pushing it
+        // below the pair tabs is for a bar that has never been moved. The push used to apply to a saved spot
+        // too, but only when the tabs were already drawn as the bar was built: not on a page refresh (they
+        // come later), yes when the toolbar icon brought it back - so it came back somewhere else.
+        const p = t || prefGet("tc_pos")
           ? 3
           : ((t, e) => {
               if (isMobileWidth()) {

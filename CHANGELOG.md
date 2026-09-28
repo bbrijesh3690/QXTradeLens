@@ -5,6 +5,18 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.70.1] - 2026-09-28
+
+### Fixed
+- **The bar comes back where it was when the toolbar icon shows it again.** Reported on 1.70.0: hidden and
+  shown with the icon, it moved. The bar has a rule that keeps it off Quotex's pair tabs, and it applied to a
+  spot you had dragged it to as well - but only if the tabs were already drawn when the bar was built. On a
+  page refresh they are drawn later, so the bar stayed at your spot; brought back by the icon, they were
+  already there, and the bar was pushed below them. The saved spot here was the top of the page, 6 px down,
+  over the tabs. A spot you chose is now restored as it is, only kept inside the window; the rule still
+  keeps a bar that has never been moved off the tabs. The spec that shows it fails on 1.70.0 (the bar lands
+  38 px lower), and a second part checks a never-moved bar is still kept off the tabs.
+
 ## [1.70.0] - 2026-09-28
 
 ### Changed
