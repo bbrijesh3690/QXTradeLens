@@ -5,6 +5,28 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.71.0] - 2026-09-28
+
+### Changed
+- **The bar is one even row.** Every field has the same shape: its label on top, its value centred under it.
+  All values are one size - TP, REQ and RISK used to be bigger than the rest - and every value sits in a
+  slot of the same height, so the labels line up in one row and the values in another. The chart and ⚙
+  buttons sit on the value row. The number in each box is centred (it started at the left, with the spare
+  room on the right), and the FAST button is the same size as the other values - Chrome gives buttons their
+  own smaller font size, which made it sit higher and smaller.
+- **TP has a box**, like SL, PAYOUT and MAX. It used to be a bare number that only showed a box on hover.
+- **No decimals on the bar.** TP and SL show whole rupees (₹25,400, not ₹25,400.13) and RISK a whole
+  percent (13%, not 13.13%). What is saved is what you typed, and the RISK colour still uses the exact figure.
+- **The ⚙ menu shows the Check list and the deposit result once.** Closing the menu clears them; the next
+  time it opens they are gone until Check or Scan is pressed again. The deposit result is shown when the scan
+  brings you back and is then deleted, so the menu no longer keeps the last total for later.
+
+### Tests
+- Three specs fail on 1.70.3: the bar shows no decimals; the deposit result is not kept after it is shown;
+  and the check and the result are gone when the menu is opened again. Three deposit specs now reach the
+  result the way it arrives - on the way back from a scan - and the TP-step spec expects `20,000`. The layout
+  itself was checked by eye on a local copy of the page; jsdom has no layout to measure it with.
+
 ## [1.70.3] - 2026-09-28
 
 ### Fixed

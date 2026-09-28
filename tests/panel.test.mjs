@@ -150,7 +150,8 @@ test("the bar comes back where it was when the toolbar icon shows it again (v1.7
   // A bar that has never been dragged still keeps off the tabs - that is what the nudge is for.
   const fresh = await boot({ setup });
   try {
-    const m = /translate3d\([^,]+,\s*(-?[\d.]+)px/.exec(fresh.panelRoot().getElementById("__tradeCalc").style.transform);
+    await sleep(500); // the spot is settled on an animation frame, which can lag while the whole suite runs
+    const m =/translate3d\([^,]+,\s*(-?[\d.]+)px/.exec(fresh.panelRoot().getElementById("__tradeCalc").style.transform);
     assert.equal(parseFloat(m[1]), 38, "moved 38 px down: 3 px under the 40 px tab strip, from its 5 px start");
   } finally {
     fresh.close();
@@ -253,7 +254,7 @@ async function pressTpStep(modifier) {
   const qx = await boot();
   try {
     const tp = qx.panelRoot().getElementById("__tcTBInput");
-    assert.equal(tp.value, "20,000.00", "TP starts formatted");
+    assert.equal(tp.value, "20,000", "TP starts formatted (whole numbers since v1.71.0)");
     qx.window.document.dispatchEvent(
       new qx.window.KeyboardEvent("keydown", { key: "ArrowUp", code: "ArrowUp", [modifier]: true, bubbles: true }),
     );

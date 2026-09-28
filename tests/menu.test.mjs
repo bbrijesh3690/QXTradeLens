@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sleep, pref, quotexStore, deal, boot, tradeReachesPlatform, bigTfStorage, healthRow } from "./helpers.mjs";
+import { sleep, pref, quotexStore, deal, boot, tradeReachesPlatform, bigTfStorage, healthRow, slStorage } from "./helpers.mjs";
 
 const $ = (qx, sel) => qx.panelRoot().querySelector(sel);
 const click = (qx, el) => el.dispatchEvent(new qx.window.MouseEvent("click", { bubbles: true, composed: true }));
@@ -57,6 +57,18 @@ test("bar: MAX keeps to 1-4 and ignores what is not a number (v1.69.0)", async (
     field.value = "x";
     field.dispatchEvent(new qx.window.Event("blur"));
     assert.equal(field.value, "4", "left as it was");
+  } finally {
+    qx.close();
+  }
+});
+
+test("bar: TP, SL and RISK show no decimals (v1.71.0)", async () => {
+  const qx = await boot({ storage: { ...slStorage(10250.75), __tradeCalc_tb: "20000.5" } });
+  try {
+    await sleep(500);
+    assert.equal($(qx, "#__tcTBInput").value, "20,001", "TP in whole rupees");
+    assert.equal($(qx, "#__tcSLInput").value, "10,251", "SL in whole rupees");
+    assert.match($(qx, "#__tcRisk").textContent, /^\d+%$/, "RISK as a whole percent: " + $(qx, "#__tcRisk").textContent);
   } finally {
     qx.close();
   }
@@ -282,10 +294,9 @@ test("⚙ menu: Scan asks the extension to start the deposit scan (v1.69.0)", as
   }
 });
 
-test("⚙ menu: the last deposit result shows one total per currency and the breakdown (v1.69.0)", async () => {
-  const qx = await boot({ local: { __qxDepositScan: RESULT } });
+test("⚙ menu: the deposit result shows one total per currency and the breakdown (v1.69.0)", async () => {
+  const qx = await boot({ local: { __qxDepositScan: RESULT, __qxDepositShow: true } });
   try {
-    openMenu(qx);
     await sleep(20); // chrome.storage.local answers asynchronously
     const text = $(qx, "#__tcMnDeposits").textContent.replace(/\s+/g, " ");
     assert.match(text, /₹90,000\.00 \+ \$1,010\.00/, "₹ and $ never added together");
@@ -303,16 +314,36 @@ test("⚙ menu: coming back from a scan, the menu opens on the result by itself,
   try {
     await sleep(20);
     assert.equal(menu(qx).hidden, false, "open without a click");
+    assert.match($(qx, "#__tcMnDeposits").textContent, /₹90,000\.00/, "on the result");
     assert.equal("__qxDepositShow" in qx.window.chrome.storage.local.data, false, "and only this once");
+    assert.equal("__qxDepositScan" in qx.window.chrome.storage.local.data, false, "the result is not kept (v1.71.0)");
+  } finally {
+    qx.close();
+  }
+});
+
+test("⚙ menu: the check and the deposit result are gone the next time it opens (v1.71.0)", async () => {
+  const qx = await boot({ local: { __qxDepositScan: RESULT, __qxDepositShow: true } });
+  try {
+    await sleep(20);
+    click(qx, item(qx, "health"));
+    assert.notEqual($(qx, "#__tcMnHealth").textContent, "", "the check is shown");
+    assert.notEqual($(qx, "#__tcMnDeposits").textContent, "", "and so is the deposit result");
+    openMenu(qx); // ⚙ closes it
+    openMenu(qx); // and opens it again
+    assert.equal(menu(qx).hidden, false);
+    assert.equal($(qx, "#__tcMnHealth").textContent, "", "the check is gone");
+    assert.equal($(qx, "#__tcMnDeposits").textContent, "", "and so is the deposit result");
+    await sleep(20);
+    assert.equal($(qx, "#__tcMnDeposits").textContent, "", "and it does not come back from storage");
   } finally {
     qx.close();
   }
 });
 
 test("⚙ menu: a failed scan says so (v1.69.0)", async () => {
-  const qx = await boot({ local: { __qxDepositScan: { at: Date.now(), error: "Couldn't read page 3" } } });
+  const qx = await boot({ local: { __qxDepositScan: { at: Date.now(), error: "Couldn't read page 3" }, __qxDepositShow: true } });
   try {
-    openMenu(qx);
     await sleep(20);
     assert.match($(qx, "#__tcMnDeposits").textContent, /Scan failed: Couldn't read page 3/);
   } finally {
