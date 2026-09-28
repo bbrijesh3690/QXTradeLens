@@ -90,7 +90,8 @@ Three things exist because of this:
 - **A fallback finder runs when the element is simply absent too** (a closed list), and whatever it finds is
   remembered and tried first. v1.77.0 learnt the deposit "+" and an always-visible block that way (v1.80.0). A
   finder must demand what only the real thing has (the list's search box, the "+" nearest the tabs), and a
-  remembered name that can be wrong gets an entry in `LEARNED_CHECKS`. `tests/scramble.test.mjs` renames the
+  remembered name that can be wrong gets an entry in `LEARNED_CHECKS`, or is dropped with `forgetLearned` when
+  Quotex's data contradicts it (open-trade rows, v1.84.0). Check uses the same finders, so it heals with them. `tests/scramble.test.mjs` renames the
   whole page at once; a new finder gets a case there.
 - **Quotex's data is read by name, and by shape only where the data proves itself** (v1.81.0,
   `chart_reader.js`): deal times, deal pair, deal lists. Balance, payouts and amounts are never guessed; a missing
