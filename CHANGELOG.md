@@ -5,6 +5,14 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.72.2] - 2026-09-28
+
+### Fixed
+- **"Alerts" is the bell icon, and the bar now finds it.** The 1.72.1 read of the live header settled it: there
+  is no "Alerts" anywhere on the page, and the bell's hover label is "Notifications". The user confirmed the
+  bell is what they call Alerts. A hover label reading "Notifications" now counts, alongside "Alerts". The
+  spec fails on 1.72.1. Not yet seen on the live page; the `bar` field will say `in the header`.
+
 ## [1.72.1] - 2026-09-28
 
 ### Fixed

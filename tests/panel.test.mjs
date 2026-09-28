@@ -173,6 +173,7 @@ function headerPage({ logo = true, alerts = "text" } = {}) {
     const alertsHtml = {
       text: '<button class="tAlerts"> Alerts </button>',
       label: '<button class="tAlerts" title="Alerts"><svg></svg></button>',
+      bell: '<button class="tAlerts" aria-label="Notifications"><svg></svg></button>',
       component: '<qx-price-alerts class="tAlerts"></qx-price-alerts>',
     };
     bar.innerHTML =
@@ -263,6 +264,19 @@ test("Alerts is found when it is an icon with a hover label (v1.72.1)", async ()
     assert.deepEqual(barAt(qx), { x: -100, y: 0 });
     await sleep(2100);
     assert.match(String(diagBar(qx)), /Alerts found as hover label/);
+  } finally {
+    qx.close();
+  }
+});
+
+test("Alerts is the bell icon, whose hover label is Notifications (v1.72.2)", async () => {
+  // Read live on 1.72.1: the header has no "Alerts" anywhere; its bell is labelled "Notifications".
+  const qx = await boot({ setup: headerPage({ alerts: "bell" }) });
+  try {
+    await sleep(700);
+    assert.deepEqual(barAt(qx), { x: -100, y: 0 }, "centred between WEB TRADING PLATFORM and the bell");
+    await sleep(2100);
+    assert.match(String(diagBar(qx)), /in the header .* Alerts found as hover label/);
   } finally {
     qx.close();
   }

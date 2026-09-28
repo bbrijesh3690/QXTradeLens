@@ -1824,7 +1824,8 @@
         name: "Alerts",
         text: "//text()[" + UPPER + "='ALERTS']",
         textStart: "//text()[starts-with(" + UPPER + ",'ALERTS')]",
-        label: /^\s*alerts?\b/i,
+        // v1.72.2: "Alerts" is the bell icon, whose hover label on the live page is "Notifications".
+        label: /^\s*(alerts?|notifications?)\b/i,
         tag: "alert",
       },
     };
