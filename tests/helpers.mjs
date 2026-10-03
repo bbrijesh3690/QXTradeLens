@@ -413,6 +413,113 @@ function backgroundTab(w, wakeMs = 1200) {
   return tab;
 }
 
+// The trade page with its pair list behaving the way the live log read on 2026-10-03 (v1.85.0): "+" beside the
+// tabs opens the list, whose rows are in the page at once while the list itself fades in on the next frame; a
+// pick opens the pair's tab and leaves the list open (the panel closes it); its Close button takes it away.
+// Beside the fixture's own tab there is EUR/JPY (OTC) at 91% with a close control - the pair a spec lets fall.
+//   lastTabLow: one tab only, below the floor, with no close control (Quotex gives the last tab none).
+//   awayOnPlus: the user switches to another browser tab at the moment "+" is pressed.
+//   unlisted:   pairs the platform rates that the list is not showing (another category).
+// `page.tab` is the backgroundTab; `page.said()` is what the page saw, in order.
+const FLOOR_LIST = [
+  ["EUR/USD (OTC)", 70, "EURUSD_otc"],
+  ["AUD/CAD (OTC)", 93, "AUDCAD_otc"],
+  ["GBP/JPY (OTC)", 95, "GBPJPY_otc"],
+];
+function floorPage({ lastTabLow = false, awayOnPlus = false, list = FLOOR_LIST, unlisted = [] } = {}) {
+  const store = quotexStore({ payout: lastTabLow ? 70 : 91 });
+  const A = store.assets.assetBySymbol;
+  for (const [label, payout, symbol] of [...list, ...unlisted]) A[symbol] = { symbol, label, payout, is_otc: 1, active: true };
+  if (!lastTabLow) A.EURJPY_otc = { symbol: "EURJPY_otc", label: "EUR/JPY (OTC)", payout: 91, is_otc: 1, active: true };
+  let html = FIXTURE.replace('<div id="graph">', '<div id="asset-select--button"><button id="plus">+</button></div><div id="graph">');
+  if (lastTabLow) {
+    html = html.replace('<div class="ElyTP">91 %</div>', '<div class="ElyTP">70 %</div>').replace('<span class="UI2Kh">91 %</span>', '<span class="UI2Kh">70 %</span>');
+  }
+  const events = []; // what the page saw: { what, hidden, at }
+  const page = { store, html, events, tab: null };
+  page.setup = (w) => {
+    const doc = w.document;
+    page.tab = backgroundTab(w);
+    const note = (what) => events.push({ what, hidden: page.tab.hidden, at: Date.now() });
+    const rect = w.Element.prototype.getBoundingClientRect;
+    w.Element.prototype.getBoundingClientRect = function () {
+      // jsdom has no layout: the list and its rows get a box while they are on the page.
+      if (this.classList && (this.classList.contains("a_IoG") || this.classList.contains("R2Rgm"))) {
+        return { left: 10, top: 60, width: 300, height: 40, right: 310, bottom: 100, x: 10, y: 60 };
+      }
+      return rect.call(this);
+    };
+    const addTab = (symbol, label, pct) => {
+      const tab = doc.createElement("div");
+      tab.className = "dJ15T vXMlv";
+      tab.setAttribute("data-symbol", symbol);
+      tab.innerHTML =
+        '<div class="WRocw">' + label + '</div><div class="ElyTP">' + pct + ' %</div>' +
+        '<button aria-label="Close"><svg class="icon-close-tiny"><use href="#icon-close-tiny"></use></svg></button>';
+      tab.querySelector("button").addEventListener("click", () => {
+        note("closed " + label);
+        tab.remove();
+      });
+      doc.querySelector(".Q02Z1").appendChild(tab);
+    };
+    if (!lastTabLow) addTab("EURJPY_otc", "EUR/JPY (OTC)", 91);
+    let away = awayOnPlus;
+    doc.getElementById("plus").addEventListener("click", () => {
+      const open = doc.querySelector(".a_IoG");
+      if (open) {
+        note("+ closed the list");
+        open.remove();
+        return;
+      }
+      note("+ opened the list");
+      if (away) {
+        away = false;
+        page.tab.hide();
+      }
+      const el = doc.createElement("div");
+      el.className = "a_IoG";
+      el.style.opacity = "0"; // fades in on the next frame - which a background tab never draws
+      el.innerHTML =
+        list.map(([label, pct, symbol]) => '<div class="R2Rgm" data-row="' + symbol + '"><div class="teoXG">' + label + '</div><div class="mQX6T">' + pct + ' %</div></div>').join("") +
+        '<button aria-label="Close">x</button>';
+      doc.getElementById("graph").before(el);
+      w.requestAnimationFrame(() => (el.style.opacity = "1"));
+      el.querySelector('[aria-label="Close"]').addEventListener("click", () => {
+        note("list closed");
+        el.remove();
+      });
+      for (const [label, pct, symbol] of list) {
+        el.querySelector('[data-row="' + symbol + '"]').addEventListener("click", () => {
+          if (doc.querySelector('.Q02Z1 [data-symbol="' + symbol + '"]')) return;
+          note("opened " + label);
+          addTab(symbol, label, pct);
+        });
+      }
+    });
+    // A pair's payout falls: the platform's own figure and what its tab prints.
+    page.fall = (symbol, pct) => {
+      store.assets.assetBySymbol[symbol].payout = pct;
+      doc.querySelector('.Q02Z1 [data-symbol="' + symbol + '"] .ElyTP').textContent = pct + " %";
+    };
+    page.tabs = () => [...doc.querySelectorAll(".Q02Z1 [data-symbol]")].map((t) => t.querySelector(".WRocw").textContent);
+    page.list = () => {
+      const el = doc.querySelector(".a_IoG");
+      return !el ? "not on the page" : el.style.opacity === "1" ? "open, on screen" : "in the page, not on screen";
+    };
+  };
+  page.said = (hidden) => events.filter((e) => hidden === undefined || e.hidden === hidden).map((e) => e.what);
+  return page;
+}
+// Waits until `ok()` holds, for at most `ms`; says whether it did.
+const until = async (ok, ms) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (ok()) return true;
+    await sleep(100);
+  }
+  return ok();
+};
+
 export {
   CONTENT_JS,
   FIXTURE,
@@ -457,4 +564,7 @@ export {
   pressSideArrow,
   stakeField,
   backgroundTab,
+  FLOOR_LIST,
+  floorPage,
+  until,
 };

@@ -5,6 +5,44 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.86.0] - 2026-10-03
+
+Asked after a refill was watched on 1.85.0: "the way R is doing its job, picking every pair in a ms" - the refill
+was not doing it that way. Read live the same afternoon, with a recorder on the diagnostics line: on the way
+back from 10 min 46 s in the background (nothing had happened there - two pairs sat at 77% and 88% the whole
+time, and both were closed in the first second in front), the refill opened four pairs over 17 s and brought
+the pair list up five times, the last time for a pair it could not reach.
+
+### Changed
+- **A refill is one visit to the pair list.** After a close the list is opened once, every pair in it that
+  clears the floor is picked one after the other - each as soon as the tab of the one before is there, the way
+  R does it - and the list is closed. Until now a refill picked one pair, closed the list and waited for the
+  next five-second pass, so a board of four took a quarter of a minute of the list coming and going.
+- **The refill is over when the visit is.** A pair that reaches the floor afterwards waits for the next close;
+  before, the refill stayed switched on from pass to pass until one of them found nothing left.
+- **Every pair the list is not showing is left out in the same visit**, not one per visit. The platform rates
+  crypto and commodity pairs above the floor (Litecoin, Silver, Solana) while the list shows another category;
+  1.75.4 left out only the one it had come for, so each refill ended with one more opening of the list that
+  found nothing, and the next close brought it up again for the next such pair. With them all left out for
+  10 minutes, a close with nothing in the list to open does not open the list at all.
+- **What may be picked is the list's own rows, judged by the platform's asset table** - at or above the
+  floor, OTC, active, not open, best first. A row that itself prints a figure below the floor is not picked
+  either (its tab would be closed on the next pass). The printed figures alone decide only when the bridge
+  cannot answer or knows none of the rows by name.
+- **The asset table is read afresh when a close ends.** It is kept for up to 5 s; the close is decided on what
+  the tab prints, so the kept table could still rate the pair just closed above the floor - found by the new
+  spec, which saw that pair opened straight back.
+- With no close behind it (every open pair below the floor, 1.54.0) one pair is still opened - the best.
+
+### Tests
+- `tests/refill.test.mjs`: one close with four pairs above the floor - the list is opened once, the four are
+  picked best first within a second, and it is not opened again; and two pairs the list is not showing - both
+  left out in the one visit, and a second close with nothing to open leaves the list shut. Both fail on 1.85.0.
+- The 1.62.0 spec waited for a later pass to report "already open"; it now reads both picks on one line of the
+  log. `floorPage` (the pair list as the live page shows it) moved into `tests/helpers.mjs`.
+- Not seen live yet: the visit itself on Quotex's page - that several rows can be picked while the list is
+  open is how R already works there.
+
 ## [1.85.0] - 2026-10-03
 
 Reported: after working in another browser tab, the "select trade pair" list was open on the way back, and pairs

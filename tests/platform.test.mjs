@@ -687,9 +687,10 @@ test("payout floor: a pair above it is reason enough to open nothing (v1.54.0)",
 });
 // ── v1.62.0: a close refills the board ──────────────────────────────────────────────────────────
 // The trigger is a close and nothing else. Auto-close removing a pair puts the panel into a fill: it opens
-// every instrument the platform rates at or above the floor that is not already open, best first, one per
-// pass, and stops when there are none left. No count of open pairs and no count of pairs clearing the
-// floor is consulted - v1.61.0 kept two clear of the floor, which was a rule nobody asked for.
+// every instrument the platform rates at or above the floor that is not already open, best first. No count
+// of open pairs and no count of pairs clearing the floor is consulted - v1.61.0 kept two clear of the floor,
+// which was a rule nobody asked for. v1.86.0: in one visit to the list, not one pair per five-second pass
+// (tests/refill.test.mjs has the list as the live page shows it).
 
 test("payout floor: a close refills the board with every pair that clears it (v1.62.0)", async () => {
   const store = quotexStore({ payout: 91 });
@@ -722,25 +723,15 @@ test("payout floor: a close refills the board with every pair that clears it (v1
   };
   const qx = await boot({ html, store, setup });
   try {
-    // The reason is sampled as it goes: "already open" holds for a single pass before the 30 s throttle
-    // message replaces it, so reading it at the end would miss the moment the fill decided it was done.
-    const reasons = [];
-    for (let i = 0; i < 28; i++) {
-      await sleep(500);
-      const r = JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").autoOpen;
-      if (r && reasons[reasons.length - 1] !== r) {
-        reasons.push(r);
-      }
-    }
+    await sleep(14000);
     assert.equal(qx.window.document.querySelector('[data-symbol="EURJPY_otc"]'), null, "the pair below the floor was closed");
     // BOTH qualifying pairs, not one. The 91% tab already clearing the floor is no longer a reason to stop.
-    assert.deepEqual(clicked.slice().sort(), ["rowAud", "rowGbp"], "every pair above the floor was opened: " + clicked.join(","));
-    // "refilling the board" is not asserted: in jsdom the whole fill is over inside 500 ms, faster than the
-    // line can be sampled. That it happened is what `clicked` above proves.
-    assert.ok(
-      reasons.some((r) => /already open/.test(r)),
-      "and stopped once there were none left: " + reasons.join(" | "),
-    );
+    assert.deepEqual(clicked, ["rowGbp", "rowAud"], "every pair above the floor was opened, best first: " + clicked.join(","));
+    // v1.86.0: the refill is one visit to the list, so both picks are on one line of the log. Until then it
+    // was a pick per pass, and the spec waited for a later pass to report "already open"; the refill is now
+    // over when the visit is.
+    const log = String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").assetLog);
+    assert.ok(log.includes("auto-open picked GBP/JPY (OTC), AUD/CAD (OTC)"), "in one visit: " + log);
   } finally {
     qx.close();
   }

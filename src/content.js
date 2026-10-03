@@ -894,10 +894,11 @@
       }
       return quotexState;
     }
-    // symbol -> { label, payout, isOtc, active }, refreshed every 5 s.
-    function readQuotexAssets() {
+    // symbol -> { label, payout, isOtc, active }, refreshed every 5 s - or now, when `fresh` is asked for
+    // (v1.86.0: a refill decides on the figures as they are when the close ends, not up to 5 s before).
+    function readQuotexAssets(fresh) {
       const now = Date.now();
-      if (now - quotexAssetsAt >= ASSETS_TTL_MS) {
+      if (fresh || now - quotexAssetsAt >= ASSETS_TTL_MS) {
         const state = requestQuotexState(true);
         quotexAssets = state && state.assets ? state.assets : null;
         quotexAssetsAt = now;
@@ -5822,50 +5823,182 @@
       otcRebuildBusy = false;
       closeAssetDropdown();
     }
+    // v1.86.0: what may be picked from the list as it is showing - the pairs in it that the platform rates at
+    // or above the floor, OTC and active, and that are not open; best first, ties by name. The platform's asset
+    // table decides, as it always has (v1.54.0) - but a row that itself prints a figure below the floor is not
+    // picked either: its tab would print the same figure and be closed on the next pass. The printed figures
+    // alone are the fallback, for when the bridge cannot answer or knows none of the rows by name.
+    function autoOpenChoices(min) {
+      const rows = getAssetChoices(),
+        open = new Set(getPairTabs().map((t) => normKey(getTabName(t)))),
+        assets = readQuotexAssets(),
+        rated = new Map();
+      for (const symbol in assets || {}) {
+        if (assets[symbol]) {
+          rated.set(normKey(assets[symbol].label || symbol), { a: assets[symbol], symbol });
+        }
+      }
+      const byPlatform = rows.some((r) => rated.has(r.norm)),
+        seen = new Set(),
+        out = [];
+      for (const r of rows) {
+        if (open.has(r.norm) || seen.has(r.norm)) {
+          continue;
+        }
+        seen.add(r.norm);
+        let payout = r.payout;
+        if (byPlatform) {
+          const hit = rated.get(r.norm);
+          if (!hit || !hit.a.active || hit.a.payout == null || !isOtcAsset(hit.a, hit.symbol) || r.payout < min) {
+            continue;
+          }
+          payout = hit.a.payout;
+        } else if (!/\botc\b/i.test(r.name)) {
+          continue;
+        }
+        if (payout >= min) {
+          out.push({ row: r.row, click: r.click, name: r.name, norm: r.norm, payout });
+        }
+      }
+      return out.sort((x, y) => y.payout - x.payout || (x.norm < y.norm ? -1 : x.norm > y.norm ? 1 : 0));
+    }
+    // v1.75.4 left one pair out per visit - the one it had come for. v1.86.0: every pair the platform rates at
+    // or above the floor that the list is not showing (another category - Litecoin, Silver) is left out in the
+    // same visit, so the list is not brought up again for each of them in turn. Read live on 1.85.0: every
+    // refill ended with one more opening of the list that found nothing. Nothing is left out when the platform
+    // knows none of the rows by name - then the two are not speaking of the same pairs.
+    function leaveOutUnlisted(min) {
+      const assets = readQuotexAssets();
+      if (!assets) {
+        return;
+      }
+      const shown = new Set(getAssetChoices().map((r) => r.norm)),
+        open = new Set(getPairTabs().map((t) => normKey(getTabName(t)))),
+        unlisted = [];
+      let known = false;
+      for (const symbol in assets) {
+        const a = assets[symbol],
+          norm = a ? normKey(a.label || symbol) : "";
+        if (!norm) {
+          continue;
+        }
+        if (shown.has(norm)) {
+          known = true;
+        } else if (a.active && a.payout >= min && isOtcAsset(a, symbol) && !open.has(norm) && !isUnreachable(norm)) {
+          unlisted.push({ norm, label: a.label || symbol });
+        }
+      }
+      if (!known || !unlisted.length) {
+        return;
+      }
+      unlisted.forEach((u) => unreachablePairs.set(u.norm, Date.now()));
+      const names = unlisted.map((u) => u.label);
+      noteAsset(
+        names.slice(0, 3).join(", ") + (names.length > 3 ? " and " + (names.length - 3) + " more" : "") +
+          (names.length > 1 ? " are" : " is") + " not in the list shown - left out for 10 min",
+      );
+    }
+    // v1.86.0 (asked on 2026-10-03, after watching a refill on 1.85.0: "the way R is doing its job, picking
+    // every pair in a ms"): a refill is ONE visit to the list. It is opened once, every pair in it that clears
+    // the floor is picked one after the other - each as soon as the tab of the one before is there, the way R
+    // does it - and it is closed. Until now a refill picked one pair, closed the list and waited for the next
+    // five-second pass: read live, four pairs took 17 s and brought the list up five times. The refill is over
+    // when the visit is; the next one needs the next close. The path with no close behind it (every open pair
+    // below the floor, v1.54.0) still opens one pair - the best.
     function autoOpenBetterPair(min) {
       autoOpenBusy = true;
       otcRebuildBusy = true; // the rebuild hotkeys and this must never drive the list at the same time
       lastAutoOpenAt = Date.now();
-      // ensureAssetDropdown gives up silently after 32 tries; without this the flag would stay set.
-      window.__tcAutoOpenTimer = setTimeout(() => {
-        if (autoOpenBusy) {
-          autoOpenFinish();
+      const refill = autoOpenFill,
+        opened = [],
+        tried = new Set();
+      let leftOut = false,
+        over = false;
+      // `why` is set when the visit was cut short; it goes in the log, and autoOpenReason is left as the
+      // caller set it.
+      const end = (why) => {
+        if (over) {
+          return;
         }
-      }, 12000);
+        over = true;
+        if (opened.length) {
+          noteAsset("auto-open picked " + opened.join(", "));
+        }
+        if (why) {
+          noteAsset("auto-open " + why);
+        } else if (refill && opened.length) {
+          autoOpenReason = "refill done - opened " + opened.length;
+        }
+        if (refill) {
+          autoOpenFill = false;
+        }
+        autoOpenFinish();
+      };
+      // ensureAssetDropdown gives up silently after 32 tries; without this the flag would stay set. Set again
+      // at each pick, so a long visit is not cut short.
+      const guard = () => {
+        if (window.__tcAutoOpenTimer) {
+          clearTimeout(window.__tcAutoOpenTimer);
+        }
+        window.__tcAutoOpenTimer = setTimeout(() => {
+          if (autoOpenBusy) {
+            autoOpenReason = "the pair list did not answer";
+            end("gave up - the list did not answer");
+          }
+        }, 12000);
+      };
       const wanted = bestAssetAboveFloor(min);
       autoOpenReason = wanted ? "opening " + wanted.label + " at " + wanted.payout + "%" : "looking for an OTC pair above " + min + "%";
-      noteAsset("auto-open" + (autoOpenFill ? " (refill after closing " + autoClosedNote() + ")" : "") + ": " + autoOpenReason);
+      noteAsset("auto-open" + (refill ? " (refill after closing " + autoClosedNote() + ")" : "") + ": " + autoOpenReason);
       // v1.85.0: the tab went to the background with the list on its way. Nothing is picked there, the refill
       // ends, and the list is closed when the tab is in front again (closeAssetDropdown).
       const stopInBackground = () => {
-        noteAsset("auto-open stopped - the tab is in the background");
         autoOpenReason = "the tab is in the background";
-        autoOpenFill = false;
-        autoOpenFinish();
+        end("stopped - the tab is in the background");
       };
-      ensureAssetDropdown(0, () => {
-        const rows = getAssetChoices(),
-          open = new Set(getPairTabs().map((t) => normKey(getTabName(t))));
-        if (wanted && !rows.some((r) => r.norm === wanted.norm)) {
-          unreachablePairs.set(wanted.norm, Date.now());
-          noteAsset(wanted.label + " is not in the list shown - left out for 10 min");
-        }
-        const pick =
-            (wanted && rows.find((r) => r.norm === wanted.norm)) ||
-            rows
-              .filter((r) => /\botc\b/i.test(r.name) && !isNaN(r.payout) && r.payout >= min && !open.has(r.norm))
-              .sort((a, b) => b.payout - a.payout || a.name.localeCompare(b.name))[0],
-          target = pick && (pick.click || pick.row);
-        if (!target || !target.isConnected) {
-          autoOpenReason = "no OTC pair in the asset list clears " + min + "%";
-          autoOpenFill = false;
-          autoOpenFinish();
+      const step = () => {
+        if (over) {
           return;
         }
-        noteAsset("auto-open picked " + pick.name);
-        synthClick(target);
-        waitUntil(() => isPairTabOpen(pick.norm), 80, 800, autoOpenFinish);
-      }, stopInBackground);
+        guard();
+        // Asked for before every pick, as R does: rows still there are used at once, and a list that a pick
+        // closed (Quotex's did, until late September) is opened again.
+        ensureAssetDropdown(0, () => {
+          if (over) {
+            return;
+          }
+          if (!leftOut) {
+            leftOut = true;
+            leaveOutUnlisted(min);
+          }
+          const pick = autoOpenChoices(min).find((c) => !tried.has(c.norm)),
+            target = pick && (pick.click || pick.row);
+          if (!target || !target.isConnected) {
+            if (!opened.length) {
+              autoOpenReason = "no OTC pair in the asset list clears " + min + "%";
+            }
+            return end();
+          }
+          tried.add(pick.norm);
+          synthClick(target);
+          waitUntil(() => isPairTabOpen(pick.norm), 80, 800, () => {
+            if (over) {
+              return;
+            }
+            if (isPairTabOpen(pick.norm)) {
+              opened.push(pick.name);
+            } else {
+              noteAsset("auto-open: " + pick.name + " did not open");
+            }
+            if (refill) {
+              step();
+            } else {
+              end();
+            }
+          });
+        }, stopInBackground);
+      };
+      step();
     }
     function maybeAutoOpenPair(min) {
       const stop = (why) => {
@@ -5915,11 +6048,14 @@
         return stop("no pair tabs");
       }
       // v1.62.0: auto-close removed something, so the board is refilled - every pair the platform rates at
-      // or above the floor that is not already open, best first, one per pass. No count of open pairs and no
-      // count of pairs clearing the floor comes into it: the close is the trigger, and the asset table
-      // decides when there is nothing left to do.
+      // or above the floor that is not already open, best first. No count of open pairs and no count of pairs
+      // clearing the floor comes into it: the close is the trigger, and the asset table decides when there is
+      // nothing to do. v1.86.0: in one visit to the list (autoOpenBetterPair), not one pair per pass.
       if (autoOpenFill) {
         tooFewGoodSince = 0;
+        // v1.86.0: read afresh. The close was decided on what the tab prints; the asset table kept for up to
+        // 5 s could still rate that same pair above the floor, and the refill would open it straight back.
+        readQuotexAssets(true);
         // From the store, not the dropdown, so running out costs nothing and touches no part of their UI.
         const next = bestAssetAboveFloor(min);
         if (!next) {
