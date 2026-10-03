@@ -193,7 +193,9 @@ check will say so if only one happened.
   late): 10 min 46 s in the background with no step logged while two pairs sat at 77% and 88%; both were
   closed in the first second in front. **The one-visit refill was read live on 1.86.0 the same day**, with the
   same recorder: two closes, then "+" once, seven pairs picked in 2.9 s, the list closed 3.9 s after "+";
-  nothing for two and a half minutes; then three closes, "+" once, two pairs picked, closed after 1.4 s. Still
+  nothing for two and a half minutes; then three closes, "+" once, two pairs picked, closed after 1.4 s. On
+  1.87.0: five closes on the way back from half an hour away, "+" once, eight pairs in 0.8 s, closed 2 s after
+  "+"; fifteen seconds later one more close with nothing left to open, and the list stayed shut. Still
   covered by specs only: a left-over list being closed on the way back. Known limit: a pair the list cannot
   show brings the list up once when it first reaches the floor, and once more every 10 minutes after - with
   nothing in the list to open, that visit picks nothing. Remembering what the list shows, rather than what it
