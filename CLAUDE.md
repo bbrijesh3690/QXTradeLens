@@ -179,8 +179,14 @@ check will say so if only one happened.
   three pairs opened over the next twelve seconds. The user's rule is "auto-open triggers when auto-close has
   completed". They turned down one-for-one (2026-10-01); running the refill back to back was offered with
   1.85.0 and not chosen - do not build either unasked. On the live page a pick no longer closes the list by
-  itself; the panel closes it (`closed at try 1`). Covered by specs, not yet seen live: the return from the
-  background - the close on screen, then the refill - and a left-over list being closed.
+  itself; the panel closes it (`closed at try 1`). **Read live on 1.85.0 the same day:** after twelve minutes
+  in the background the list was not left open, two pairs had been closed (one named in the log at 87%) and
+  five opened after them, and a later close read `auto-close closed EUR/AUD (OTC) at 89%` followed by its
+  refill step. Not shown by that read: the minutes in the background themselves - a refill fills the twelve
+  log steps in seconds, so by the time the tab is read the return has scrolled out. Covered by specs only: a
+  left-over list being closed on the way back. Also seen: every refill ends with one more opening of the list
+  for a pair in another category (Silver, Litecoin), which finds nothing and closes - v1.75.4's "left out for
+  10 min", once per such pair.
 - **The floor is committed on Enter or blur, and nothing acts on the box's contents** (v1.61.1, completed
   in v1.67.1). v1.61.1 fixed only the five-second pass; the recalculation - which runs on page changes, not
   when the box is left - plus both trade-blocking paths, the OTC rebuild, the Q hotkey, the payout cap and the
