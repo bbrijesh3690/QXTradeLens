@@ -3668,7 +3668,12 @@
       autoCloseClosedAt = 0,
       // v1.62.0: auto-close has removed something and the board has not been refilled yet. A close is the
       // only trigger - how many pairs are open, and how many of them clear the floor, are not consulted.
-      autoOpenFill = false;
+      autoOpenFill = false,
+      // v1.85.0: what the last run that closed something removed - the first pair, and how many more - for
+      // the log. Read live on 2026-10-03: a refill had run, and which close started it could not be told.
+      autoClosedFirst = "",
+      autoClosedMore = 0;
+    const autoClosedNote = () => (autoClosedFirst || "a pair") + (autoClosedMore ? " and " + autoClosedMore + " more" : "");
     function autoCloseStep(t, e) {
       // `e` counts the tabs this run has closed. A run that closed something hands straight over to the
       // replacement instead of leaving it to the next five-second pass - that plus the settle window is
@@ -3683,7 +3688,9 @@
           maybeAutoOpenPair(t);
         }
       };
-      if (e >= 20) {
+      // v1.85.0: the tab went to the background while this was running - no further tab is closed there.
+      // maybeAutoOpenPair ends the refill for the same reason.
+      if (e >= 20 || document.hidden) {
         return finish();
       }
       const n = getPairTabs().find((e) => {
@@ -3694,17 +3701,31 @@
       if (!n) {
         return finish();
       }
-      const tabsBefore = getPairTabs().length;
+      const tabsBefore = getPairTabs().length,
+        closing = (getTabName(n) || "a pair") + " at " + tabPayout(n) + "%";
       synthClick(getTabCloseBtn(n));
       window.__tcAutoCloseStepTimer = setTimeout(() => {
         // Stop if the click didn't close anything, instead of clicking again every 300 ms (v1.24.4).
         if (getPairTabs().length >= tabsBefore) {
           return finish();
         }
+        // v1.85.0: every close is in the log, and the refill it starts names it.
+        if (e) {
+          autoClosedMore = e;
+        } else {
+          autoClosedFirst = closing;
+          autoClosedMore = 0;
+        }
+        noteAsset("auto-close closed " + closing);
         autoCloseStep(t, e + 1);
       }, 300);
     }
     function autoCloseLowPayoutTabs(t, e) {
+      // v1.85.0: the board is left alone while the tab is in the background - see maybeAutoOpenPair. Back in
+      // front, the next pass closes what is below the floor, on screen, and the refill follows that close.
+      if (document.hidden) {
+        return;
+      }
       const n = Date.now();
       if (!((!e && n - lastAutoCloseAt < 5000) || autoCloseRunning)) {
         lastAutoCloseAt = n;
@@ -5574,11 +5595,13 @@
     // v1.75.3: reported live - the "select trade pair" list opened again 2-3 s after it closed, when auto-open
     // ran. Two causes fit and need opposite fixes (the refill opening the next pair, or a closing step
     // re-opening a list that was already shutting), so every step is written down here, with the time, and
-    // the diagnostics line carries the last eight. One read after it happens says which.
+    // the diagnostics line carries the last twelve. One read after it happens says which.
+    // (Eight until v1.85.0: one refill step is eight entries by itself, so the close that started it - now
+    // logged too - would have been pushed out before the line was next written.)
     const assetEvents = [];
     function noteAsset(what) {
       assetEvents.push({ at: Date.now(), what });
-      if (assetEvents.length > 8) {
+      if (assetEvents.length > 12) {
         assetEvents.shift();
       }
     }
@@ -5592,8 +5615,18 @@
     // is when it last appeared, so a closing step can tell a list that has settled open from one in motion.
     let assetListWasOpen = false,
       assetListOpenSince = 0,
-      lastPlusAt = 0;
+      lastPlusAt = 0,
+      // v1.85.0: the tab went to the background with a list of the panel's still to close.
+      closeListOnReturn = false;
     every(250, () => {
+      // v1.85.0: in front again. The list finishes appearing with the first frames drawn, so the close waits
+      // for it (up to 2 s); until it has ended nothing else drives the list.
+      if (closeListOnReturn && !document.hidden) {
+        closeListOnReturn = false;
+        otcRebuildBusy = true;
+        noteAsset("tab is in front again - closing the list");
+        closeAssetDropdown(2000);
+      }
       const open = isAssetDropdownOpen();
       if (open !== assetListWasOpen) {
         assetListWasOpen = open;
@@ -5614,8 +5647,13 @@
         };
       a();
     }
-    function ensureAssetDropdown(t, e) {
-      if (getOtcAssetRows().length) {
+    // v1.85.0: `inBackground`, when given, is called instead once the tab is in the background - the list
+    // cannot be read there, so nothing is pressed or picked. Auto-open passes it; R and the scan rows are
+    // started by hand with the tab in front and are left as they were.
+    function ensureAssetDropdown(t, e, inBackground) {
+      if (inBackground && document.hidden) {
+        inBackground();
+      } else if (getOtcAssetRows().length) {
         e();
       } else if (t >= 32) {
         otcRebuildBusy = false;
@@ -5628,7 +5666,7 @@
             synthClick(t);
           }
         }
-        window.__tcOtcRebuildTimer = setTimeout(() => ensureAssetDropdown(t + 1, e), 150);
+        window.__tcOtcRebuildTimer = setTimeout(() => ensureAssetDropdown(t + 1, e, inBackground), 150);
       }
     }
     function getClosableTabs(t) {
@@ -5796,7 +5834,15 @@
       }, 12000);
       const wanted = bestAssetAboveFloor(min);
       autoOpenReason = wanted ? "opening " + wanted.label + " at " + wanted.payout + "%" : "looking for an OTC pair above " + min + "%";
-      noteAsset("auto-open" + (autoOpenFill ? " (refill after a close)" : "") + ": " + autoOpenReason);
+      noteAsset("auto-open" + (autoOpenFill ? " (refill after closing " + autoClosedNote() + ")" : "") + ": " + autoOpenReason);
+      // v1.85.0: the tab went to the background with the list on its way. Nothing is picked there, the refill
+      // ends, and the list is closed when the tab is in front again (closeAssetDropdown).
+      const stopInBackground = () => {
+        noteAsset("auto-open stopped - the tab is in the background");
+        autoOpenReason = "the tab is in the background";
+        autoOpenFill = false;
+        autoOpenFinish();
+      };
       ensureAssetDropdown(0, () => {
         const rows = getAssetChoices(),
           open = new Set(getPairTabs().map((t) => normKey(getTabName(t))));
@@ -5819,12 +5865,25 @@
         noteAsset("auto-open picked " + pick.name);
         synthClick(target);
         waitUntil(() => isPairTabOpen(pick.norm), 80, 800, autoOpenFinish);
-      });
+      }, stopInBackground);
     }
     function maybeAutoOpenPair(min) {
       const stop = (why) => {
         autoOpenReason = why;
       };
+      // v1.85.0: the board is left alone while the tab is in the background. Reported, and read live on
+      // 2026-10-03 (assetLog, 1.84.1): Chrome wakes a background tab's timers once a minute and draws nothing,
+      // and Quotex's pair list never finishes appearing there - its rows are in the page, but it reads as
+      // closed. So the refill used the list without pressing "+", logged "close: closed by itself" and left
+      // it open; it came on screen when the tab was shown, and held the rest of the refill until it was closed
+      // - pairs then opened with no close in sight. The chart auto-fill and the sweep already stop here.
+      // A refill in progress ends too: carried over, it would open pairs on the way back for a close that was
+      // never seen. Back in front the close pass runs first, and a refill follows a close made on screen.
+      if (document.hidden) {
+        autoOpenFill = false;
+        tooFewGoodSince = 0;
+        return stop("the tab is in the background");
+      }
       if (autoOpenBusy) {
         return stop("opening a pair now");
       }
@@ -5888,14 +5947,36 @@
       autoOpenReason = "every pair below " + min + "% - opening one";
       autoOpenBetterPair(min);
     }
-    function closeAssetDropdown() {
+    // v1.85.0: `waitMs` is how long to wait for the list to be there before closing it - the return from the
+    // background passes it, because the list only finishes appearing once the tab is drawn again.
+    function closeAssetDropdown(waitMs) {
       if (window.__tcAssetCloseTimer) {
         clearTimeout(window.__tcAssetCloseTimer);
         window.__tcAssetCloseTimer = null;
       }
+      // v1.85.0: not in a background tab. Whether the list is open cannot be read there - read live, it was
+      // "closed by itself" twice with the list still in the page - and nothing is pressed there either. It is
+      // closed when the tab is in front again (the 250 ms watcher above).
+      const leftForReturn = () => {
+        if (!document.hidden) {
+          return false;
+        }
+        if (!closeListOnReturn) {
+          noteAsset("close: left until the tab is in front again");
+        }
+        closeListOnReturn = true;
+        otcRebuildBusy = false;
+        return true;
+      };
+      if (leftForReturn()) {
+        return;
+      }
       let t = 0;
       const e = () => {
         try {
+          if (leftForReturn()) {
+            return;
+          }
           if (!isAssetDropdownOpen() || t >= 8) {
             lastAssetClose = {
               at: Date.now(),
@@ -5917,10 +5998,10 @@
       // before the list had finished opening: the close saw nothing open and stopped, the list then arrived
       // and stayed open (and, while open, kept auto-open away). A list "+" was pressed for in the last 2 s is
       // now waited for, and closed once it is there.
-      const sincePlus = Date.now() - lastPlusAt;
-      if (sincePlus < 2000 && !isAssetDropdownOpen()) {
+      const wait = Math.max(waitMs || 0, 2000 - (Date.now() - lastPlusAt));
+      if (wait > 0 && !isAssetDropdownOpen()) {
         noteAsset("close waits for the list it opened");
-        waitUntil(() => isAssetDropdownOpen(), 100, 2000 - sincePlus, start);
+        waitUntil(() => isAssetDropdownOpen(), 100, wait, start);
       } else {
         start();
       }

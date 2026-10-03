@@ -5,6 +5,48 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.85.0] - 2026-10-03
+
+Reported: after working in another browser tab, the "select trade pair" list was open on the way back, and pairs
+kept opening with no close in sight. Read from the live page the same day (`assetLog`, 1.84.1), then reproduced.
+
+### Changed
+- **The payout floor leaves the board alone while the Quotex tab is in the background.** No pair is closed and
+  none is opened there. Auto-close and auto-open had never been told to stop - the chart auto-fill and the sweep
+  were - and a background tab is not the page they were written for: Chrome wakes its timers once a minute (the
+  log's steps were at 1:57:42, 1:58:42 and 2:00:42) and draws nothing, so Quotex's pair list never finishes
+  appearing. Its rows were in the page while it read as closed: the refill used it without pressing "+", logged
+  "close: closed by itself" twice and left it open. It came on screen at 2:02:13, when the tab was shown, and
+  stayed. While it was open the refill held off ("the asset list is open"), then carried on once it was closed -
+  the board went from 3 pairs to 8 with none of the three closed.
+- **A refill in progress ends when the tab goes to the background.** Carried over, it would open pairs on the way
+  back for a close that was never seen. Back in front, the next pass closes what is below the floor, on screen,
+  and the refill follows that close.
+- **A pair list the panel had opened is closed when the tab is in front again** - the case where "+" had just
+  been pressed as the tab was left. The close waits up to 2 s for the list, which only finishes appearing once
+  the tab is drawn again. This also covers a list left by R or a scan row; nothing else about those changes -
+  they are started by hand, with the tab in front.
+
+### Added
+- **The log names each close** - `auto-close closed EUR/GBP (OTC) at 88%` - **and a refill says which close
+  started it**: `auto-open (refill after closing EUR/GBP (OTC) at 88%): opening …`, with `and 2 more` when the
+  run closed several. The log did not record closes at all, so the 3-to-8 refill above could not be traced to
+  its close. It keeps twelve steps instead of eight: one refill step is eight by itself.
+- `autoOpen` reads `the tab is in the background` there, and `assetLog` records a refill stopped by it, a close
+  left for the return, and the return (`tab is in front again - closing the list`).
+
+### Not changed
+- With the tab in front, one close still opens every pair above the floor, one per five-second pass (1.62.0).
+  Seen live the same day: EUR/GBP fell to 88 and was closed, and three pairs opened over the next twelve
+  seconds. Running them back to back was offered and not chosen; one-for-one was turned down on 2026-10-01.
+
+### Tests
+- `tests/background.test.mjs`, with a background tab in the harness (`backgroundTab`: timers held to a wake-up
+  grid, no animation frames) and a pair list that fades in on a frame, as the live one does. A pair falling
+  below the floor in the background, the last tab below the floor there, the tab left at the moment "+" is
+  pressed, and the two log lines. All four fail on 1.84.1.
+- Not seen live yet: the return itself - a pair closed on screen and the refill after it.
+
 ## [1.84.1] - 2026-09-29
 
 ### Fixed

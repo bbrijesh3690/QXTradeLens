@@ -57,6 +57,13 @@ This matters more than it sounds, and has caused wrong conclusions before:
 - Quotex's chart is **one WebGL canvas**. Its vertical scale is view state it keeps to itself —
   measured against its own axis, the visible span is *not* `maxValue - minValue`. A price cannot be
   mapped to a pixel on their chart without calling obfuscated internals. Do not try again.
+- **A background tab is not the page the panel was written for.** Chrome wakes its timers once a second,
+  and after five minutes once a minute, and draws no frames - so Quotex's pair list never finishes appearing
+  there: its rows are in the page, but it reads as closed. Nothing that drives Quotex's page runs while
+  `document.hidden`: the chart auto-fill, the sweep, and since v1.85.0 auto-close and auto-open (a refill in
+  progress ends; a list the panel left open is closed on the way back). The diagnostics line is written only
+  in front, so an `at` more than a few seconds old means the tab is in the background, and `assetLog` steps
+  exactly 60 s apart happened there. Opening a tab for a live check can itself put the Quotex tab behind.
 
 Three things exist because of this:
 
@@ -67,7 +74,9 @@ Three things exist because of this:
   or which word is missing plus what the header does have), and per-chart
   `zoom / have / drawn / pannedTo / atLive` into the site's own storage every 2 s, under the hashed key
   for `__tradeCalc_diag`. Any tab on the
-  origin can read it back. This is how a live problem gets diagnosed in one round trip.
+  origin can read it back. This is how a live problem gets diagnosed in one round trip. `assetLog` on it is
+  the last twelve steps with the pair list, each with how long ago: every auto-close, and for a refill the
+  close that started it (v1.85.0).
 - **The health check** (panel ⚙ menu → Quotex compatibility → Check; it was in the popup until v1.69.0) reports every
   lookup as ok / fallback / missing, and says when the tab is running an old copy — an extension reload does
   not update an open tab, and that mismatch looks exactly like "the fix did nothing". It spots it by
@@ -111,8 +120,8 @@ CONTENT_JS=path npm test                            # against another build
 ```
 
 `tests/helpers.mjs` holds the jsdom harness: a fake Quotex store shaped like theirs, a canvas stub
-that records what was drawn, forced-open shadow roots, and an opaque-key mirror so specs can read
-the panel's settings.
+that records what was drawn, forced-open shadow roots, an opaque-key mirror so specs can read
+the panel's settings, and a background tab (`backgroundTab`: timers held to a wake-up grid, no frames).
 
 ## Release
 
@@ -164,6 +173,14 @@ check will say so if only one happened.
   "top up, do not grow" guard holds. Not observed: the timing. The read caught `opened one 1s ago`, which
   proves the open happened but not that it followed the close immediately rather than a tick and a settle
   window later; that path is covered by specs only.
+- **A close refills the board (v1.62.0, which replaced the two-pair rule above), and nothing happens in the
+  background (v1.85.0).** In front, one close opens every OTC pair at or above the floor, one per five-second
+  pass, each opening the pair list for about 1.5 s - seen live on 2026-10-03: EUR/GBP fell to 88 and was closed,
+  three pairs opened over the next twelve seconds. The user's rule is "auto-open triggers when auto-close has
+  completed". They turned down one-for-one (2026-10-01); running the refill back to back was offered with
+  1.85.0 and not chosen - do not build either unasked. On the live page a pick no longer closes the list by
+  itself; the panel closes it (`closed at try 1`). Covered by specs, not yet seen live: the return from the
+  background - the close on screen, then the refill - and a left-over list being closed.
 - **The floor is committed on Enter or blur, and nothing acts on the box's contents** (v1.61.1, completed
   in v1.67.1). v1.61.1 fixed only the five-second pass; the recalculation - which runs on page changes, not
   when the box is left - plus both trade-blocking paths, the OTC rebuild, the Q hotkey, the payout cap and the

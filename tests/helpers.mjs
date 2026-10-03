@@ -349,6 +349,70 @@ const pressSideArrow = (qx, code) =>
   );
 const stakeField = (qx) => qx.window.document.querySelector(".deal-amount-input input.input-control__input");
 
+// A background tab (v1.85.0). Chrome wakes a hidden tab's timers on a grid - once a second, and after five
+// minutes once a minute - and draws no frames, which is what the live log showed on 2026-10-03 (steps exactly
+// 60 s apart, and a pair list that never finished appearing). Call it from `setup`, before the panel starts:
+// while hidden, a timeout that comes due waits for the next wake-up, an interval runs once per wake-up, and
+// animation frames are held until the tab is shown. hide() / show() are the user switching away and back.
+function backgroundTab(w, wakeMs = 1200) {
+  const st = w.setTimeout.bind(w),
+    si = w.setInterval.bind(w),
+    ct = w.clearTimeout.bind(w),
+    raf = w.requestAnimationFrame.bind(w);
+  const tab = { hidden: false, wakeUps: 0 };
+  let due = [];
+  const heldFrames = [];
+  const pendingIntervals = new Set();
+  Object.defineProperty(w.document, "hidden", { get: () => tab.hidden, configurable: true });
+  Object.defineProperty(w.document, "visibilityState", { get: () => (tab.hidden ? "hidden" : "visible"), configurable: true });
+  w.setTimeout = (fn, ms, ...a) => {
+    const id = st(() => {
+      if (!tab.hidden) return fn(...a);
+      due.push({ id, run: () => fn(...a) });
+    }, ms);
+    return id;
+  };
+  w.clearTimeout = (id) => {
+    due = due.filter((d) => d.id !== id);
+    return ct(id);
+  };
+  w.setInterval = (fn, ms, ...a) => {
+    const tick = () => fn(...a);
+    return si(() => {
+      if (!tab.hidden) return tick();
+      pendingIntervals.add(tick);
+    }, ms);
+  };
+  w.requestAnimationFrame = (fn) => {
+    if (!tab.hidden) return raf(fn);
+    heldFrames.push(fn);
+    return 0;
+  };
+  const wake = () => {
+    tab.wakeUps++;
+    const q = due;
+    due = [];
+    q.forEach((d) => d.run());
+    const p = [...pendingIntervals];
+    pendingIntervals.clear();
+    p.forEach((t) => t());
+  };
+  si(() => {
+    if (tab.hidden) wake();
+  }, wakeMs);
+  tab.hide = () => {
+    tab.hidden = true;
+    w.document.dispatchEvent(new w.Event("visibilitychange"));
+  };
+  tab.show = () => {
+    tab.hidden = false;
+    heldFrames.splice(0).forEach((f) => f(Date.now())); // the first frame drawn after coming back
+    wake();
+    w.document.dispatchEvent(new w.Event("visibilitychange"));
+  };
+  return tab;
+}
+
 export {
   CONTENT_JS,
   FIXTURE,
@@ -392,4 +456,5 @@ export {
   amtStorage,
   pressSideArrow,
   stakeField,
+  backgroundTab,
 };
