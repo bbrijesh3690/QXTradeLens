@@ -186,8 +186,13 @@ check will say so if only one happened.
   try 1`). **Proved live on 1.85.0 with a recorder** (a `storage` listener on the diagnostics key, set in the
   robots.txt tab - a refill scrolls the twelve log steps in seconds, so one read after the return is too
   late): 10 min 46 s in the background with no step logged while two pairs sat at 77% and 88%; both were
-  closed in the first second in front. Covered by specs, not yet seen live: the one-visit refill on Quotex's
-  page, and a left-over list being closed on the way back.
+  closed in the first second in front. **The one-visit refill was read live on 1.86.0 the same day**, with the
+  same recorder: two closes, then "+" once, seven pairs picked in 2.9 s, the list closed 3.9 s after "+";
+  nothing for two and a half minutes; then three closes, "+" once, two pairs picked, closed after 1.4 s. Still
+  covered by specs only: a left-over list being closed on the way back. Known limit: a pair the list cannot
+  show brings the list up once when it first reaches the floor, and once more every 10 minutes after - with
+  nothing in the list to open, that visit picks nothing. Remembering what the list shows, rather than what it
+  does not, would end that; offered on 2026-10-03, not built.
 - **The floor is committed on Enter or blur, and nothing acts on the box's contents** (v1.61.1, completed
   in v1.67.1). v1.61.1 fixed only the five-second pass; the recalculation - which runs on page changes, not
   when the box is left - plus both trade-blocking paths, the OTC rebuild, the Q hotkey, the payout cap and the
