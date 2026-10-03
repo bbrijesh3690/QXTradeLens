@@ -101,7 +101,12 @@ Three things exist because of this:
   finder must demand what only the real thing has (the list's search box, the "+" nearest the tabs), and a
   remembered name that can be wrong gets an entry in `LEARNED_CHECKS`, or is dropped with `forgetLearned` when
   Quotex's data contradicts it (open-trade rows, v1.84.0). Check uses the same finders, so it heals with them. `tests/scramble.test.mjs` renames the
-  whole page at once; a new finder gets a case there.
+  whole page at once; a new finder gets a case there - **and so does a feature that only uses finders**: the
+  payout floor's close and refill had none until v1.87.0, and stopped dead on that page (a tab's payout was read
+  by known names or by `data-symbol` only). Ask "does it repair itself?" of the whole feature, not of each lookup.
+- **"None" from Quotex's data is an answer only when the data is there.** With the bridge out of reach or the
+  payout field renamed, "nothing above the floor is left" and "I cannot tell" looked the same, and the refill
+  ended in silence (v1.87.0). Where the data gives no figure, fall back to what the page prints.
 - **Quotex's data is read by name, and by shape only where the data proves itself** (v1.81.0,
   `chart_reader.js`): deal times, deal pair, deal lists. Balance, payouts and amounts are never guessed; a missing
   one shows in ⚙ → Check as "Quotex data fields · missing: …". Read that row before hunting for a renamed field.
@@ -192,7 +197,11 @@ check will say so if only one happened.
   covered by specs only: a left-over list being closed on the way back. Known limit: a pair the list cannot
   show brings the list up once when it first reaches the floor, and once more every 10 minutes after - with
   nothing in the list to open, that visit picks nothing. Remembering what the list shows, rather than what it
-  does not, would end that; offered on 2026-10-03, not built.
+  does not, would end that; offered on 2026-10-03, not built. **Self-repair (v1.87.0):** the close and the
+  refill work with every class and id renamed, with the tabs' `data-symbol` gone (payout and name from what the
+  tab prints), with the payout field renamed in Quotex's data and with that data out of reach (the refill picks
+  by what the list prints) - four cases in `tests/scramble.test.mjs`. Not covered: a tab close button whose
+  label and icon name both change.
 - **The floor is committed on Enter or blur, and nothing acts on the box's contents** (v1.61.1, completed
   in v1.67.1). v1.61.1 fixed only the five-second pass; the recalculation - which runs on page changes, not
   when the box is left - plus both trade-blocking paths, the OTC rebuild, the Q hotkey, the payout cap and the

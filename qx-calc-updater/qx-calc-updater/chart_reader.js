@@ -306,6 +306,9 @@
       for (var gi = 0; gi < gNames.length; gi++) if (!(gNames[gi] in g)) fieldNotes['global.' + gNames[gi]] = 'missing';
     }
     if (!bySymbol) fieldNotes['assets.assetBySymbol'] = 'missing';
+    // v1.87.0: the chart's own pair is in the asset table but carries no `payout` - the figure the payout floor
+    // and the refill decide on. Reported, never guessed: until now Check said "all found" with it renamed.
+    else if (asset && num(asset.payout) === null) fieldNotes['asset payout'] = 'missing';
     if (!symbol) fieldNotes['chart pair'] = 'missing';
     if (serverTime === null) fieldNotes['server clock'] = 'missing';
     var out = {

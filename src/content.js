@@ -1479,15 +1479,20 @@
       if (asset && asset.label) {
         return asset.label;
       }
-      if (t.id && t.id !== "tab-active") {
-        return t.id;
-      }
-      const leaf = Array.from(t.querySelectorAll("*")).find((c) => c.children.length === 0 && PAIR_TEXT_RE.test(textOf(c)) && !/%/.test(textOf(c)));
+      // v1.87.0 (self-healing): the name the tab itself prints comes before its id. Probed on a page with every
+      // name changed and the pair code (`data-symbol`) gone: the one tab that had an id - the active one - was
+      // named by that id ("zeQx"), so it matched neither its row in the list nor its pair in Quotex's data. A
+      // pair name first, then any worded text that is not the payout (Gold, Bitcoin).
+      const leaves = Array.from(t.querySelectorAll("*")).filter((c) => c.children.length === 0 && textOf(c) && !/%/.test(textOf(c)));
+      const leaf = leaves.find((c) => PAIR_TEXT_RE.test(textOf(c))) || leaves.find((c) => /\p{L}{2}/u.test(textOf(c)));
       if (leaf) {
         return textOf(leaf);
       }
       const n = (t.textContent || "").match(/[A-Z]{3}\/[A-Z]{3}/);
-      return n ? n[0] + (t.textContent.includes("OTC") ? " (OTC)" : "") : "";
+      if (n) {
+        return n[0] + (t.textContent.includes("OTC") ? " (OTC)" : "");
+      }
+      return t.id && t.id !== "tab-active" ? t.id : "";
     }
     // A pair tab's close control, or null when the tab has none.
     // v1.24.4: only real close controls count. The old last-resort guesses (any child whose HTML contains
@@ -5574,7 +5579,12 @@
       });
       return e;
     }
-    function isPairTabOpen(t) {
+    // v1.87.0: `fresh` asks the page again. Tabs found by walking the page (no known name, no pair code) are
+    // kept for a second - longer than a pick takes to open its tab, so the tab just opened read as not there.
+    function isPairTabOpen(t, fresh) {
+      if (fresh) {
+        tabsByText.at = 0;
+      }
       return getPairTabs().some((e) => normKey(getTabName(e)) === t);
     }
     // ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -5715,6 +5725,8 @@
       // v1.54.1: why this did or did not act, for the diagnostics line. Whether a pair SHOULD have been
       // opened cannot be judged from outside the tab without the payouts it was looking at.
       autoOpenReason = "starting up";
+    // How a tab's payout was last read, for Check: "class", "store", "printed", "store by name" or "missing".
+    let tabPayoutVia = "missing";
     function tabPayout(tab) {
       const el =
         tab.querySelector(".ElyTP") ||
@@ -5725,10 +5737,36 @@
         tab.querySelector("[class*='payout']");
       const shown = el ? parsePct(el.textContent) : NaN;
       if (!isNaN(shown)) {
+        tabPayoutVia = "class";
         return shown;
       }
       const asset = storeAssetFor(tab);
-      return asset && asset.payout != null ? asset.payout : NaN;
+      if (asset && asset.payout != null) {
+        tabPayoutVia = "store";
+        return asset.payout;
+      }
+      // v1.87.0 (self-healing): with the known names and the pair code (`data-symbol`) both gone, nothing was
+      // left to read a tab's payout by - probed on such a page, every tab read as unknown, so auto-close
+      // closed nothing and auto-open stood at "a pair's payout cannot be read". Now the percent the tab itself
+      // prints (the one piece of text in it that is just "91 %"), then Quotex's own figure for the pair the
+      // tab names.
+      const leaf = Array.from(tab.querySelectorAll("*")).find((c) => c.children.length === 0 && /^\d{1,3}\s*%$/.test(textOf(c)));
+      const printed = leaf ? parsePct(textOf(leaf)) : NaN;
+      if (!isNaN(printed)) {
+        tabPayoutVia = "printed";
+        return printed;
+      }
+      const norm = normKey(getTabName(tab)),
+        assets = norm ? readQuotexAssets() : null;
+      for (const symbol in assets || {}) {
+        const a = assets[symbol];
+        if (a && a.payout != null && normKey(a.label || symbol) === norm) {
+          tabPayoutVia = "store by name";
+          return a.payout;
+        }
+      }
+      tabPayoutVia = "missing";
+      return NaN;
     }
     // Every open pair's payout, or null when one of them cannot be read - an unknown payout must never be
     // the reason a pair gets opened.
@@ -5829,6 +5867,7 @@
     // picked either: its tab would print the same figure and be closed on the next pass. The printed figures
     // alone are the fallback, for when the bridge cannot answer or knows none of the rows by name.
     function autoOpenChoices(min) {
+      tabsByText.at = 0; // the tabs as they are now - see isPairTabOpen
       const rows = getAssetChoices(),
         open = new Set(getPairTabs().map((t) => normKey(getTabName(t)))),
         assets = readQuotexAssets(),
@@ -5838,7 +5877,9 @@
           rated.set(normKey(assets[symbol].label || symbol), { a: assets[symbol], symbol });
         }
       }
-      const byPlatform = rows.some((r) => rated.has(r.norm)),
+      // v1.87.0: "the platform rates the rows" means it has a payout figure for at least one of them. With the
+      // payout field renamed it knows every row by name and rates none; the printed figures decide then too.
+      const byPlatform = rows.some((r) => rated.has(r.norm) && rated.get(r.norm).a.payout != null),
         seen = new Set(),
         out = [];
       for (const r of rows) {
@@ -5846,14 +5887,14 @@
           continue;
         }
         seen.add(r.norm);
+        const hit = rated.get(r.norm);
         let payout = r.payout;
         if (byPlatform) {
-          const hit = rated.get(r.norm);
           if (!hit || !hit.a.active || hit.a.payout == null || !isOtcAsset(hit.a, hit.symbol) || r.payout < min) {
             continue;
           }
           payout = hit.a.payout;
-        } else if (!/\botc\b/i.test(r.name)) {
+        } else if (!/\botc\b/i.test(r.name) || (hit && !hit.a.active)) {
           continue;
         }
         if (payout >= min) {
@@ -5981,11 +6022,11 @@
           }
           tried.add(pick.norm);
           synthClick(target);
-          waitUntil(() => isPairTabOpen(pick.norm), 80, 800, () => {
+          waitUntil(() => isPairTabOpen(pick.norm, true), 80, 800, () => {
             if (over) {
               return;
             }
-            if (isPairTabOpen(pick.norm)) {
+            if (isPairTabOpen(pick.norm, true)) {
               opened.push(pick.name);
             } else {
               noteAsset("auto-open: " + pick.name + " did not open");
@@ -6055,14 +6096,19 @@
         tooFewGoodSince = 0;
         // v1.86.0: read afresh. The close was decided on what the tab prints; the asset table kept for up to
         // 5 s could still rate that same pair above the floor, and the refill would open it straight back.
-        readQuotexAssets(true);
+        const assets = readQuotexAssets(true);
         // From the store, not the dropdown, so running out costs nothing and touches no part of their UI.
         const next = bestAssetAboveFloor(min);
-        if (!next) {
+        // v1.87.0 (self-healing): "none left" is an answer only when the platform's table carries payout
+        // figures. With Quotex's data out of reach, or its payout field renamed, there was no `next` either,
+        // and the refill ended here without a word - probed, a close was never followed by a refill. Now the
+        // refill goes to the list and picks by what its rows print (autoOpenChoices).
+        const rates = Object.keys(assets || {}).some((symbol) => assets[symbol] && assets[symbol].payout != null);
+        if (!next && rates) {
           autoOpenFill = false;
           return stop("every OTC pair at or above " + min + "% is already open");
         }
-        autoOpenReason = "refilling the board - " + next.label + " at " + next.payout + "%";
+        autoOpenReason = next ? "refilling the board - " + next.label + " at " + next.payout + "%" : "refilling the board by what the list prints";
         return autoOpenBetterPair(min);
       }
       // The case with no close to trigger on: Quotex gives the last remaining tab no close control, so when
@@ -9456,6 +9502,17 @@
       add("Pair tabs", !tabs.length ? "missing" : pairTabsVia === "class" ? "ok" : "fallback", pairTabsVia, tabs.length + " open");
       const closeBtns = tabs.filter((tab) => getTabCloseBtn(tab)).length;
       add("Tab close buttons", tabs.length && closeBtns === tabs.length ? "ok" : closeBtns ? "fallback" : "missing", "page", closeBtns + " of " + tabs.length);
+      // v1.87.0: each tab's payout - what auto-close and the refill decide on - and how it was read: by its
+      // known name, from Quotex's data, or (with both gone) from the percent the tab itself prints.
+      const payVia = tabs.map((tab) => (isNaN(tabPayout(tab)) ? "missing" : tabPayoutVia));
+      const payRead = payVia.filter((v) => v !== "missing"),
+        payHow = Array.from(new Set(payRead)).join(", ");
+      add(
+        "Tab payouts",
+        !tabs.length || payRead.length < tabs.length ? "missing" : payRead.every((v) => v === "class") ? "ok" : "fallback",
+        payHow || "none",
+        payRead.length + " of " + tabs.length + " read",
+      );
       const domOpen = getOpenTradePnlEls().length;
       const storeOpen = storeOpenTradeCount();
       // v1.84.1: one number - Quotex's own when it answers - and the page's beside it only when they differ.

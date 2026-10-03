@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FIXTURE, sleep, quotexStore, boot, deal, slStorage, overlayShown, pressSideArrow } from "./helpers.mjs";
+import { FIXTURE, sleep, quotexStore, boot, deal, slStorage, overlayShown, pressSideArrow, pref, floorPage, until } from "./helpers.mjs";
 
 function scrambled(html = FIXTURE, { dropData = true } = {}) {
   let n = 0;
@@ -189,3 +189,71 @@ test("renamed page: the pair tab and its name are found from Quotex's data (v1.8
     qx.close();
   }
 });
+
+// ── v1.87.0: the payout floor's own work - a close, then the refill - on a renamed page ───────────────
+// Asked on 2026-10-03: "does it repair itself?" Probed on 1.86.0: with every class and id renamed it did; with
+// the tabs' pair code (`data-symbol`) gone as well, no tab's payout could be read, so nothing was closed and
+// nothing opened; and with Quotex's data out of reach, or its payout field renamed, a close was never followed
+// by a refill. The page is helpers.mjs floorPage, renamed: "+" beside the tabs, a list with its search box,
+// rows that are just a name and a percent.
+const diag = (qx) => JSON.parse(pref(qx, "__tradeCalc_diag") || "{}");
+const health = (qx, name) => qx.askPanel({ type: "GET_HEALTH" }).rows.find((r) => r.name === name);
+const FLOOR_ROWS = [
+  ["EUR/USD (OTC)", 70, "EURUSD_otc"],
+  ["AUD/CAD (OTC)", 93, "AUDCAD_otc"],
+  ["GBP/JPY (OTC)", 95, "GBPJPY_otc"],
+  ["CAD/CHF (OTC)", 94, "CADCHF_otc"],
+];
+// EUR/JPY falls to 70%: it is closed, the list is opened once, the three pairs above the floor are picked best
+// first, and the list is closed. `then` checks what else the variant promises.
+async function closeThenRefill(options, bootOptions, then) {
+  const page = floorPage({ list: FLOOR_ROWS, ...options });
+  const qx = await boot({ html: page.html, store: page.store, setup: page.setup, ...bootOptions });
+  try {
+    await sleep(600);
+    page.fall("EURJPY_otc", 70);
+    const opened = () => page.said().filter((e) => /^opened /.test(e));
+    assert.ok(await until(() => opened().length === 3, 15000), "the pair below the floor was closed and the three above it opened: " + page.said().join(", "));
+    assert.ok(await until(() => page.list() === "not on the page", 6000), "and the list was closed after them: " + page.list());
+    assert.equal(page.said()[0], "closed EUR/JPY (OTC)", "the close came first");
+    assert.deepEqual(opened(), ["opened GBP/JPY (OTC)", "opened CAD/CHF (OTC)", "opened AUD/CAD (OTC)"], "best first, and never the pair at 70%");
+    assert.equal(page.said().filter((e) => e === "+ opened the list").length, 1, "in one visit to the list: " + page.said().join(", "));
+    const line = "auto-open picked GBP/JPY (OTC), CAD/CHF (OTC), AUD/CAD (OTC)";
+    assert.ok(await until(() => String(diag(qx).assetLog).includes(line), 5000), "and each tab was seen to open: " + diag(qx).assetLog);
+    if (then) await then(qx, page);
+  } finally {
+    qx.close();
+  }
+}
+
+test("renamed page: a pair below the floor is closed and the refill picks every pair, with every class and id renamed (v1.87.0)", () =>
+  // Works on 1.86.0 too - this one is the guard, so that a later change cannot lose it. The tabs still carry
+  // their pair code here, so their payouts come from Quotex's data.
+  closeThenRefill({ renamed: "names" }, {}, async (qx) => {
+    const row = health(qx, "Tab payouts");
+    assert.equal(row.status, "fallback", JSON.stringify(row));
+    assert.equal(row.via, "store", "read from Quotex's data: " + JSON.stringify(row));
+  }));
+
+test("renamed page: the same with the tabs' pair code gone - payouts and names are read from what the tabs print (v1.87.0)", () =>
+  closeThenRefill({ renamed: "all" }, {}, async (qx) => {
+    const row = health(qx, "Tab payouts");
+    assert.equal(row.status, "fallback", JSON.stringify(row));
+    assert.equal(row.via, "printed", "read from the percent each tab prints: " + JSON.stringify(row));
+    assert.match(String(row.value), /^4 of 4 read/, JSON.stringify(row));
+    // The active tab is named by what it prints, not by its id (it read "zeQx" on 1.86.0).
+    assert.deepEqual(Object.keys(diag(qx).pairs).sort(), ["AUD/CAD (OTC)", "CAD/CHF (OTC)", "GBP/JPY (OTC)", "USD/DZD (OTC)"], JSON.stringify(diag(qx).pairs));
+    assert.deepEqual(Object.values(diag(qx).pairs).sort(), [91, 93, 94, 95], "with the payout each one prints");
+  }));
+
+test("renamed data: with Quotex's payout figure renamed, the refill picks by what the list prints, and Check names the figure (v1.87.0)", () =>
+  closeThenRefill({ payoutField: "profitPercent" }, {}, async (qx) => {
+    const row = health(qx, "Quotex data fields");
+    assert.equal(row.status, "missing", JSON.stringify(row));
+    assert.match(row.value, /missing: .*asset payout/, row.value);
+  }));
+
+test("Quotex's data out of reach: a close is still followed by the refill, by what the list prints (v1.87.0)", () =>
+  closeThenRefill({}, { store: null }, async (qx) => {
+    assert.equal(health(qx, "Store bridge (chart_reader.js)").status, "missing", "the bridge really is absent here");
+  }));

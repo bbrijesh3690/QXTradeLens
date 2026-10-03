@@ -5,6 +5,46 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.87.0] - 2026-10-03
+
+Asked after 1.86.0: "does it repair itself?" Probed on test pages before anything was changed. With every class
+and id renamed, the close and the one-visit refill both worked, and the new names of "+" and the list were
+remembered. Two cases did not repair themselves - the panel stopped, and stayed stopped:
+
+### Fixed
+- **A tab's payout could not be read once the known names and the tab's pair code (`data-symbol`) were both
+  gone.** Every tab read as unknown, so auto-close closed nothing and auto-open stood at "a pair's payout cannot
+  be read". After the known names and Quotex's own figure by pair code, the payout is now the percent the tab
+  itself prints (the one piece of text in it that is just "91 %"), then Quotex's figure for the pair the tab
+  names.
+- **A tab was named by its id before the name it prints.** On that same page the active tab - the only one with
+  an id - read as "zeQx", so it matched neither its row in the list nor its pair in Quotex's data. The printed
+  name comes first now: a pair name, else any worded text that is not the payout (Gold, Bitcoin).
+- **With Quotex's data out of reach, or its payout field renamed, a close was never followed by a refill.** The
+  refill asked the asset table what was left to open, got nothing, and took that for "none left". "None left"
+  is an answer only when the table carries payout figures; without them the refill now goes to the list and
+  picks by what its rows print - OTC by name, at or above the floor - still in one visit.
+- **A tab opened by a pick read as not there for up to a second** on a page where the tabs are found by walking
+  it (the answer is kept that long), so each pick waited out its 800 ms and was logged as not opened. The refill
+  asks afresh.
+
+### Added
+- **Check → "Tab payouts"**: how many tabs' payouts were read, and how - by the known name, from Quotex's data,
+  or from what the tab prints.
+- **Check → "Quotex data fields" names a missing payout figure** (`asset payout`). With the field renamed it
+  said "all found", and nothing told why the refill had stopped. Reported, never guessed (`chart_reader.js`).
+
+### Tests
+- `tests/scramble.test.mjs`: a pair falling below the floor on the renamed page - closed, the list opened once,
+  three pairs picked best first, the list closed - with every class and id renamed; with the tabs' pair code
+  gone as well; with the payout field renamed in Quotex's data; and with that data out of reach. On 1.86.0 the
+  first fails only for the new Check row (the behaviour was already there - it is the guard), the second closes
+  nothing, and the last two close the pair and never refill.
+- `floorPage` in `tests/helpers.mjs` takes `renamed` and `payoutField`.
+- Not seen live, and cannot be: Quotex's page cannot be renamed from outside. If the tab close button's label
+  and its icon name both changed, auto-close would still find nothing to press - Check's "Tab close buttons"
+  row says so.
+
 ## [1.86.0] - 2026-10-03
 
 Asked after a refill was watched on 1.85.0: "the way R is doing its job, picking every pair in a ms" - the refill
