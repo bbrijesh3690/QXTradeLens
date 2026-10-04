@@ -207,7 +207,9 @@ check will say so if only one happened.
   auto open switched the asset I am on - not good". Quotex puts the chart on a pair the moment it is picked, so
   the refill notes the pair first and presses its tab again after the picks; the chart still passes over the
   picked pairs for that second. Not for the last-tab path (v1.54.0), where the opened pair is where the chart
-  is meant to go. Offered, not built: holding Up / Down while the chart is away. **Read live on 1.88.0
+  is meant to go. Holding Up / Down for the second the chart is away (a press then trades the pair it is
+  passing over) was offered and **turned down by the user on 2026-10-04 - do not build it, do not offer it
+  again.** **Read live on 1.88.0
   (2026-10-04):** two closes, "+" once, four pairs picked, `auto-open: back on USD/COP (OTC)` 0.2 s after the
   picks, and the list gone 1.8 s after "+" - pressing the tab closes Quotex's list by itself (`closed by
   itself`). The chart was away from its pair for about 1.2 s.
