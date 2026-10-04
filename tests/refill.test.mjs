@@ -10,7 +10,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sleep, boot, pref, floorPage, until } from "./helpers.mjs";
+import { sleep, boot, pref, floorPage, until, healthRow, bigTfStorage, makeCandles } from "./helpers.mjs";
 
 const diag = (qx) => JSON.parse(pref(qx, "__tradeCalc_diag") || "{}");
 const count = (page, what) => page.said().filter((e) => e === what).length;
@@ -85,6 +85,79 @@ test("payout floor: pairs the list is not showing are left out in the same visit
     await sleep(7000);
     assert.equal(count(page, "+ opened the list"), 1, "with nothing to open, the list is not opened at all: " + page.said().join(", "));
     assert.match(String(diag(qx).autoOpen), /already open|opened one/, diag(qx).autoOpen);
+  } finally {
+    qx.close();
+  }
+});
+
+// ── v1.88.0: the chart goes back to the pair it was on ───────────────────────────────────────────────────
+// Reported on 2026-10-04: "the auto open switched the asset what currently I am - not good". Quotex puts the
+// chart on a pair the moment it is picked from the list, so a refill left the chart on the last pair it opened.
+
+test("payout floor: after a refill the chart is back on the pair it was on (v1.88.0)", async () => {
+  const page = floorPage();
+  const qx = await boot({ html: page.html, store: page.store, setup: page.setup });
+  try {
+    await sleep(600);
+    assert.equal(page.active(), "USD/DZD (OTC)", "the chart starts on the pair the page opened on");
+    page.fall("EURJPY_otc", 70);
+    assert.ok(await until(() => opened(page).length === 2, 12000), "both pairs above the floor were opened: " + page.said().join(", "));
+    assert.ok(await until(() => page.list() === "not on the page", 6000), "and the list was closed: " + page.list());
+    assert.equal(page.active(), "USD/DZD (OTC)", "the chart is back on the pair it was on: " + page.said().join(", "));
+    const said = page.said();
+    assert.ok(said.lastIndexOf("chart on USD/DZD (OTC)") > said.lastIndexOf("opened AUD/CAD (OTC)"), "it went back after the last pair was opened");
+    assert.ok(said.lastIndexOf("chart on USD/DZD (OTC)") < said.lastIndexOf("list closed"), "and before the list was closed: " + said.join(", "));
+    const line = "auto-open: back on USD/DZD (OTC)";
+    assert.ok(await until(() => String(diag(qx).assetLog).includes(line), 5000), "the log says so: " + diag(qx).assetLog);
+  } finally {
+    qx.close();
+  }
+});
+
+test("payout floor: a tab the user clicks while the refill is picking is theirs to keep (v1.88.0)", async () => {
+  // NZD/USD (OTC) is open as well; the user clicks its tab as the first pair is picked. The chart is then on a
+  // pair the refill did not pick, so it is not taken back to where it was.
+  const page = floorPage({ userMovesOnPick: true });
+  const qx = await boot({ html: page.html, store: page.store, setup: page.setup });
+  try {
+    await sleep(600);
+    page.fall("EURJPY_otc", 70);
+    assert.ok(await until(() => opened(page).length >= 1 && page.list() === "not on the page", 15000), "the refill ran: " + page.said().join(", "));
+    await sleep(1500);
+    assert.equal(page.active(), "NZD/USD (OTC)", "the chart stays where the user put it: " + page.said().join(", "));
+  } finally {
+    qx.close();
+  }
+});
+
+test("payout floor: with every open pair below the floor, the chart stays on the pair that was opened (v1.54.0, unchanged in v1.88.0)", async () => {
+  // No close stands behind this one, and the pair the chart was on cannot be traded: the pair that is opened is
+  // where the chart is meant to go.
+  const page = floorPage({ lastTabLow: true });
+  const qx = await boot({ html: page.html, store: page.store, setup: page.setup });
+  try {
+    assert.ok(await until(() => opened(page).length === 1, 20000), "the best pair above the floor was opened: " + page.said().join(", "));
+    assert.ok(await until(() => page.list() === "not on the page", 6000), "and the list was closed");
+    assert.equal(page.active(), "GBP/JPY (OTC)", "the chart is on it: " + page.said().join(", "));
+  } finally {
+    qx.close();
+  }
+});
+
+test("payout floor: a refill does not send the charts of the pair you are on off to be filled again (v1.88.0)", async () => {
+  // With the charts open, a change of the chart pair counts as opening it and queues a walk through its
+  // timeframes. The refill takes the chart away and brings it back; that is the panel, not the user.
+  const page = floorPage();
+  page.store.__candles = makeCandles(200, 15);
+  const qx = await boot({ html: page.html, store: page.store, setup: page.setup, storage: { ...bigTfStorage, __tradeCalc_mtf_settle: "8" } });
+  try {
+    const fill = () => String(healthRow(qx, "Charts auto-fill").value);
+    assert.ok(await until(() => /filled this pair/.test(fill()), 45000), "the pair the page opened on was filled: " + fill());
+    page.fall("EURJPY_otc", 70);
+    assert.ok(await until(() => opened(page).length === 2 && page.list() === "not on the page", 15000), "the refill ran: " + page.said().join(", "));
+    assert.equal(page.active(), "USD/DZD (OTC)", "and the chart is back on its pair");
+    await sleep(1500);
+    assert.match(fill(), /filled this pair/, "no walk is queued for it - it would read settling: " + fill());
   } finally {
     qx.close();
   }

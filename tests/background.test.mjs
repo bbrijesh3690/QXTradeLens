@@ -62,6 +62,29 @@ test("background tab: a refill in progress stops there, its list is closed on th
   }
 });
 
+test("background tab: a refill cut short after a pick puts the chart back on its pair on the way back (v1.88.0)", async () => {
+  // The user leaves at the moment the first pair is picked: the chart is on that pair, and nothing is driven in
+  // the background. In front again the list is closed (v1.85.0) and the chart goes back to the pair it was on.
+  const page = floorPage({ awayOnPick: true });
+  const qx = await boot({ html: page.html, store: page.store, setup: page.setup });
+  try {
+    await sleep(600);
+    page.fall("EURJPY_otc", 70);
+    assert.ok(await until(() => page.tab.hidden, 15000), "the refill picked a pair, and the user left: " + page.said().join(", "));
+    await sleep(5000); // four wake-ups in the background
+    const opened = () => page.said().filter((e) => /^opened /.test(e));
+    assert.equal(opened().length, 1, "nothing more was picked in the background: " + page.said().join(", "));
+    assert.equal(page.active(), "GBP/JPY (OTC)", "the chart is still on the pair that was picked");
+    page.tab.show();
+    assert.ok(await until(() => page.active() === "USD/DZD (OTC)", 5000), "back in front, the chart is put back on the pair it was on: " + page.said().join(", "));
+    assert.ok(await until(() => page.list() === "not on the page", 8000), "and the list is closed: " + page.list());
+    await sleep(6000);
+    assert.equal(opened().length, 1, "the refill did not carry on");
+  } finally {
+    qx.close();
+  }
+});
+
 test("background tab: with every open pair below the floor, a pair is opened only once the tab is in front (v1.85.0)", async () => {
   // The path with no close behind it (v1.54.0): the last tab has no close control, so one pair is opened.
   const page = floorPage({ lastTabLow: true });

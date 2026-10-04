@@ -4566,7 +4566,12 @@
       return ds ? ds === sym : showsPair(t, currentPairLabel());
     }
     function activateTab(t) {
-      const e = t.querySelector(".WRocw") || t.querySelector(".l5ftG") || t.querySelector(".pC7xL");
+      // v1.88.0 (self-healing): with those names gone, the name the tab prints - what a hand would click.
+      const e =
+        t.querySelector(".WRocw") ||
+        t.querySelector(".l5ftG") ||
+        t.querySelector(".pC7xL") ||
+        Array.from(t.querySelectorAll("*")).find((c) => c.children.length === 0 && PAIR_TEXT_RE.test(textOf(c)) && !/%/.test(textOf(c)));
       synthClick(e || t);
     }
     function cycleTabs(t, e) {
@@ -5638,6 +5643,17 @@
         noteAsset("tab is in front again - closing the list");
         closeAssetDropdown(2000);
       }
+      // v1.88.0: and the chart goes back to the pair it was on, when a refill was cut short by the background
+      // with the chart on a pair it had just opened.
+      if (homeOnReturn && !document.hidden) {
+        const home = homeOnReturn;
+        homeOnReturn = "";
+        const tab = getPairTabs().find((t) => normKey(getTabName(t)) === home);
+        if (tab && !isActiveTab(tab)) {
+          noteAsset("tab is in front again - back on " + getTabName(tab));
+          activateTab(tab);
+        }
+      }
       const open = isAssetDropdownOpen();
       if (open !== assetListWasOpen) {
         assetListWasOpen = open;
@@ -5724,7 +5740,13 @@
       tooFewGoodSince = 0,
       // v1.54.1: why this did or did not act, for the diagnostics line. Whether a pair SHOULD have been
       // opened cannot be judged from outside the tab without the payouts it was looking at.
-      autoOpenReason = "starting up";
+      autoOpenReason = "starting up",
+      // v1.88.0: the pair to put the chart back on once the tab is in front again - a refill was cut short by
+      // the background while the chart stood on a pair it had just opened.
+      homeOnReturn = "",
+      // v1.88.0: until when a change of the chart's pair is the refill's own doing - there and back - and not
+      // the user opening a pair, so the chart auto-fill does not queue a walk for it.
+      refillAwayUntil = 0;
     // How a tab's payout was last read, for Check: "class", "store", "printed", "store by name" or "missing".
     let tabPayoutVia = "missing";
     function tabPayout(tab) {
@@ -5955,6 +5977,66 @@
         tried = new Set();
       let leftOut = false,
         over = false;
+      // v1.88.0 (reported 2026-10-04: "the auto open switched the asset I am on - not good"): Quotex puts the
+      // chart on a pair the moment it is picked from its list, so a refill left the chart on the last pair it
+      // had opened. The pair the chart is on is noted before the list is touched, and the chart is put back on
+      // it when the visit ends - after the picks and before the list is closed, the way R ends on its best
+      // pair. Only for a refill: with every open pair below the floor (v1.54.0), the one pair that is opened
+      // is where the chart is meant to go.
+      // Asked afresh each time: with no "tab-active" mark on the page, the pair the chart is on comes from
+      // Quotex's data, which is kept for 250 ms - longer than a pick takes. Caught by the full suite: on the
+      // renamed pages the chart read as still on its pair right after the picks, and was not put back.
+      const onChart = (t) => {
+        quotexStateAt = 0;
+        return isActiveTab(t);
+      };
+      const homeTab = refill ? getPairTabs().find(onChart) : null;
+      let homeName = homeTab ? getTabName(homeTab) : "",
+        home = normKey(homeName);
+      const findHome = () => getPairTabs().find((t) => normKey(getTabName(t)) === home);
+      const away = (ms) => {
+        if (home) {
+          refillAwayUntil = Date.now() + ms;
+        }
+      };
+      // The chart is on a pair this visit did not pick, and not the one it started on: the user clicked a tab
+      // while the pairs were being picked. That pair is theirs, and it is where the chart goes back to.
+      const followUser = () => {
+        const on = home && tried.size ? getPairTabs().find(onChart) : null,
+          name = on ? getTabName(on) : "",
+          norm = normKey(name);
+        if (norm && norm !== home && !tried.has(norm)) {
+          home = norm;
+          homeName = name;
+        }
+      };
+      const goHome = (then) => {
+        followUser();
+        const tab = home && tried.size ? findHome() : null;
+        if (!tab || onChart(tab)) {
+          away(tab ? 1500 : 0);
+          return then();
+        }
+        if (document.hidden) {
+          homeOnReturn = home; // not in a background tab - the 250 ms watcher does it on the way back
+          return then();
+        }
+        activateTab(tab);
+        waitUntil(
+          () => {
+            const t = findHome();
+            return !t || onChart(t);
+          },
+          80,
+          600,
+          () => {
+            const t = findHome();
+            noteAsset(t && onChart(t) ? "auto-open: back on " + homeName : "auto-open: could not go back to " + homeName);
+            away(1500); // long enough for the charts to see the pair is the one it was
+            then();
+          },
+        );
+      };
       // `why` is set when the visit was cut short; it goes in the log, and autoOpenReason is left as the
       // caller set it.
       const end = (why) => {
@@ -5973,11 +6055,12 @@
         if (refill) {
           autoOpenFill = false;
         }
-        autoOpenFinish();
+        goHome(autoOpenFinish);
       };
       // ensureAssetDropdown gives up silently after 32 tries; without this the flag would stay set. Set again
       // at each pick, so a long visit is not cut short.
       const guard = () => {
+        away(15000);
         if (window.__tcAutoOpenTimer) {
           clearTimeout(window.__tcAutoOpenTimer);
         }
@@ -6012,6 +6095,7 @@
             leftOut = true;
             leaveOutUnlisted(min);
           }
+          followUser(); // before the next pick takes the chart away again
           const pick = autoOpenChoices(min).find((c) => !tried.has(c.norm)),
             target = pick && (pick.click || pick.row);
           if (!target || !target.isConnected) {
@@ -7134,7 +7218,12 @@
           trimMtfArchive();
           mtfSymbol = t.symbol;
           mtfSymbolSince = Date.now();
-          mtfFillPendingFor = t.symbol; // opening a pair queues its fill (v1.35.0)
+          // Opening a pair queues its fill (v1.35.0). v1.88.0: not while a refill has the chart away from the
+          // pair it was on - that is the panel's doing, there and back, and would have set the timeframes of
+          // the pair you are on walking a few seconds after every refill.
+          if (Date.now() >= refillAwayUntil) {
+            mtfFillPendingFor = t.symbol;
+          }
           mtfDirty = true;
           saveMtfCache(true); // persist immediately; the throttle could otherwise drop the old pair
           const e = byId("__tcMTF");

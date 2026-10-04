@@ -203,7 +203,11 @@ check will say so if only one happened.
   refill work with every class and id renamed, with the tabs' `data-symbol` gone (payout and name from what the
   tab prints), with the payout field renamed in Quotex's data and with that data out of reach (the refill picks
   by what the list prints) - four cases in `tests/scramble.test.mjs`. Not covered: a tab close button whose
-  label and icon name both change.
+  label and icon name both change. **The chart goes back to the pair it was on (v1.88.0)** - the user: "the
+  auto open switched the asset I am on - not good". Quotex puts the chart on a pair the moment it is picked, so
+  the refill notes the pair first and presses its tab again after the picks; the chart still passes over the
+  picked pairs for that second. Not for the last-tab path (v1.54.0), where the opened pair is where the chart
+  is meant to go. Offered, not built: holding Up / Down while the chart is away. Not seen live yet.
 - **The floor is committed on Enter or blur, and nothing acts on the box's contents** (v1.61.1, completed
   in v1.67.1). v1.61.1 fixed only the five-second pass; the recalculation - which runs on page changes, not
   when the box is left - plus both trade-blocking paths, the OTC rebuild, the Q hotkey, the payout cap and the

@@ -220,6 +220,8 @@ async function closeThenRefill(options, bootOptions, then) {
     assert.equal(page.said().filter((e) => e === "+ opened the list").length, 1, "in one visit to the list: " + page.said().join(", "));
     const line = "auto-open picked GBP/JPY (OTC), CAD/CHF (OTC), AUD/CAD (OTC)";
     assert.ok(await until(() => String(diag(qx).assetLog).includes(line), 5000), "and each tab was seen to open: " + diag(qx).assetLog);
+    // v1.88.0: and the chart is back on the pair it was on.
+    assert.equal(page.active(), "USD/DZD (OTC)", "the chart went back to its pair: " + page.said().join(", "));
     if (then) await then(qx, page);
   } finally {
     qx.close();

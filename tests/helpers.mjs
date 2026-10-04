@@ -419,6 +419,10 @@ function backgroundTab(w, wakeMs = 1200) {
 // Beside the fixture's own tab there is EUR/JPY (OTC) at 91% with a close control - the pair a spec lets fall.
 //   lastTabLow:  one tab only, below the floor, with no close control (Quotex gives the last tab none).
 //   awayOnPlus:  the user switches to another browser tab at the moment "+" is pressed.
+//   awayOnPick:  ... or at the moment the first pair is picked from the list.
+//   userMovesOnPick: NZD/USD (OTC) is open too, and the user clicks its tab as the first pair is picked.
+// The chart is on the fixture's own pair, USD/DZD (OTC), until a tab is clicked or a pair is picked from the
+// list - Quotex puts the chart on a pair it is asked to open. `page.active()` names the pair the chart is on.
 //   unlisted:    pairs the platform rates that the list is not showing (another category).
 //   renamed:     "names" - every class and id on the page has a fresh name, as after one of Quotex's renames;
 //                "all"   - and the tabs have lost their pair code (`data-symbol`) as well. Either way the "+"
@@ -431,11 +435,12 @@ const FLOOR_LIST = [
   ["AUD/CAD (OTC)", 93, "AUDCAD_otc"],
   ["GBP/JPY (OTC)", 95, "GBPJPY_otc"],
 ];
-function floorPage({ lastTabLow = false, awayOnPlus = false, list = FLOOR_LIST, unlisted = [], renamed = false, payoutField = "payout" } = {}) {
+function floorPage({ lastTabLow = false, awayOnPlus = false, awayOnPick = false, userMovesOnPick = false, list = FLOOR_LIST, unlisted = [], renamed = false, payoutField = "payout" } = {}) {
   const store = quotexStore({ payout: lastTabLow ? 70 : 91 });
   const A = store.assets.assetBySymbol;
   for (const [label, payout, symbol] of [...list, ...unlisted]) A[symbol] = { symbol, label, payout, is_otc: 1, active: true };
   if (!lastTabLow) A.EURJPY_otc = { symbol: "EURJPY_otc", label: "EUR/JPY (OTC)", payout: 91, is_otc: 1, active: true };
+  if (userMovesOnPick) A.NZDUSD_otc = { symbol: "NZDUSD_otc", label: "NZD/USD (OTC)", payout: 92, is_otc: 1, active: true };
   if (payoutField !== "payout") {
     for (const a of Object.values(A)) {
       a[payoutField] = a.payout;
@@ -479,6 +484,23 @@ function floorPage({ lastTabLow = false, awayOnPlus = false, list = FLOOR_LIST, 
       return rect.call(this);
     };
     const tabBar = doc.querySelector("." + fresh(renamed ? "Hm2vT" : "Q02Z1"));
+    // The pair the chart is on. Quotex marks its tab with the id "tab-active" and moves the chart there when a
+    // tab is clicked - or when a pair is picked from the list, which is what a refill does (v1.88.0).
+    const ACTIVE_ID = fresh("tab-active"),
+      ownTab = doc.getElementById(ACTIVE_ID); // the fixture's tab: USD/DZD (OTC)
+    let activeEl = ownTab,
+      activeLabel = "USD/DZD (OTC)";
+    const setActive = (el, symbol, label) => {
+      if (activeEl === el) return;
+      if (activeEl) activeEl.removeAttribute("id");
+      el.id = ACTIVE_ID;
+      activeEl = el;
+      activeLabel = label;
+      store.chartSettings.chartById.c1.currentAsset.symbol = symbol;
+      note("chart on " + label);
+    };
+    ownTab.addEventListener("click", () => setActive(ownTab, "USDDZD_otc", "USD/DZD (OTC)"));
+    page.active = () => activeLabel;
     const added = new Map(); // symbol -> { el, label, pct }
     const addTab = (symbol, label, pct) => {
       const tab = doc.createElement("div");
@@ -487,16 +509,28 @@ function floorPage({ lastTabLow = false, awayOnPlus = false, list = FLOOR_LIST, 
       tab.innerHTML =
         '<div class="' + fresh("WRocw") + '">' + label + '</div><div class="' + fresh("ElyTP") + '">' + pct + ' %</div>' +
         '<button aria-label="Close"><svg class="' + fresh("icon-close-tiny") + '"><use href="#icon-close-tiny"></use></svg></button>';
+      tab.addEventListener("click", (e) => {
+        if (!e.target.closest("button")) setActive(tab, symbol, label);
+      });
       tab.querySelector("button").addEventListener("click", () => {
         note("closed " + label);
         tab.remove();
         added.delete(symbol);
+        // With its tab gone, Quotex puts the chart on a neighbour.
+        if (activeEl === tab) {
+          activeEl = null;
+          setActive(ownTab, "USDDZD_otc", "USD/DZD (OTC)");
+        }
       });
       tabBar.appendChild(tab);
       added.set(symbol, { el: tab, label });
+      return tab;
     };
     if (!lastTabLow) addTab("EURJPY_otc", "EUR/JPY (OTC)", 91);
+    const theirs = userMovesOnPick ? addTab("NZDUSD_otc", "NZD/USD (OTC)", 92) : null;
+    let moved = false;
     let away = awayOnPlus,
+      awayPick = awayOnPick,
       listEl = null;
     doc.getElementById(fresh("plus")).addEventListener("click", () => {
       if (listEl && listEl.isConnected) {
@@ -522,7 +556,15 @@ function floorPage({ lastTabLow = false, awayOnPlus = false, list = FLOOR_LIST, 
         row.addEventListener("click", () => {
           if (added.has(symbol)) return;
           note("opened " + label);
-          addTab(symbol, label, pct);
+          setActive(addTab(symbol, label, pct), symbol, label);
+          if (awayPick) {
+            awayPick = false;
+            page.tab.hide();
+          }
+          if (theirs && !moved) {
+            moved = true;
+            theirs.firstElementChild.click(); // the user, on the name of their tab
+          }
         });
         el.appendChild(row);
       }

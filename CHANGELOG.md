@@ -5,6 +5,47 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.88.0] - 2026-10-04
+
+Reported: "the auto open switched the asset what currently I'm - not good."
+
+### Fixed
+- **After a refill the chart is back on the pair it was on.** Quotex puts the chart on a pair the moment it is
+  picked from its list, so every refill left the chart on the last pair it had opened - and since 1.86.0 it
+  picks several in a row. The pair the chart is on is noted before the list is touched, and its tab is pressed
+  again when the picks are done, before the list is closed - the way R ends on its best pair. While the pairs
+  are being picked (under a second for eight, read live on 1.87.0) the chart still passes over them; that is
+  Quotex's doing, and the panel can only go back.
+- **A tab you click while the pairs are being picked is yours to keep.** The chart is then on a pair the refill
+  did not pick; that pair becomes the one it goes back to.
+- **Cut short by the background** - the tab left in the middle of a refill, with the chart on a pair just
+  picked: the chart goes back to its pair when the tab is in front again, as the list is closed (1.85.0).
+- **A refill does not count as "opening a pair" for the charts.** With the charts open, a change of the chart's
+  pair queues a walk through its timeframes; there and back, the refill would have set the timeframes of the
+  pair you are on walking a few seconds after it.
+- Going back to a tab presses the name it prints when its known names are gone (self-repair): the return is
+  checked in all four renamed-page cases of 1.87.0.
+
+### Not changed
+- With every open pair below the floor (1.54.0), the one pair that is opened is where the chart goes - the
+  pair it was on cannot be traded.
+- A pair that falls below the floor is closed even when the chart is on it; Quotex then puts the chart on a
+  neighbouring tab.
+- For the moment the pairs are being picked, Up / Down would trade the pair the chart is passing over.
+  Holding them for that moment was offered, not built.
+
+### Tests
+- `tests/refill.test.mjs`: after a refill the chart is on the pair it was on, having gone back after the last
+  pick and before the list closed; a tab clicked by the user during the picks is where it ends; with the charts
+  open, no fill is queued for the pair. `tests/background.test.mjs`: the tab left at the first pick - back in
+  front, the chart is put back and the list closed. All fail on 1.87.0. The last-tab path is pinned as it was
+  (passes on 1.87.0 too).
+- Caught by the full suite, not by the specs run alone: on the renamed pages there is no "tab-active" mark, so
+  the pair the chart is on comes from Quotex's data, which the panel keeps for 250 ms - right after the picks
+  the chart still read as on its pair and was not put back. The refill asks afresh.
+- `floorPage` models the pair the chart is on: a pick or a click on a tab moves it, as Quotex does.
+- Not seen live yet.
+
 ## [1.87.0] - 2026-10-03
 
 Asked after 1.86.0: "does it repair itself?" Probed on test pages before anything was changed. With every class
