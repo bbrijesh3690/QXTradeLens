@@ -1,5 +1,5 @@
 /*
- * QXTradeLens Controller: content script (panel on qxbroker.com trade pages)
+ * QXTradeLens Controller: content script (panel on Quotex's trade pages: quotex.com, qxbroker.com)
  *
  * SOURCE OF TRUTH. `npm run build` generates qx-calc-updater/qx-calc-updater/content.js from this file.
  *
@@ -9329,8 +9329,8 @@
     });
     // v1.31.2: a diagnostics line in the site's own storage. The health check lives in the popup, which
     // can only be read by whoever is sitting at the browser — no help when the panel is misbehaving in a
-    // tab someone else has to reason about. This writes the same facts where any tab on qxbroker.com can
-    // read them back: which build is running, the pair, what the auto-fill is waiting for, and the chart's
+    // tab someone else has to reason about. This writes the same facts where any tab on the same address
+    // (quotex.com or qxbroker.com - each keeps its own storage) can read them back: which build is running, the pair, what the auto-fill is waiting for, and the chart's
     // timeframe. Only the foreground tab writes, so it always describes the tab actually being watched.
     every(2000, () => {
       if (document.hidden) {

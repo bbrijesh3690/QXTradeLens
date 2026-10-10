@@ -5,6 +5,49 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.89.0] - 2026-10-10
+
+Reported: "the extension is not opening at all."
+
+Nothing in the extension had broken: Quotex's address had gone. `qxbroker.com` stopped resolving - the `.com`
+registry answered "no such domain" through this PC's resolver, three public ones and encrypted DNS at
+Cloudflare and Google. Its registry record shows `client hold`, set by the registrar on 2026-10-08 at 20:29
+UTC; the name is paid until 2034, so it was suspended, not left to expire. The next morning Quotex's own
+Telegram channel (the one `quotex.com` links to) posted: Global `quotex.com`, Bangladesh `market-qx.info`,
+Indonesia and Vietnam `market-quotex.pro`. `quotex.com` now serves the site itself (log in at
+`quotex.com/en/sign-in/`), and from here every other address forwarded to it. Quotex has not said that
+`qxbroker.com` is finished, and whether it comes back is not known.
+
+What the browser showed at `qxbroker.com` in the meantime was Quotex's saved "No connection" page, out of the
+browser's cache. The panel did start on it - its diagnostics line said there was no Quotex header to put the
+bar in - and on `quotex.com` the extension was never loaded at all: the manifest named one address.
+
+### Fixed
+- **The panel runs on `quotex.com` as well as `qxbroker.com`.** Both are in the manifest (host permissions,
+  the panel and the read-only bridge), in the toolbar-icon script's list of Quotex tabs and in the deposit
+  scan, which stays on the address it was started from. `qxbroker.com` is kept in case it returns. The
+  panel's own code names no address, so nothing in it changed.
+
+### Not changed
+- **Settings are kept per address.** They live in the page's own storage, and `quotex.com` has its own. The
+  panel starts there once with its defaults for what only the page keeps: the SL, the payout floor, theme,
+  size, chart zoom, where the bar was dragged to, and the names it had learnt (it learns them again). What the
+  browser also keeps comes along: MAX, the ↑↓ switch, the chart settings, the trade log and today's TP.
+- The regional addresses (`market-qx.info`, `market-quotex.pro`) are not in the manifest: not asked for, and
+  from India they forward to `quotex.com`.
+
+### Tests
+- `tests/extension.test.mjs`: the manifest's host permissions and both content scripts name both sites, the
+  worker's tab list does, and a deposit scan started on `quotex.com` heads for `quotex.com`'s Balance page.
+  `tests/deposits.test.mjs`: the Balance page is recognized on `quotex.com`, the scan walks it and comes back,
+  and four look-alike names (`notquotex.com`, `quotex.com.evil.example`, `quotex.co`, a path that contains the
+  name) are refused. Both fail on 1.88.0. The "no shipped file names a site other than Quotex" check allows
+  the two names.
+
+### Not seen live
+- The panel on `quotex.com`. The build was made from outside the browser; it needs the extension reloaded and
+  the Quotex tab opened on `quotex.com`.
+
 ## [1.88.0] - 2026-10-04
 
 Reported: "the auto open switched the asset what currently I'm - not good."

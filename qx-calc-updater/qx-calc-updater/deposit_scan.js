@@ -23,8 +23,9 @@ let qxScanning = false;
 let qxScanCancel = false;
 
 // Balance page in any site language and on subdomains (v1.24.0; was qxbroker.com/en/balance only).
-const QX_BALANCE_URL_RE = /^(https?:\/\/(?:[a-z0-9-]+\.)?qxbroker\.com\/[a-z]{2}(?:-[a-z]{2,4})?\/balance)(?:\/|\?|$)/i;
-const QX_SITE_RE = /^https?:\/\/(?:[a-z0-9-]+\.)?qxbroker\.com\//i;
+// v1.89.0: on quotex.com as well as qxbroker.com - Quotex's global address since 2026-10-09.
+const QX_BALANCE_URL_RE = /^(https?:\/\/(?:[a-z0-9-]+\.)?(?:qxbroker|quotex)\.com\/[a-z]{2}(?:-[a-z]{2,4})?\/balance)(?:\/|\?|$)/i;
+const QX_SITE_RE = /^https?:\/\/(?:[a-z0-9-]+\.)?(?:qxbroker|quotex)\.com\//i;
 const QX_LANG_RE = /^[a-z]{2}(?:-[a-z]{2,4})?$/i;
 
 /** True when a URL points at the balance page (any language, ?page / #hash variant). */

@@ -48,6 +48,25 @@ test("deposit scanner: balance page is recognized in any site language and on su
   }
 });
 
+test("deposit scanner: quotex.com is Quotex too, and a name that only looks like it is not (v1.89.0)", async () => {
+  const w = await loadScanner();
+  try {
+    assert.equal(w.qxIsBalanceUrl("https://quotex.com/en/balance"), true);
+    assert.equal(w.qxIsBalanceUrl("https://quotex.com/hi/balance?page=3#x"), true);
+    assert.equal(w.qxBalanceBase("https://quotex.com/hi/balance?page=3#x"), "https://quotex.com/hi/balance");
+    assert.equal(w.qxBalanceUrlFor("https://quotex.com/en/demo-trade"), "https://quotex.com/en/balance");
+    assert.equal(w.qxBalanceUrlFor("https://quotex.com/trade"), "https://quotex.com/en/balance", "no language → English");
+    for (const host of ["notquotex.com", "quotex.com.evil.example", "quotex.co", "evil.example/quotex.com"]) {
+      assert.equal(w.qxIsBalanceUrl("https://" + host + "/en/balance"), false, host);
+      assert.equal(w.qxBalanceUrlFor("https://" + host + "/en/trade"), null, host);
+    }
+    await w.qxRunDepositScan({ id: 7, url: "https://quotex.com/en/trade" });
+    assert.deepEqual([...w.log.visited], ["https://quotex.com/en/balance", "https://quotex.com/en/trade"], "the walk, and back");
+  } finally {
+    w.close();
+  }
+});
+
 test("deposit scanner: every successful deposit counts, whatever the payment method (v1.24.2)", async () => {
   const w = await loadScanner();
   try {

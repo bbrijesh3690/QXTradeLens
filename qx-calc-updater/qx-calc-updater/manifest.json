@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "QXTradeLens Controller",
-  "version": "1.88.0",
+  "version": "1.89.0",
   "description": "Professional trading controls and real-time scaling for QXTradeLens.",
   "permissions": [
     "storage",
@@ -12,7 +12,9 @@
   ],
   "host_permissions": [
     "*://qxbroker.com/*",
-    "*://*.qxbroker.com/*"
+    "*://*.qxbroker.com/*",
+    "*://quotex.com/*",
+    "*://*.quotex.com/*"
   ],
   "background": {
     "service_worker": "service_worker.js"
@@ -23,14 +25,16 @@
         "default": "Alt+Shift+R",
         "mac": "Alt+Shift+R"
       },
-      "description": "Dev: reload the extension and refresh open qxbroker tabs"
+      "description": "Dev: reload the extension and refresh open Quotex tabs"
     }
   },
   "content_scripts": [
     {
       "matches": [
         "*://qxbroker.com/*",
-        "*://*.qxbroker.com/*"
+        "*://*.qxbroker.com/*",
+        "*://quotex.com/*",
+        "*://*.quotex.com/*"
       ],
       "js": [
         "content.js"
@@ -40,7 +44,9 @@
     {
       "matches": [
         "*://qxbroker.com/*",
-        "*://*.qxbroker.com/*"
+        "*://*.qxbroker.com/*",
+        "*://quotex.com/*",
+        "*://*.quotex.com/*"
       ],
       "js": [
         "chart_reader.js"

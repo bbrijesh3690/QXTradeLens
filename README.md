@@ -1,8 +1,8 @@
 # QXTradeLens Controller
 
 A Chrome extension (Manifest V3) that adds a trading-discipline panel to the Quotex web platform
-(`qxbroker.com`). It shows your targets and risk while you trade, blocks trades that break your own
-rules, and repairs itself when Quotex changes their site.
+(`quotex.com`, and `qxbroker.com` where that still opens). It shows your targets and risk while you
+trade, blocks trades that break your own rules, and repairs itself when Quotex changes their site.
 
 It is **read-only towards Quotex**: it never sends anything to the broker, and it only places a trade
 if you press a shortcut you switched on yourself.
@@ -244,8 +244,9 @@ doing into this site's own storage every 2 s, under an opaque key: the build, th
 timeframe, open trades, what the auto-fill is waiting for, the payout floor and what each open pair is
 paying, what the payout floor last decided, what the win-projection chip is showing, and for each chart
 its zoom, how many bars it holds, how many it drew, where it has been dragged to and whether it is at the
-live edge. Any tab on `qxbroker.com` can read it back, which turns most "it is not working" questions
-into a single look.
+live edge. Any tab on the same address can read it back, which turns most "it is not working" questions
+into a single look. (`quotex.com` and `qxbroker.com` each have their own storage, so the line - like the
+panel's settings - is kept per address.)
 
 ## Good to know
 

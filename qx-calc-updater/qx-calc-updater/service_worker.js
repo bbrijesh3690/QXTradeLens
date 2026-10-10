@@ -12,12 +12,15 @@ chrome.action.onClicked.addListener((tab) => {
   } catch (e) {}
 });
 
-const QX_TAB_PATTERNS = ["*://qxbroker.com/*", "*://*.qxbroker.com/*"];
+// v1.89.0: quotex.com as well. qxbroker.com stopped resolving on 2026-10-08 (registrar hold) and Quotex named
+// quotex.com as its global address the next day; qxbroker.com is kept in case it comes back. The same four
+// patterns are in the manifest, and deposit_scan.js knows the same two sites.
+const QX_TAB_PATTERNS = ["*://qxbroker.com/*", "*://*.qxbroker.com/*", "*://quotex.com/*", "*://*.quotex.com/*"];
 const QX_RELOAD_PENDING = "__qxDevReloadTabs";
 
 // ── Dev hot-reload ────────────────────────────────────────────────────────────
 // Press the `dev-reload` command (Alt+Shift+R by default) after a build: we stash
-// the open qxbroker tab IDs, then chrome.runtime.reload() restarts the extension so
+// the open Quotex tab IDs, then chrome.runtime.reload() restarts the extension so
 // the new content.js / popup / SW are picked up. chrome.storage.local survives the
 // reload, so on the fresh SW startup (top-level code below) we refresh those tabs to
 // re-inject the updated content script. Nothing dev-only ships inside content.js.

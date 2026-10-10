@@ -82,8 +82,22 @@ test("extension: no shipped file names a site other than Quotex (v1.70.0; was th
   const outside = [];
   for (const f of files) {
     for (const m of read(f).matchAll(/(?:https?:)?\/\/([a-z0-9.-]+\.[a-z]{2,})(?=[/:"'\s)]|$)/gi)) {
-      if (!/(^|\.)qxbroker\.com$/i.test(m[1])) outside.push(f + ": " + m[0]);
+      if (!/(^|\.)(qxbroker|quotex)\.com$/i.test(m[1])) outside.push(f + ": " + m[0]);
     }
   }
   assert.deepEqual(outside, []);
+});
+
+// qxbroker.com went on registrar hold on 2026-10-08 and stopped resolving; the next day Quotex's own channel
+// named quotex.com as its global address, and every other address forwarded there. With only qxbroker.com in
+// the manifest the panel was never loaded on the page at all - "the extension is not opening".
+test("extension: it runs on quotex.com as well as qxbroker.com (v1.89.0)", () => {
+  const sites = ["*://qxbroker.com/*", "*://*.qxbroker.com/*", "*://quotex.com/*", "*://*.quotex.com/*"];
+  assert.deepEqual(MANIFEST.host_permissions, sites, "host permissions");
+  assert.equal(MANIFEST.content_scripts.length, 2, "the panel and the read-only bridge");
+  for (const script of MANIFEST.content_scripts) assert.deepEqual(script.matches, sites, script.js.join());
+  const { ctx, listeners, calls } = loadWorker();
+  assert.deepEqual([...vm.runInContext("QX_TAB_PATTERNS", ctx)], sites, "the dev reload refreshes the tabs of both");
+  listeners.message({ type: "DEPOSIT_SCAN_START" }, { tab: { id: 7, url: "https://quotex.com/hi/trade" } });
+  assert.deepEqual(calls.updated, ["https://quotex.com/hi/balance"], "the deposit scan stays on the address it was started from");
 });

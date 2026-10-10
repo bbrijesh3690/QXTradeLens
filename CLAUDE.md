@@ -5,7 +5,8 @@ replaying the conversation that produced the code.
 
 ## What this is
 
-A Chrome MV3 extension that adds a trading-discipline panel to `qxbroker.com`. It shows targets,
+A Chrome MV3 extension that adds a trading-discipline panel to Quotex's trade pages - `quotex.com` and
+`qxbroker.com` (v1.89.0; see "Quotex's address" under Open items). It shows targets,
 risk and multi-timeframe charts while you trade, and repairs itself when Quotex renames their CSS.
 
 `src/content.js` is the source of the panel (~8,000 lines, one IIFE). Everything else is small:
@@ -142,6 +143,19 @@ check will say so if only one happened.
 
 ## Open items
 
+- **Quotex's address (v1.89.0, 2026-10-10).** "The extension is not opening at all" was the site, not the
+  extension: `qxbroker.com` stopped resolving (registry record: `client hold` by the registrar, 2026-10-08
+  20:29 UTC, paid until 2034), and on 2026-10-09 Quotex's Telegram channel named `quotex.com` as the global
+  address (`market-qx.info` for Bangladesh, `market-quotex.pro` for Indonesia / Vietnam; from India all of them
+  forward to `quotex.com`). The manifest, `QX_TAB_PATTERNS` in the service worker and the two patterns in
+  `deposit_scan.js` name both sites; `src/content.js` names none. **When the panel "does not open", check that
+  the address resolves and what address the tab is on before reading any code** - `Resolve-DnsName`, then the
+  registry record at `rdap.verisign.com/com/v1/domain/<name>`, then Quotex's channel at `t.me/s/quotex_official`.
+  At a dead address the browser shows Quotex's cached "No connection" page, and the panel starts on it with no
+  header to sit in. **Settings do not follow an address**: they are in the page's `localStorage`, so on
+  `quotex.com` the SL, payout floor, theme, size, zoom and learnt names started from defaults; only what is also
+  in `chrome.storage.sync` came along. Not seen live yet: the panel on `quotex.com`. Not built: the regional
+  addresses, and carrying the page-kept settings across.
 - **The win projection on the chart chip** is covered by a test (two open trades, balance plus both
   payouts) but has still never been *seen* on a live page — that needs a trade actually running. Since
   v1.54.0 the chip's own text is in the diagnostics line (`projChip`), so one live trade settles it
