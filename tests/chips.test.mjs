@@ -242,9 +242,21 @@ function openTradePage({ rowText = null, ahead = 2, rowFollows = null, rowTick =
       w.setInterval(() => (el.firstChild.nodeValue = text()), Math.max(rowTick, 100)); // keeps the row's own text in step too
     }
   };
-  return { store, close, setup, hold: (ms) => (clock.held = ms) };
+  // What the chip reads with nothing learnt: the close time against Quotex's clock, rounded up. Worked out when
+  // the chip is read, so a slow boot moves both together - a fixed window made two specs flaky (2026-10-19).
+  const quotexShows = () => Math.ceil(close - (clock.held ?? Date.now()) / 1000 - ahead);
+  return { store, close, setup, quotexShows, hold: (ms) => (clock.held = ms) };
 }
 const chipTime = (qx) => ((chipEl(qx) && chipEl(qx).textContent) || "").match(/\d{2}:\d{2}(\.\d{2})?/)?.[0];
+// The chip's whole seconds, checked against Quotex's number at that moment, ±1 s for a chip drawn a tick ago.
+function assertChipOnQuotexClock(qx, page, what) {
+  const shown = chipTime(qx),
+    expect = page.quotexShows();
+  assert.match(String(shown), /^00:\d{2}$/, "the chip shows whole seconds: " + shown);
+  const secs = parseInt(shown.slice(3), 10);
+  assert.ok(Math.abs(secs - expect) <= 1, what + ": the chip shows " + shown + ", Quotex's clock gives " + expect);
+  return shown;
+}
 const clockLine = (qx) => String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").tradeClock);
 
 test("countdown: with Quotex's trade history on screen, the chip shows its number (v1.75.0)", async () => {
@@ -268,9 +280,8 @@ test("countdown: a row that disagrees with the trade's close time is not copied 
   const qx = await boot({ store: page.store, setup: page.setup });
   try {
     await sleep(900);
-    const shown = chipTime(qx);
+    const shown = assertChipOnQuotexClock(qx, page, "the close time against Quotex's clock");
     assert.notEqual(shown, "00:30", "not the disagreeing row");
-    assert.match(shown, /^00:4[6-8]$/, "the close time against Quotex's clock: " + shown);
     await sleep(1500);
     assert.match(clockLine(qx), /not trusted/);
   } finally {
@@ -284,8 +295,8 @@ test("countdown: without the trade history, the chip counts against Quotex's ser
   const qx = await boot({ store: page.store, setup: page.setup });
   try {
     await sleep(900);
-    const shown = chipTime(qx);
-    assert.match(shown, /^00:4[2-5]$/, "by Quotex's clock, in whole seconds: " + shown);
+    // By this computer's clock the chip would read 5 s more, outside the ±1 s allowed.
+    assertChipOnQuotexClock(qx, page, "by Quotex's clock, in whole seconds");
     await sleep(1500);
     assert.match(clockLine(qx), /Quotex clock \+5\.\d\d s/);
   } finally {
