@@ -1316,3 +1316,48 @@ test("self-healing: middle-click closes a pair tab whose class was renamed (v1.7
     qx.close();
   }
 });
+
+// The user, 2026-10-19: D and S step 15s, 1m, 2m, 3m, 5m, 15m, 30m, 1h (10m left out), round from the last
+// to the first and back as before, and from a timeframe that is not a step to the nearest step that way.
+test("hotkeys: D / S step 15s 1m 2m 3m 5m 15m 30m 1h, go round at the ends, and find the nearest step (v1.90.0)", async () => {
+  // Quotex's menu with every timeframe it offers; a click moves the highlight and the button's label.
+  const labels = ["5s", "10s", "15s", "30s", "1m", "2m", "3m", "5m", "10m", "15m", "30m", "1h", "4h", "1d"];
+  const setup = (w) => {
+    const bar = w.document.createElement("div");
+    bar.innerHTML = '<div class="HgaSf">1m</div><div class="kCc27">' + labels.map((l) => '<div class="Dy2a9">' + l + "</div>").join("") + "</div>";
+    w.document.body.appendChild(bar);
+    w.setTf = (label) => {
+      for (const item of bar.querySelectorAll(".Dy2a9")) item.className = item.textContent === label ? "Dy2a9 vSoc0" : "Dy2a9";
+      bar.querySelector(".HgaSf").textContent = label;
+    };
+    for (const item of bar.querySelectorAll(".Dy2a9")) item.addEventListener("click", () => w.setTf(item.textContent));
+    w.setTf("15s");
+  };
+  const qx = await boot({ setup });
+  const chartTf = () => qx.window.document.querySelector(".HgaSf").textContent;
+  const press = async (key) => {
+    qx.window.document.dispatchEvent(new qx.window.KeyboardEvent("keydown", { key, code: "Key" + key.toUpperCase(), bubbles: true, cancelable: true }));
+    await sleep(260);
+    return chartTf();
+  };
+  try {
+    await sleep(400);
+    const up = [];
+    for (let i = 0; i < 8; i++) up.push(await press("d"));
+    assert.deepEqual(up, ["1m", "2m", "3m", "5m", "15m", "30m", "1h", "15s"], "D steps up, and from 1h goes round to 15s");
+    const down = [];
+    for (let i = 0; i < 8; i++) down.push(await press("s"));
+    assert.deepEqual(down, ["1h", "30m", "15m", "5m", "3m", "2m", "1m", "15s"], "S steps down, and from 15s goes round to 1h");
+    const from = async (tf, key) => (qx.window.setTf(tf), press(key));
+    assert.equal(await from("10m", "d"), "15m", "10m is not a step: D goes to the next longer one");
+    assert.equal(await from("10m", "s"), "5m", "and S to the next shorter one");
+    assert.equal(await from("30s", "d"), "1m");
+    assert.equal(await from("30s", "s"), "15s");
+    assert.equal(await from("4h", "s"), "1h");
+    assert.equal(await from("4h", "d"), "15s", "nothing longer than 4h: round to the first step");
+    assert.equal(await from("5s", "s"), "1h", "nothing shorter than 5s: round to the last step");
+    assert.equal(await from("5s", "d"), "15s");
+  } finally {
+    qx.close();
+  }
+});

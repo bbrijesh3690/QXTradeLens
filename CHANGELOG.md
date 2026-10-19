@@ -5,6 +5,34 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.90.0] - 2026-10-19
+
+Asked for: D moves the chart 15s → 1m → 5m → 15m → 30m → 1h, and S the other way. Then, choosing between the
+options: keep 2m and 3m, drop 10m, go round at the ends as before, and from a timeframe that is not a step go
+to the nearest step that way.
+
+### Changed
+- **D / S step through 15s, 1m, 2m, 3m, 5m, 15m, 30m, 1h.** 10m is no longer a stop; 30m and 1h are new. From
+  1h, D goes round to 15s, and from 15s, S goes round to 1h - the same circle as before, with the new steps.
+- **From a timeframe that is not a step, D and S go to the nearest step that way.** On 10m (picked from
+  Quotex's menu), D goes to 15m and S to 5m; on 4h, S goes to 1h and D goes round to 15s. Until now a
+  timeframe off the list sent D to the first step and S to the last, whatever it was.
+- A step is found in Quotex's menu by how long it lasts, not by how it is spelt, so "1H" or "60m" would still
+  be 1h.
+
+### Not changed
+- The keys open Quotex's own timeframe menu and press the item there, as before. A step the menu does not
+  offer is left alone, and the menu is closed.
+- The charts (C) and their timeframes are separate and untouched.
+
+### Tests
+- `tests/platform.test.mjs`: D eight times from 15s and S eight times back, both going round; and from 10m,
+  30s, 4h and 5s each way. It fails on 1.89.0.
+
+### Not seen live
+- The new steps on Quotex's page. How their menu writes 30m and 1h was not checked; matching by length covers
+  the likely spellings.
+
 ## [1.89.0] - 2026-10-10
 
 Reported: "the extension is not opening at all."

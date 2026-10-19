@@ -4320,9 +4320,35 @@
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     const WATCHED_SELECTORS =
         ".Zt1hG,.UI2Kh,.omlQ2,.GmATb,.ib6yR,.lCITV,.dJ15T,.ElyTP,.pVBHU,.deal-amount-input,.bvdd_,.UloGw,.pPomf,.PY5Eb,.Pdqth,#trade-button,.bSenO,.MYMK0,.hkjXJ",
-      HOTKEY_TIMEFRAMES = ["15s", "1m", "2m", "3m", "5m", "10m", "15m"],
+      // The steps D / S move the chart through (v1.90.0, the user's list: 10m left out, 30m and 1h added).
+      HOTKEY_TIMEFRAMES = ["15s", "1m", "2m", "3m", "5m", "15m", "30m", "1h"],
       TF_LABEL_RE = /^\d+\s*[smhd]$/i,
-      normLabel = (t) => (t || "").trim().toLowerCase();
+      normLabel = (t) => (t || "").trim().toLowerCase(),
+      // How long a timeframe label lasts, read from the label itself ("10m", "4h", "1d"), so a timeframe that
+      // is not a step still has a place among them, and "1H" or "60m" would still be 1h. 0 for anything else.
+      labelSeconds = (t) => {
+        const m = /^(\d+)\s*([smhd])$/i.exec((t || "").trim());
+        return m ? +m[1] * { s: 1, m: 60, h: 3600, d: 86400 }[m[2].toLowerCase()] : 0;
+      };
+    // D (dir 1) / S (dir -1): the next step from the chart's timeframe, round from the last step to the first
+    // and back. From a timeframe that is not a step, the nearest step that way (v1.90.0): 10m gives 15m / 5m,
+    // and past either end it goes round. One that cannot be read gives the first step (D) or the last (S).
+    function hotkeyTimeframe(current, dir) {
+      const steps = HOTKEY_TIMEFRAMES,
+        n = steps.length,
+        sec = labelSeconds(current);
+      if (!sec) {
+        return dir > 0 ? steps[0] : steps[n - 1];
+      }
+      const at = steps.findIndex((s) => labelSeconds(s) === sec);
+      if (at !== -1) {
+        return steps[(at + dir + n) % n];
+      }
+      if (dir > 0) {
+        return steps.find((s) => labelSeconds(s) > sec) || steps[0];
+      }
+      return steps.filter((s) => labelSeconds(s) < sec).pop() || steps[n - 1];
+    }
     function getTimeframeButton() {
       if (!window._tcTimeBtnCache || !window._tcTimeBtnCache.isConnected) {
         const t = Array.from(document.querySelectorAll(".HgaSf"));
@@ -4699,17 +4725,9 @@
           setTimeout(() => {
             const t = getTimeframeItems();
             if (t.length) {
-              const e = getActiveTimeframe(),
-                n = r ? 1 : -1,
-                o = HOTKEY_TIMEFRAMES.indexOf(e),
-                a = HOTKEY_TIMEFRAMES.length,
-                i =
-                  -1 !== o
-                    ? HOTKEY_TIMEFRAMES[(o + n + a) % a]
-                    : r
-                      ? HOTKEY_TIMEFRAMES[0]
-                      : HOTKEY_TIMEFRAMES[a - 1],
-                c = t.find((t) => normLabel(t.textContent) === i);
+              // Matched by length, not by spelling, so the menu's own way of writing a step still counts.
+              const want = labelSeconds(hotkeyTimeframe(getActiveTimeframe(), r ? 1 : -1)),
+                c = t.find((t) => labelSeconds(normLabel(t.textContent)) === want);
               if (c) {
                 c.click();
               }

@@ -166,7 +166,7 @@ Active on the trade page when you are not typing in a field.
 |---|---|
 | **↑ / ↓** | **Place an Up / Down trade** (off by default; turn on in the ⚙ menu). With **Focus Mode** on, ↑/↓ select the button and your **Enter** places the trade |
 | **← / →** | Halve / double the trade amount (always on) |
-| **S / D** | Previous / next chart timeframe |
+| **S / D** | Previous / next chart timeframe: 15s, 1m, 2m, 3m, 5m, 15m, 30m, 1h, round from either end. From any other timeframe, the nearest of these that way |
 | **F / Shift+F / G** | Next / previous pair tab |
 | **R** | Open the highest-paying OTC pairs (at or above your minimum) and close the rest |
 | **Q** | Close every tab paying below your minimum |
