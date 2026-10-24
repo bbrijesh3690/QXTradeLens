@@ -5,6 +5,38 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.91.0] - 2026-10-24
+
+Reported, with a screenshot of the trade history: "these 2 trades are placed when the balance are the same - how
+is it possible?" Two EUR/JPY trades, Down 3.46 and then Up 3.40, both labelled "Entry 169.78". The trades were
+right; the label on the older one was not. Worked out from the amounts (the live trade log could not be read:
+the browser blocks the check on quotex.com): 3.46 was 2 % of 173.24, which left 169.78, and 3.40 was 2 % of
+169.78. The older row should have said 173.24.
+
+### Fixed
+- **One placement is shown on one row only.** A row whose trade ID is not open on the page is matched to a
+  placement by pair, amount and - when its details are open - time, and nothing kept a placement already shown
+  on one row from being offered to the next. Both rows took the newest EUR/JPY placement. Each tag now
+  remembers its placement (off the page, not as an attribute), and a row Quotex draws again gets its own back
+  rather than one already shown.
+- **The amount must agree to within a cent.** It allowed half a unit either way, so 3.40 and 3.46 were the
+  same trade. Nothing assumes a stake: a fixed amount, a percent stake of any size (logged unrounded - 2 % of
+  169.78 is 3.3956 - while the row shows 3.40) or no amount at all; the cent either way is there because how
+  Quotex rounds a percent stake is not known.
+
+### Not changed
+- Trading, the balance and Quotex's own figures. The label only reads the panel's own log of placements (the
+  last 10).
+
+### Tests
+- `tests/panel.test.mjs`: the two trades of the screenshot each show their own entry balance - with fixed
+  amounts, with 2 %, 3 % and 4 % stakes, and with no amount logged; and a row Quotex replaces gets its own
+  balance back, not the one already on the row above. Both fail on 1.90.0.
+
+### Not seen live
+- The labels on the live page. After reloading and refreshing, the two rows of the screenshot should read
+  169.78 and 173.24 if the log still holds both placements.
+
 ## [1.90.0] - 2026-10-19
 
 Asked for: D moves the chart 15s → 1m → 5m → 15m → 30m → 1h, and S the other way. Then, choosing between the

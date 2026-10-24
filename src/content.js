@@ -5188,12 +5188,27 @@
         return rows;
       });
     }
+    // v1.91.0: which placement each Entry tag shows (by its time), so one placement is shown on one row only.
+    // Kept off the page - not an attribute - and gone with the tag when Quotex redraws the row.
+    const placedTagEntry = new WeakMap();
+    // An amount within a cent (v1.91.0; it was half a unit, which took 3.40 for 3.46). A percent stake is logged
+    // unrounded - 2 % of 169.78 is 3.3956 - and how Quotex rounds it is not known, so a cent either way.
+    const sameCents = (a, b) => Math.abs(Math.round(a * 100) - Math.round(b * 100)) <= 1;
     function tagHistoryEntryBalances() {
       // v1.68.0: always on. v1.66.0 removed this along with its popup switch; it was the switch that was
       // meant to go. The balance at entry is read from the trade log, which was never removed.
       const t = getHistoryRows();
       const byShape = listVia.historyRows !== "class";
       let e = false;
+      // Seen live on 2026-10-24: two EUR/JPY trades, 3.46 placed at 173.24 and 3.40 at 169.78, both tagged
+      // "Entry 169.78" - one placement matched both rows. A placement already on a row is not offered again.
+      const shown = new Set();
+      for (const row of t) {
+        const tag = row.querySelector("." + ids.tcPlacedBal);
+        if (tag && placedTagEntry.has(tag)) {
+          shown.add(placedTagEntry.get(tag));
+        }
+      }
       for (let n = 0; n < t.length; n++) {
         const o = t[n],
           r = o.querySelector(".Fqtla"),
@@ -5238,8 +5253,9 @@
             const o = tradeLog[n];
             if (
               !o.uuid &&
+              !shown.has(o.ts) &&
               (!t || normKey(o.pair) === t) &&
-              (o.amount == null || isNaN(d) || !(Math.abs(o.amount - d) > 0.5)) &&
+              (o.amount == null || isNaN(d) || sameCents(o.amount, d)) &&
               (isNaN(f) || !(Math.abs(o.ts - f) > 90000))
             ) {
               g = o;
@@ -5254,7 +5270,9 @@
         if (!g) {
           continue;
         }
+        shown.add(g.ts);
         const _ = document.createElement("span");
+        placedTagEntry.set(_, g.ts);
         _.className = ids.tcPlacedBal;
         _.style.cssText =
           "flex:0 0 100%;width:100%;margin-top:1px;text-align:right;font-weight:700;font-size:11px;line-height:1.3;color:rgb(255 185 0);white-space:nowrap;opacity:0.92;";

@@ -563,6 +563,66 @@ test("history: every placed trade is tagged \"Entry\" with the balance it was pl
   }
 });
 
+// Seen live on 2026-10-24: two EUR/JPY trades, 3.46 placed at 173.24 and then 3.40 at 169.78 (2 % of the
+// balance each time), and both rows said "Entry 169.78". A placement is shown on one row only, and the
+// amount tells 3.40 from 3.46 - it used to allow half a unit either way. Nothing assumes a stake: a fixed
+// amount, a percent stake of any size (logged unrounded, e.g. 2 % of 169.78 = 3.3956), or no amount at all.
+test("history: two trades on one pair each show their own entry balance (v1.91.0)", async () => {
+  const pct = (p) => ({ how: p + " % stakes", logged: [(169.78 * p) / 100, (173.24 * p) / 100] });
+  const cases = [{ how: "fixed amounts", logged: [3.4, 3.46] }, pct(2), pct(3), pct(4), { how: "amounts not logged", logged: [null, null], shown: [3.4, 3.46] }];
+  for (const c of cases) {
+    const shown = (c.shown || c.logged).map((a) => a.toFixed(2)); // what Quotex prints on each row
+    const now = Date.now();
+    const log = [
+      { uuid: null, ts: now - 20000, pair: "EUR/JPY (OTC)", amount: c.logged[0], bal: 169.78 },
+      { uuid: null, ts: now - 40000, pair: "EUR/JPY (OTC)", amount: c.logged[1], bal: 173.24 },
+    ];
+    const qx = await boot({ storage: { ...slStorage(10000), __tradeCalc_trade_log: JSON.stringify(log) } });
+    try {
+      await sleep(400);
+      const holder = qx.window.document.createElement("div");
+      holder.innerHTML = historyRow("EUR/JPY (OTC)", shown[0]) + historyRow("EUR/JPY (OTC)", shown[1]);
+      qx.window.document.body.appendChild(holder);
+      await sleep(900);
+      const tags = [...holder.querySelectorAll(".ib6yR")].map(
+        (row) => ([...row.querySelectorAll("*")].find((el) => /^Entry /.test(el.textContent || "")) || {}).textContent || "none",
+      );
+      assert.match(tags[0], /169\.78/, c.how + ": the newer trade, " + shown[0] + ": " + tags.join(" | "));
+      assert.match(tags[1], /173\.24/, c.how + ": the older trade, " + shown[1] + ": " + tags.join(" | "));
+    } finally {
+      qx.close();
+    }
+  }
+});
+
+test("history: a row Quotex draws again gets its own entry balance back, not one already shown (v1.91.0)", async () => {
+  // No amounts and no open times to go by: only which placements are already on a row tells them apart.
+  const now = Date.now();
+  const log = [
+    { uuid: null, ts: now - 20000, pair: "EUR/JPY (OTC)", amount: null, bal: 169.78 },
+    { uuid: null, ts: now - 40000, pair: "EUR/JPY (OTC)", amount: null, bal: 173.24 },
+  ];
+  const qx = await boot({ storage: { ...slStorage(10000), __tradeCalc_trade_log: JSON.stringify(log) } });
+  const entryOf = (row) => ([...row.querySelectorAll("*")].find((el) => /^Entry /.test(el.textContent || "")) || {}).textContent || "none";
+  try {
+    await sleep(400);
+    const holder = qx.window.document.createElement("div");
+    holder.innerHTML = historyRow("EUR/JPY (OTC)", "3.40") + historyRow("EUR/JPY (OTC)", "3.46");
+    qx.window.document.body.appendChild(holder);
+    await sleep(900);
+    // Quotex replaces the older row with a fresh one, without our tag.
+    const fresh = qx.window.document.createElement("div");
+    fresh.innerHTML = historyRow("EUR/JPY (OTC)", "3.46");
+    holder.replaceChild(fresh.firstChild, holder.querySelectorAll(".ib6yR")[1]);
+    await sleep(900);
+    const [newer, older] = holder.querySelectorAll(".ib6yR");
+    assert.match(entryOf(newer), /169\.78/, "the newer row keeps its tag: " + entryOf(newer));
+    assert.match(entryOf(older), /173\.24/, "the redrawn row gets 173.24, not the 169.78 already shown: " + entryOf(older));
+  } finally {
+    qx.close();
+  }
+});
+
 test("history: the diagnostics line carries the shape of a trade-history row (v1.80.4)", async () => {
   // So the Entry tags can be given a fallback built from Quotex's real markup, read in one round trip.
   const log = [{ uuid: null, ts: Date.now() - 30000, pair: "EUR/USD (OTC)", amount: 100, bal: 5000 }];
