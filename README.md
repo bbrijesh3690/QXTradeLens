@@ -242,9 +242,10 @@ The health check can only be read by whoever is sitting at the browser, which is
 is misbehaving in a tab someone else has to reason about. So the tab in front also writes what it is
 doing into this site's own storage every 2 s, under an opaque key: the build, the pair, the chart's
 timeframe, open trades, what the auto-fill is waiting for, the payout floor and what each open pair is
-paying, what the payout floor last decided, what the win-projection chip is showing, and for each chart
-its zoom, how many bars it holds, how many it drew, where it has been dragged to and whether it is at the
-live edge. Any tab on the same address can read it back, which turns most "it is not working" questions
+paying, what the payout floor last decided, what the win-projection chip is showing, what became of your
+last five ↑ / ↓ presses (placed, sent with no trade from Quotex, or held back and why - the last three are
+also in ⚙ → Check), and for each chart its zoom, how many bars it holds, how many it drew, where it has been
+dragged to and whether it is at the live edge. Any tab on the same address can read it back, which turns most "it is not working" questions
 into a single look. (`quotex.com` and `qxbroker.com` each have their own storage, so the line - like the
 panel's settings - is kept per address.)
 

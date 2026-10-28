@@ -1361,3 +1361,77 @@ test("hotkeys: D / S step 15s 1m 2m 3m 5m 15m 30m 1h, go round at the ends, and 
     qx.close();
   }
 });
+
+// ── v1.92.0: what became of each ↑ / ↓ press ───────────────────────────────────────────────────────
+// Reported 2026-10-28: on the live account ↓ placed a trade once and did nothing many times, and nothing said
+// why. For troubleshooting only: each press leaves its outcome in ⚙ → Check and in the diagnostics line.
+const keyRows = (qx) => qx.askPanel({ type: "GET_HEALTH" }).rows.filter((r) => /^↑↓ press/.test(r.name));
+const keysLine = (qx) => String(JSON.parse(pref(qx, "__tradeCalc_diag") || "{}").keys);
+const hkOn = { ...hkStorage, __tradeCalc_max_trades: "4" };
+
+test("↑↓ presses: a sent press is confirmed in Quotex's data, and one that opens nothing says so (v1.92.0)", async () => {
+  const store = quotexStore();
+  let opens = true;
+  // Quotex's Down button opens a deal 0.3 s after the click - while `opens` holds.
+  const setup = (w) =>
+    w.document.querySelectorAll("#trade-button button")[1].addEventListener("click", () => {
+      if (!opens) return;
+      const d = deal("new-1", { command: 1, close: Math.floor(Date.now() / 1000) + 60 });
+      w.setTimeout(() => {
+        store.deals.openedById[d.id] = d;
+        store.deals.openedIds.push(d.id);
+      }, 300);
+    });
+  const qx = await boot({ storage: hkOn, store, setup });
+  try {
+    await sleep(400);
+    assert.match(keyRows(qx)[0].value, /none since the page loaded/);
+    pressArrow(qx, "ArrowDown");
+    await sleep(1200);
+    let row = keyRows(qx)[0];
+    assert.match(row.value, /^↓ \d+s ago: placed - Quotex opened it in [0-9.]+ s$/, row.value);
+    assert.equal(row.status, "ok");
+    opens = false;
+    await sleep(800); // past FAST's 1.5 s
+    pressArrow(qx, "ArrowDown");
+    await sleep(5600);
+    row = keyRows(qx)[0];
+    assert.match(row.value, /^↓ \d+s ago: sent to Down, but Quotex opened no trade within 5 s$/, row.value);
+    assert.equal(row.status, "missing", "counted as a problem in Check's summary");
+    assert.match(keyRows(qx)[1].value, /placed - Quotex opened it/, "the first press is still listed under it");
+    await sleep(2100); // the line is written every 2 s
+    assert.match(keysLine(qx), /^↓ \d+s ago: sent to Down, but Quotex opened no trade within 5 s \| ↓ \d+s ago: placed/, keysLine(qx));
+  } finally {
+    qx.close();
+  }
+});
+
+test("↑↓ presses: each press held back says why (v1.92.0)", async () => {
+  const openDeal = () => quotexStore({ opened: [deal("open-1", { close: Math.floor(Date.now() / 1000) + 60 })] });
+  const cases = [
+    { why: /^↓ \d+s ago: not placed: ↑↓ places trades is off in ⚙$/, storage: { ...slStorage(10000), __tradeCalc_max_trades: "4" } },
+    { why: /^↓ \d+s ago: not placed: payout 91% is below your 95% \(×3\)$/, storage: { ...hkOn, __tradeCalc_minrp: "95" }, presses: 3 },
+    { why: /^↓ \d+s ago: not placed: MAX 1 reached \(1 open or just placed\)$/, storage: { ...hkOn, __tradeCalc_max_trades: "1" }, store: openDeal },
+    { why: /^↓ \d+s ago: not placed: FAST is off and the last trade was under 1\.5 s ago$/, storage: hkOn, presses: 2 },
+    {
+      why: /^↓ \d+s ago: not placed: the cursor was in Quotex's amount box$/,
+      storage: hkOn,
+      before: (qx) => qx.window.document.querySelector(".deal-amount-input input").focus(),
+    },
+    { why: /^↓ \d+s ago: Down selected \(Focus Mode\) - your Enter places it$/, storage: { ...hkOn, __tradeCalc_hk_focus_mode: "1" } },
+  ];
+  for (const c of cases) {
+    const qx = await boot({ storage: c.storage, store: c.store ? c.store() : null });
+    try {
+      await sleep(400);
+      if (c.before) c.before(qx);
+      for (let i = 0; i < (c.presses || 1); i++) pressArrow(qx, "ArrowDown");
+      await sleep(300);
+      const row = keyRows(qx)[0];
+      assert.match(row.value, c.why, row.value);
+      assert.equal(row.status, "idle", "held back by a rule, not a fault: " + row.value);
+    } finally {
+      qx.close();
+    }
+  }
+});

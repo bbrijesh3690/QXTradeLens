@@ -77,7 +77,10 @@ Three things exist because of this:
   for `__tradeCalc_diag`. Any tab on the
   origin can read it back. This is how a live problem gets diagnosed in one round trip. `assetLog` on it is
   the last twelve steps with the pair list, each with how long ago: every auto-close, and for a refill the
-  close that started it (v1.85.0).
+  close that started it (v1.85.0). `keys` is the last five ↑ / ↓ presses and what became of each - placed
+  (seen in Quotex's data), sent with no trade within 5 s, or held back and why (v1.92.0; the last three are
+  also in ⚙ → Check). Since 2026-10-24 Comet refuses scripts from Claude in Chrome, so the user pastes the
+  line from DevTools: `localStorage.getItem('q1fzijcgg')` on their Quotex tab.
 - **The health check** (panel ⚙ menu → Quotex compatibility → Check; it was in the popup until v1.69.0) reports every
   lookup as ok / fallback / missing, and says when the tab is running an old copy — an extension reload does
   not update an open tab, and that mismatch looks exactly like "the fix did nothing". It spots it by

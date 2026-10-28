@@ -4678,6 +4678,79 @@
       }
     };
     // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // v1.92.0: what became of each ↑ / ↓ press - for troubleshooting only; nothing is shown while trading
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // Reported: on the live account ↓ placed a trade once and did nothing many times. Every way a press can end
+    // without a trade was silent, so nothing could say which it was. The last few presses and what became of
+    // them go into the diagnostics line (`keys`) and ⚙ → Quotex compatibility → Check. A press the panel sends
+    // is watched in Quotex's data until a new deal that way appears, so "the panel held it back" and "Quotex
+    // opened nothing" are told apart. A press that never reaches the panel leaves no entry at all.
+    const KEY_LOG_MAX = 5,
+      KEY_CONFIRM_MS = 5000;
+    let keyLog = [];
+    // status: "placed" (seen in Quotex's data), "sent" (not confirmable), "held" (held back, or only selected),
+    // "failed" (sent and no trade appeared, or no buttons to press).
+    function noteKey(code, status, text) {
+      const now = Date.now(),
+        key = code === "ArrowUp" ? "↑" : "↓",
+        last = keyLog[0];
+      // A key held down repeats: the same held-back press is counted, so it cannot push out what came before.
+      if (status === "held" && last && last.status === "held" && last.key === key && last.text === text && now - last.at < 2000) {
+        last.at = now;
+        last.times = (last.times || 1) + 1;
+        return last;
+      }
+      const entry = { at: now, key, status, text, times: 1 };
+      keyLog = [entry].concat(keyLog).slice(0, KEY_LOG_MAX);
+      return entry;
+    }
+    function keyLogLines(max) {
+      return keyLog
+        .slice(0, max)
+        .map((e) => ({ e, line: e.key + " " + fmtAgo(Math.round((Date.now() - e.at) / 1000)) + ": " + e.text + (e.times > 1 ? " (×" + e.times + ")" : "") }));
+    }
+    // Quotex's open deals on this account, or null without its data.
+    function openDealsNow() {
+      const state = readQuotexState();
+      return state && Array.isArray(state.openedDeals) ? dealsForThisAccount(state.openedDeals) : null;
+    }
+    // Watches for the deal a sent press should open (command 0 = Up, 1 = Down): a deal id not open before the
+    // press, or more deals that way than before.
+    function confirmSentKey(entry, command, before, label) {
+      if (!before) {
+        entry.text = "sent to " + label + " - not confirmed: Quotex's data could not be read";
+        return;
+      }
+      const known = new Set(before.map((d) => d.id)),
+        thatWay = (list) => list.filter((d) => d.command == null || d.command === command),
+        had = thatWay(before).length;
+      const look = () => {
+        const now = openDealsNow();
+        const ours = now ? thatWay(now) : [];
+        if (now && (ours.some((d) => d.id != null && !known.has(d.id)) || ours.length > had)) {
+          entry.status = "placed";
+          entry.text = "placed - Quotex opened it in " + ((Date.now() - entry.at) / 1000).toFixed(1) + " s";
+        } else if (Date.now() - entry.at >= KEY_CONFIRM_MS) {
+          entry.status = "failed";
+          entry.text = "sent to " + label + ", but Quotex opened no trade within " + KEY_CONFIRM_MS / 1000 + " s";
+        } else {
+          setTimeout(look, 250);
+        }
+      };
+      setTimeout(look, 250);
+    }
+    // The box a key went to instead of the panel: one of the panel's, Quotex's amount box, or another of theirs.
+    function boxName(el) {
+      if (el.getRootNode && el.getRootNode() === shadow) {
+        return "a box on the panel (" + (el.getAttribute("aria-label") || "unnamed") + ")";
+      }
+      if (el === findEl("amountInput", { cache: false })) {
+        return "Quotex's amount box";
+      }
+      const label = el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.getAttribute("name");
+      return "a Quotex box" + (label ? " (" + label + ")" : "");
+    }
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
     // Keyboard shortcuts
     // ────────────────────────────────────────────────────────────────────────────────────────────────
     window.__tcKeyDelegator = (t) => {
@@ -4705,6 +4778,9 @@
       }
       const e = activeEl();
       if (e && (e.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/i.test(e.tagName))) {
+        if (t.code === "ArrowUp" || t.code === "ArrowDown") {
+          noteKey(t.code, "held", hkUpDown ? "not placed: the cursor was in " + boxName(e) : "not placed: ↑↓ places trades is off in ⚙");
+        }
         return;
       }
       if (t.key === "Enter" || t.code === "Space") {
@@ -4745,25 +4821,33 @@
         }
       } else if (t.code === "ArrowUp" || t.code === "ArrowDown") {
         if (!hkUpDown) {
+          noteKey(t.code, "held", "not placed: ↑↓ places trades is off in ⚙");
           return;
         }
         const e = Date.now();
         if (!multiMode && e - lastTradeClickAt < 1500) {
           t.preventDefault();
+          noteKey(t.code, "held", "not placed: FAST is off and the last trade was under 1.5 s ago");
           return;
         }
-        if (effectiveOpenTrades() >= maxTrades) {
+        const openNow = effectiveOpenTrades();
+        if (openNow >= maxTrades) {
           t.preventDefault();
           scheduleRecalc();
+          noteKey(t.code, "held", "not placed: MAX " + maxTrades + " reached (" + openNow + " open or just placed)");
           return;
         }
         const n = readPayoutPct(),
           o = parseInt(getMinPayoutStored(), 10) || 89;
         if (!isNaN(n) && n < o) {
+          noteKey(t.code, "held", "not placed: payout " + n + "% is below your " + o + "%");
           return;
         }
         const r = getTradeButtons();
+        const pressed = t.code === "ArrowUp" ? r[0] : r[1],
+          label = (pressed && textOf(pressed).split(/\s+/)[0]) || (t.code === "ArrowUp" ? "Up" : "Down");
         if (r.length >= 2 && hkFocusMode) {
+          noteKey(t.code, "held", label + " selected (Focus Mode) - your Enter places it");
           // Focus mode (v1.28.0): select the button and let your next Enter/Space fire it, so the click
           // is generated by the browser itself. Focus stays put, so repeats are one key each.
           t.preventDefault();
@@ -4780,6 +4864,7 @@
         }
         if (r.length >= 2) {
           t.preventDefault();
+          const before = openDealsNow();
           lastTradeClickAt = e;
           notePlacedTrade();
           recordPlacement();
@@ -4788,7 +4873,9 @@
           } else {
             synthClick(r[1]);
           }
+          confirmSentKey(noteKey(t.code, "sent", "sent to " + label + " - waiting for Quotex"), t.code === "ArrowUp" ? 0 : 1, before, label);
         } else {
+          noteKey(t.code, "failed", "not placed: Quotex's Up / Down buttons were not found");
           ((...t) => {
             if (window.__tcDebug) {
               try {
@@ -9418,6 +9505,8 @@
             // v1.54.1: the payout floor and what it is looking at. "Should a pair have been opened?" is
             // not answerable from another tab without the numbers the decision was made on.
             floor: parseInt(getMinPayoutStored(), 10),
+            // v1.92.0: the last ↑ / ↓ presses and what became of each.
+            keys: keyLog.length ? keyLogLines(KEY_LOG_MAX).map((k) => k.line).join(" | ") : "no ↑↓ press since the page loaded",
             pairs: (() => {
               const out = {};
               getPairTabs().forEach((tab) => {
@@ -9661,6 +9750,13 @@
         (openCount ? openCount + " open" : "no open trades") + pageNote,
       );
       add("Trade timers", !openCount ? "idle" : "ok", storeTrades ? timersVia : "page", openCount ? openCount + " tracked" : "no open trades");
+      // v1.92.0: the last ↑ / ↓ presses - a trade seen in Quotex's data, held back (and why), or sent with no trade.
+      if (!keyLog.length) {
+        add("↑↓ presses", "idle", "keys", "none since the page loaded");
+      }
+      for (const { e, line } of keyLogLines(3)) {
+        add("↑↓ press", { placed: "ok", sent: "fallback", held: "idle", failed: "missing" }[e.status] || "idle", "keys", line);
+      }
       const dropdown = getAssetDropdown();
       const assetRows = dropdown ? getAssetRows(dropdown) : [];
       add(

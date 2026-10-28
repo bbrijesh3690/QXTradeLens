@@ -5,6 +5,40 @@ Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`.
 The version in `qx-calc-updater/qx-calc-updater/manifest.json` must match the latest entry,
 and every release is tagged in git as `vX.Y.Z`.
 
+## [1.92.0] - 2026-10-28
+
+Reported: "when I press down arrow the trades are not getting placed" - on the live account, one press in the
+morning placed a trade and many did not; a press tried while reporting it went through. Quotex's Up / Down
+buttons were found correctly ("Buy" / "Sell", read from the live page), and a scripted click is accepted on
+live, so the panel was most likely holding presses back - and every way it does that was silent. For
+troubleshooting only: nothing new is shown while trading.
+
+### Added
+- **What became of each ↑ / ↓ press**, in ⚙ → Quotex compatibility → Check (the last three) and in the
+  diagnostics line (`keys`, the last five):
+  - placed, once the new deal shows in Quotex's data ("placed - Quotex opened it in 0.4 s");
+  - sent, but no new deal that way within 5 s ("sent to Down, but Quotex opened no trade within 5 s") - the
+    one case the panel cannot stop, marked as a problem in Check;
+  - held back, and why: the payout below your floor (with both figures), MAX reached, FAST off within 1.5 s of
+    the last trade, ↑↓ switched off in ⚙, or the cursor in a text box (Quotex's amount box, another of theirs,
+    or one on the panel);
+  - Focus Mode: the button selected, for your Enter to press;
+  - Quotex's Up / Down buttons not found.
+- A key held down repeats; the same held-back press is counted ("×3") rather than pushing out what came
+  before. A press that never reaches the panel leaves no entry, which is an answer too.
+
+### Not changed
+- What ↑ / ↓ do, every rule that holds a press back, and mouse clicks.
+
+### Tests
+- `tests/platform.test.mjs`: a press confirmed when Quotex's data shows the new deal, and one that opens
+  nothing reported as such and listed above the first, in Check and in the diagnostics line; and each reason
+  a press is held back - switch off, payout below the floor (three presses counted as one), MAX, FAST, the
+  amount box, Focus Mode. Both fail on 1.91.0.
+
+### Not seen live
+- The entries on the live page. The next time ↓ does nothing, open ⚙ → Check, or paste the diagnostics line.
+
 ## [1.91.0] - 2026-10-24
 
 Reported, with a screenshot of the trade history: "these 2 trades are placed when the balance are the same - how
